@@ -102,9 +102,10 @@ This design keeps write authority narrow and explicit:
 - `market_trade_event`
 - `order_book_l2_event`
 
-### Research Scaffolding
+### Derived Features And Research Scaffolding
 
 - `feature_materialization_run`
+- `feature_spot_chain_macro_minute_v1`
 - `experiment_run`
 - `experiment_metric`
 
@@ -211,6 +212,7 @@ Primary clock rule:
 `src/d5_trading_engine/cli.py` provides a generic operational surface:
 - `d5 init`
 - `d5 capture <provider>`
+- `d5 materialize-features <feature-set>`
 - `d5 status`
 - `d5 sync-duckdb [tables...]`
 
@@ -218,10 +220,11 @@ This keeps the surface small while provider behavior is still settling.
 
 ## Deferred Layers
 
-The following package surfaces exist as placeholders and ownership boundaries, not active runtime behavior:
+The following package surfaces still exist as placeholders and ownership boundaries, not active runtime behavior:
+
+- `features/` is only partially implemented through the bounded `spot_chain_macro_v1` materialization path.
 
 - `condition/`
-- `features/`
 - `policy/`
 - `risk/`
 - `settlement/`

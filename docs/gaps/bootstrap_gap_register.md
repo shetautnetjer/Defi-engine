@@ -31,7 +31,10 @@ This file tracks deferred or missing capabilities that should not be mistaken fo
 
 ## Engine Layer Gaps
 
-- `condition/`, `features/`, `policy/`, `risk/`, `settlement/`, `models/`, `research_loop/`, and `trajectory/` are mostly placeholders.
+- `features/` is only partially implemented.
+  - Current state: `spot_chain_macro_v1` now materializes freshness-gated minute-by-mint rows and run receipts, but broader catalog design and downstream scorer consumption are still missing.
+
+- `condition/`, `policy/`, `risk/`, `settlement/`, `models/`, `research_loop/`, and `trajectory/` are mostly placeholders.
   - Current state: package boundaries exist, but they do not implement market logic, risk gates, paper fills, model orchestration, or research automation.
 
 ## Validation Gaps

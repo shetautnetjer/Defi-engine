@@ -11,6 +11,7 @@ Adapter client
   -> raw SQL receipts
   -> source normalizer
   -> canonical SQLite truth tables
+  -> bounded feature materialization
   -> optional DuckDB sync
 ```
 
@@ -84,7 +85,7 @@ The active schema includes:
 - raw source tables such as `raw_jupiter_*`, `raw_helius_*`, `raw_fred_*`, and `raw_massive_crypto_event`
 - canonical spot and macro tables such as `token_registry`, `token_metadata_snapshot`, `token_price_snapshot`, `quote_snapshot`, `fred_series_registry`, and `fred_observation`
 - chain and market event tables such as `program_registry`, `solana_address_registry`, `solana_transfer_event`, `market_instrument_registry`, `market_candle`, `market_trade_event`, and `order_book_l2_event`
-- research scaffolding tables such as `feature_materialization_run`, `experiment_run`, and `experiment_metric`
+- bounded feature and research tables such as `feature_materialization_run`, `feature_spot_chain_macro_minute_v1`, `experiment_run`, and `experiment_metric`
 
 ## Time Model
 
@@ -94,10 +95,8 @@ The active schema includes:
 
 ## Deliberate Non-Claims
 
-The following surfaces exist only as placeholders and are not part of the active capture path:
-
+- `features/` now has one bounded implementation path for `spot_chain_macro_v1`, but it is not yet a broad feature store or a freshness-authorized runtime layer.
 - `condition/`
-- `features/`
 - `policy/`
 - `risk/`
 - `settlement/`
@@ -105,4 +104,4 @@ The following surfaces exist only as placeholders and are not part of the active
 - `research_loop/`
 - `trajectory/`
 
-Those packages define the intended ownership boundaries, but they should not be documented as active runtime behavior until implementation lands.
+Those package boundaries still should not be documented as active trading runtime behavior until the remaining layers are implemented.

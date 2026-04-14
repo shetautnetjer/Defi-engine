@@ -4,6 +4,7 @@ D5 Trading Engine — CLI Entry Point
 Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
+- d5 materialize-features : Materialize deterministic feature tables
 - d5 status       : Show engine health and ingest run stats
 - d5 sync-duckdb  : Sync canonical truth tables to DuckDB mirror
 """
@@ -35,6 +36,10 @@ _CAPTURE_CHOICES = [
     "fred-observations",
     "massive-crypto",
     "all",
+]
+
+_FEATURE_SET_CHOICES = [
+    "spot-chain-macro-v1",
 ]
 
 
@@ -133,6 +138,25 @@ def capture(provider: str) -> None:
     click.echo("Capture complete.")
 
 
+@cli.command("materialize-features")
+@click.argument("feature_set", type=click.Choice(_FEATURE_SET_CHOICES, case_sensitive=False))
+def materialize_features(feature_set: str) -> None:
+    """Materialize a deterministic feature set from canonical truth."""
+    from d5_trading_engine.features.materializer import FeatureMaterializer
+
+    materializer = FeatureMaterializer(get_settings())
+
+    try:
+        if feature_set == "spot-chain-macro-v1":
+            run_id, row_count = materializer.materialize_spot_chain_macro_v1()
+            click.echo(f"✓ spot_chain_macro_v1: {run_id} rows={row_count}")
+            return
+        raise click.ClickException(f"Unsupported feature set: {feature_set}")
+    except Exception as exc:
+        click.echo(f"✗ Feature materialization failed: {exc}", err=True)
+        sys.exit(1)
+
+
 @cli.command()
 def status() -> None:
     """Show engine health — recent ingest runs and source health."""
@@ -215,6 +239,8 @@ def sync_duckdb(tables: tuple[str, ...]) -> None:
         "order_book_l2_event",
         "ingest_run",
         "source_health_event",
+        "feature_materialization_run",
+        "feature_spot_chain_macro_minute_v1",
     ]
 
     tables_to_sync = list(tables) if tables else default_tables

@@ -21,7 +21,10 @@ class AdapterError(D5Error):
     def __init__(self, provider: str, message: str, status_code: int | None = None):
         self.provider = provider
         self.status_code = status_code
-        super().__init__(f"[{provider}] {message}" + (f" (HTTP {status_code})" if status_code else ""))
+        detail = f"[{provider}] {message}"
+        if status_code:
+            detail = f"{detail} (HTTP {status_code})"
+        super().__init__(detail)
 
 
 class CaptureError(D5Error):
@@ -34,3 +37,7 @@ class NormalizeError(D5Error):
 
 class StorageError(D5Error):
     """Errors in storage layer (DB, file I/O)."""
+
+
+class FeatureError(D5Error):
+    """Errors during deterministic feature materialization."""

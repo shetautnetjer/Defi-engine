@@ -2,8 +2,8 @@
 
 Paper-only crypto data capture and research bootstrap.
 
-The current repo truth is a pre-conditions ingest engine:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, and the generic `d5` CLI
+The current repo truth is a pre-conditions ingest engine with one bounded post-ingest feature lane:
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, the generic `d5` CLI, and the first freshness-gated `spot_chain_macro_v1` feature materializer
 - active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, and Coinbase market-data capture
 - still deferred: perps, live order routing, paper fill simulation, deep Helius decoding, and real Massive historical ingest
 
@@ -13,7 +13,7 @@ No live trading. No wallet signing. No perps.
 
 ```text
 Adapter clients -> CaptureRunner -> Raw JSONL + raw SQL receipts -> source normalizers ->
-canonical SQLite truth -> DuckDB sync on demand
+canonical SQLite truth -> bounded feature materialization -> DuckDB sync on demand
 ```
 
 - `data/raw/{provider}/{YYYY-MM-DD}/` is the raw landing zone
@@ -58,9 +58,13 @@ d5 capture jupiter-prices
 d5 capture jupiter-quotes
 d5 capture helius-discovery
 d5 capture coinbase-products
+d5 capture fred-observations
+
+# first bounded post-ingest feature lane
+d5 materialize-features spot-chain-macro-v1
 
 # optional: sync canonical tables into DuckDB
-d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot
+d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot feature_materialization_run feature_spot_chain_macro_minute_v1
 ```
 
 ## Current CLI Surface
@@ -69,6 +73,7 @@ d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapsho
 |---------|--------|
 | `d5 init` | Apply Alembic migrations to the canonical SQLite truth database |
 | `d5 capture <provider|all>` | Run one capture flow using the current generic dispatcher |
+| `d5 materialize-features <feature-set>` | Materialize a bounded deterministic feature set from canonical truth |
 | `d5 status` | Show recent ingest runs and latest provider health events |
 | `d5 sync-duckdb [tables...]` | Copy selected SQLite truth tables into DuckDB |
 

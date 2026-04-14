@@ -514,12 +514,58 @@ class FeatureMaterializationRun(Base):
     run_id = Column(String(64), nullable=False, unique=True, index=True)
     feature_set = Column(String(128), nullable=False)
     source_tables = Column(Text, nullable=True)
+    freshness_snapshot_json = Column(Text, nullable=True)
+    input_window_start_utc = Column(DateTime, nullable=True)
+    input_window_end_utc = Column(DateTime, nullable=True)
     row_count = Column(Integer, nullable=True)
     status = Column(String(16), nullable=False, default="running")
     started_at = Column(DateTime, nullable=False)
     finished_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False)
+
+
+class FeatureSpotChainMacroMinuteV1(Base):
+    """First bounded feature table for spot, chain, and macro minute context."""
+
+    __tablename__ = "feature_spot_chain_macro_minute_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    feature_minute_utc = Column(DateTime, nullable=False, index=True)
+    mint = Column(String(64), nullable=False, index=True)
+    symbol = Column(String(32), nullable=True, index=True)
+    coinbase_product_id = Column(String(64), nullable=True, index=True)
+    jupiter_price_usd = Column(Float, nullable=True)
+    quote_count = Column(Integer, nullable=False, default=0)
+    mean_quote_price_impact_pct = Column(Float, nullable=True)
+    mean_quote_response_latency_ms = Column(Float, nullable=True)
+    coinbase_close = Column(Float, nullable=True)
+    coinbase_trade_count = Column(Integer, nullable=False, default=0)
+    coinbase_trade_size_sum = Column(Float, nullable=True)
+    coinbase_book_spread_bps = Column(Float, nullable=True)
+    chain_transfer_count = Column(Integer, nullable=False, default=0)
+    chain_amount_in = Column(Float, nullable=True)
+    chain_amount_out = Column(Float, nullable=True)
+    fred_dff = Column(Float, nullable=True)
+    fred_t10y2y = Column(Float, nullable=True)
+    fred_vixcls = Column(Float, nullable=True)
+    fred_dgs10 = Column(Float, nullable=True)
+    fred_dtwexbgs = Column(Float, nullable=True)
+    event_date_utc = Column(String(10), nullable=True)
+    hour_utc = Column(Integer, nullable=True)
+    minute_of_day_utc = Column(Integer, nullable=True)
+    weekday_utc = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_feature_spot_chain_macro_minute_key", "mint", "feature_minute_utc"),
+    )
 
 
 class ExperimentRun(Base):

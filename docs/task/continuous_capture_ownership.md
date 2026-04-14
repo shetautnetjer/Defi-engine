@@ -13,6 +13,21 @@ Make continuous and recurring capture behavior explicit enough that later `featu
 - `d5 status` can show recent ingest runs and the latest health event per provider
 - the repo still does not define which capture lanes are expected to be continuously fresh, how stale state is recognized, or what operator-visible response should happen when a source falls behind
 
+## Implementation Update — 2026-04-14
+
+- `FeatureMaterializer` now refuses to materialize `spot_chain_macro_v1` unless its required lanes resolve to `healthy_recent`
+- the feature run receipt now stores `freshness_snapshot_json`, `input_window_start_utc`, and `input_window_end_utc`
+- the first explicit freshness windows now live in code for the lanes that gate the feature path:
+  - `jupiter-prices` = 15 minutes
+  - `jupiter-quotes` = 15 minutes
+  - `helius-transactions` = 30 minutes
+  - `coinbase-products` = 24 hours
+  - `coinbase-candles` = 30 minutes
+  - `coinbase-market-trades` = 30 minutes
+  - `coinbase-book` = 30 minutes
+  - `fred-observations` = 2 days
+- operator visibility is still incomplete because `status` does not yet expose per-lane freshness states directly
+
 ## This Slice Covers
 
 - classifying active capture lanes by runtime expectation:
@@ -167,6 +182,6 @@ Initial threshold guidance:
 
 ## Next Actions After This Slice
 
-1. refine the provisional freshness matrix into explicit thresholds and operator-visible stale-state rules
-2. decide whether `status` is enough for operator visibility or whether `doctor` becomes necessary for stale-state reporting
-3. define the first downstream dependency contract for `features/` so it can consume only freshness-qualified canonical truth
+1. expose per-lane freshness states through `status` or a dedicated `doctor` surface instead of keeping them inside feature receipts only
+2. decide whether discovery and slower reference lanes should use the same explicit threshold strategy or a more policy-driven authorization rule
+3. keep the `features/` dependency contract aligned so every downstream scorer consumes only freshness-qualified canonical truth

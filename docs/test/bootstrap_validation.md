@@ -69,7 +69,9 @@ d5 capture helius-discovery
 d5 capture helius-transactions
 d5 capture helius-ws-events
 d5 capture coinbase-products
-d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot program_registry solana_address_registry solana_transfer_event
+d5 capture fred-observations
+d5 materialize-features spot-chain-macro-v1
+d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot program_registry solana_address_registry solana_transfer_event feature_materialization_run feature_spot_chain_macro_minute_v1
 
 sqlite3 data/db/d5.db ".tables"
 find data/raw -maxdepth 3 -type f | sort
@@ -82,6 +84,8 @@ These smoke checks prove:
 - Jupiter can write spot metadata, price, and quote receipts
 - Helius discovery, transfer capture, and bounded websocket capture can write tracked-address receipts
 - Coinbase can write raw product receipts without sharing the truth DB
+- the first bounded `features/` lane can materialize `spot_chain_macro_v1` from canonical truth
+- `d5 materialize-features spot-chain-macro-v1` fails closed when required lane health receipts are missing
 - DuckDB can mirror selected canonical tables
 
 Additional behavior checks:

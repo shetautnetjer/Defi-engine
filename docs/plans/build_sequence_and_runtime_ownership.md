@@ -9,7 +9,7 @@ This note synthesizes current repo docs, the local planning lane in `~/.openclaw
 ## Current Truth
 
 - the repo currently has real source capture, normalization, raw landing, canonical SQLite truth, DuckDB mirror sync, and operator CLI surfaces
-- the repo does not yet have a runnable paper-trading engine, even though placeholder packages exist for `features/`, `condition/`, `trajectory/`, `policy/`, `risk/`, `settlement/`, and `research_loop/`
+- the repo does not yet have a runnable paper-trading engine, even though one bounded `features/` lane now exists and placeholder packages remain for `condition/`, `trajectory/`, `policy/`, `risk/`, `settlement/`, and `research_loop/`
 - current docs already treat this honestly: the implemented surface is still foundation-stage ingest plus truth-building
 - the missing planning gap is not "more explanation of ingest"; it is the build sequence that connects source truth to safe paper-session behavior
 
@@ -67,7 +67,7 @@ The recommended implementation order should stay conservative:
 |------|-------|-------|-------|
 | `source/` | active | provider-role and source-completeness doctrine | current strongest owner in repo |
 | canonical storage | active | event-table completeness review | already authoritative for truth landing |
-| `features/` | scaffolded | feature registry and materialization contracts | must not read providers directly |
+| `features/` | partial | `condition/` handoff and policy-owned threshold governance | must not read providers directly |
 | `condition/` | scaffolded | condition scorer spec and outputs | should consume features, not raw capture |
 | `trajectory/` | scaffolded | advisory-only forecast contract | no runtime authority widening |
 | `policy/` | scaffolded | strategy eligibility and decision-trace schema | governance-sensitive |
@@ -94,8 +94,8 @@ The first durable blocker set now lives in `docs/issues/paper_runtime_blockers.m
 
 ## Immediate Follow-Ons
 
-- execute `docs/task/continuous_capture_ownership.md` as the first runtime-ownership descent
 - define the first `features/` to `condition/` contract so downstream work stops coupling to ingest internals
+- decide whether freshness thresholds stay code-local or move into explicit operator policy/config
 - define the first `policy/` to `risk/` to `settlement/` trace path before adding any paper-session loop
 
 ## Not Yet Safe To Claim
@@ -106,4 +106,4 @@ The repo should still not be described as:
 - a live-trading system
 - an engine with implemented strategy selection, risk gating, settlement, or autoresearch governance
 
-The truthful description remains: this repo is a paper-first DeFi trading and research foundation with real ingest and truth-building surfaces, plus explicit placeholders for the downstream runtime that still needs to be built.
+The truthful description remains: this repo is a paper-first DeFi trading and research foundation with real ingest and truth-building surfaces, one bounded freshness-qualified feature-materialization lane, and explicit placeholders for the downstream runtime that still needs to be built.

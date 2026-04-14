@@ -1,6 +1,6 @@
 # First Feature Input Contract
 
-Active execution surface for turning `features/` into the first real post-ingest runtime owner by defining which canonical truth tables it may consume, what freshness assumptions gate those inputs, and what receipt surface proves a feature run actually happened.
+Active execution surface for locking and extending the first real post-ingest `features/` owner by defining which canonical truth tables it may consume, what freshness assumptions should gate those inputs, and what receipt surface proves a feature run actually happened.
 
 ## Goal
 
@@ -8,14 +8,15 @@ Create the first bounded feature-materialization contract so downstream `conditi
 
 ## Current Truth
 
-- `features/` is currently an empty placeholder package
-- the canonical schema already contains a receipt scaffold in `feature_materialization_run`
+- `features/` now has a first bounded implementation path in `src/d5_trading_engine/features/materializer.py`
+- the canonical schema now contains both the `feature_materialization_run` receipt surface and the first feature table `feature_spot_chain_macro_minute_v1`
 - the repo already has real canonical source tables for:
   - spot reference and quote data
   - chain transfer and registry data
   - market candles, trades, and order book snapshots
   - macro observations
-- no current repo doc says which of those tables are legal inputs to the first feature set, how they should be freshness-qualified, or what output shape should count as a real feature run
+- the CLI now exposes `d5 materialize-features spot-chain-macro-v1`
+- freshness authorization is now enforced from `ingest_run` and `source_health_event` receipts and persisted into `feature_materialization_run.freshness_snapshot_json`
 
 ## This Slice Covers
 
@@ -33,6 +34,14 @@ Intent:
 
 - give `condition/` a single deterministic input surface for early market, chain, and macro context
 - avoid any feature dependence on provider adapters, raw payloads, or placeholder research logic
+
+## Implementation Landed
+
+- migration `003_feature_spot_chain_macro_v1.py` creates the first bounded feature table
+- `FeatureMaterializer.materialize_spot_chain_macro_v1()` writes a truthful `feature_materialization_run` row and minute-by-mint feature rows
+- the first row grain is now implemented as one row per tracked mint per UTC minute bucket
+- the feature lane now fails closed when any required capture lane is not `healthy_recent`
+- the default CLI test suite proves the first feature run can be materialized offline from seeded canonical truth
 
 ## Allowed Canonical Inputs
 
@@ -55,6 +64,17 @@ Intent:
 ## Freshness Dependency Rule
 
 The first feature set must only consume lanes that are currently `healthy_recent` under the continuous-capture ownership task.
+
+Implemented now:
+
+- `jupiter-prices` within 15 minutes
+- `jupiter-quotes` within 15 minutes
+- `helius-transactions` within 30 minutes
+- `coinbase-products` within 24 hours
+- `coinbase-candles` within 30 minutes
+- `coinbase-market-trades` within 30 minutes
+- `coinbase-book` within 30 minutes
+- `fred-observations` within 2 days
 
 Minimum dependency reading:
 
@@ -85,14 +105,20 @@ The first real feature-materialization implementation should write a truthful `f
 - `error_message` when failed
 - `created_at`
 
-Recommended extension fields for the first migration after implementation starts:
+Implemented now:
+
+- all of the required fields above
+- `source_tables` populated with the canonical tables consumed by the first lane
+- `status` transitions for `running`, `success`, and `failed`
+
+Implemented now:
 
 - `freshness_snapshot_json`
   - captures the lane-state summary used to authorize the run
 - `input_window_start_utc`
-  - lower time bound of the materialized input window
+  - lower time bound of the materialized feature-minute window
 - `input_window_end_utc`
-  - upper time bound of the materialized input window
+  - upper time bound of the materialized feature-minute window
 
 ## Output Contract Shape
 
@@ -149,6 +175,38 @@ Minimum field families:
 - freshness fields
   - lane-state snapshot or derived eligibility flag used to authorize the feature row
 
+Implemented now in `feature_spot_chain_macro_minute_v1`:
+
+- spot reference fields
+  - `jupiter_price_usd`
+  - `quote_count`
+  - `mean_quote_price_impact_pct`
+  - `mean_quote_response_latency_ms`
+- market structure fields
+  - `coinbase_close`
+  - `coinbase_trade_count`
+  - `coinbase_trade_size_sum`
+  - `coinbase_book_spread_bps`
+- chain activity fields
+  - `chain_transfer_count`
+  - `chain_amount_in`
+  - `chain_amount_out`
+- macro context fields
+  - `fred_dff`
+  - `fred_t10y2y`
+  - `fred_vixcls`
+  - `fred_dgs10`
+  - `fred_dtwexbgs`
+- identity and time fields
+  - `feature_minute_utc`
+  - `mint`
+  - `symbol`
+  - `coinbase_product_id`
+  - `event_date_utc`
+  - `hour_utc`
+  - `minute_of_day_utc`
+  - `weekday_utc`
+
 ## Join Discipline
 
 The first feature implementation should follow these join rules:
@@ -170,6 +228,6 @@ The first feature implementation should follow these join rules:
 
 ## Next Actions After This Slice
 
-1. lock the minute-by-mint row grain for `spot_chain_macro_v1` unless code review finds a stronger current fit
-2. define the first concrete derived fields inside each field family
-3. add the first implementation path in `features/` plus a truthful `feature_materialization_run` write path
+1. decide the fail-closed versus latest-known policy for sparse minute buckets instead of relying only on current latest-row behavior
+2. decide whether freshness thresholds stay code-local or move into explicit operator policy/config
+3. define the first `features/` to `condition/` contract so scorer work can consume `spot_chain_macro_v1` without falling back to canonical source tables
