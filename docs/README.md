@@ -20,8 +20,14 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - near-term sequencing for Jupiter → Helius → Coinbase source expansion
 - `plans/historical_research_protocol.md`
   - future Massive-driven research and walk-forward protocol
+- `plans/build_sequence_and_runtime_ownership.md`
+  - bridge note from source-ingest bootstrap into downstream runtime layer ownership
+- `plans/source_map_and_source_completeness.md`
+  - provider-role map and source-completeness doctrine before downstream runtime dependence
 - `gaps/bootstrap_gap_register.md`
   - deferred or missing capabilities that should not be treated as shipped
+- `issues/paper_runtime_blockers.md`
+  - durable blockers that still prevent a truthful paper-runtime claim
 - `architecture/bootstrap_architecture.md`
   - current capture and storage architecture
 - `runbooks/first_capture.md`
@@ -43,6 +49,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - software and system design surfaces
 - `docs/plans/`
   - planning synthesis, sequencing bridges, and roadmap surfaces
+- `docs/issues/`
+  - durable blockers, review findings, and next-action tracking
 - `docs/gaps/`
   - unresolved missing capability or known holes
 - `docs/architecture/`
@@ -60,5 +68,5 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - deferred until model and feature surfaces are real enough to justify normative math guidance
 - `docs/setup/`
   - deferred until Solana CLI or Anchor setup becomes an active implementation requirement
-- `docs/hld/`, `docs/lld/`, `docs/issues/`, `docs/done/`
+- `docs/hld/`, `docs/lld/`, `docs/done/`
   - reserved by `AGENTS.md`, but not populated yet in this slice
