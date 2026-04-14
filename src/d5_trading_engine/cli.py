@@ -5,6 +5,8 @@ Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
 - d5 materialize-features : Materialize deterministic feature tables
+- d5 score-conditions : Score bounded market conditions
+- d5 run-shadow   : Run shadow ML evaluation lanes
 - d5 status       : Show engine health and ingest run stats
 - d5 sync-duckdb  : Sync canonical truth tables to DuckDB mirror
 """
@@ -39,7 +41,14 @@ _CAPTURE_CHOICES = [
 ]
 
 _FEATURE_SET_CHOICES = [
+    "global-regime-inputs-15m-v1",
     "spot-chain-macro-v1",
+]
+_CONDITION_SET_CHOICES = [
+    "global-regime-v1",
+]
+_SHADOW_RUN_CHOICES = [
+    "intraday-meta-stack-v1",
 ]
 
 
@@ -147,6 +156,10 @@ def materialize_features(feature_set: str) -> None:
     materializer = FeatureMaterializer(get_settings())
 
     try:
+        if feature_set == "global-regime-inputs-15m-v1":
+            run_id, row_count = materializer.materialize_global_regime_inputs_15m_v1()
+            click.echo(f"✓ global_regime_inputs_15m_v1: {run_id} rows={row_count}")
+            return
         if feature_set == "spot-chain-macro-v1":
             run_id, row_count = materializer.materialize_spot_chain_macro_v1()
             click.echo(f"✓ spot_chain_macro_v1: {run_id} rows={row_count}")
@@ -157,13 +170,65 @@ def materialize_features(feature_set: str) -> None:
         sys.exit(1)
 
 
+@cli.command("score-conditions")
+@click.argument("condition_set", type=click.Choice(_CONDITION_SET_CHOICES, case_sensitive=False))
+def score_conditions(condition_set: str) -> None:
+    """Score a bounded condition set from deterministic feature inputs."""
+    from d5_trading_engine.condition.scorer import ConditionScorer
+
+    scorer = ConditionScorer(get_settings())
+
+    try:
+        if condition_set == "global-regime-v1":
+            result = scorer.score_global_regime_v1()
+            latest = result["latest_snapshot"]
+            click.echo(
+                "✓ global_regime_v1: "
+                f"{result['run_id']} regime={latest['semantic_regime']} "
+                f"confidence={latest['confidence']:.3f} model={result['model_family']}"
+            )
+            return
+        raise click.ClickException(f"Unsupported condition set: {condition_set}")
+    except Exception as exc:
+        click.echo(f"✗ Condition scoring failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-shadow")
+@click.argument("shadow_run", type=click.Choice(_SHADOW_RUN_CHOICES, case_sensitive=False))
+def run_shadow(shadow_run: str) -> None:
+    """Run a bounded shadow ML evaluation lane."""
+    from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
+
+    runner = ShadowRunner(get_settings())
+
+    try:
+        if shadow_run == "intraday-meta-stack-v1":
+            result = runner.run_intraday_meta_stack_v1()
+            click.echo(
+                "✓ intraday_meta_stack_v1: "
+                f"{result['run_id']} artifacts={result['artifact_dir']} "
+                f"chronos={result['chronos_status']}"
+            )
+            return
+        raise click.ClickException(f"Unsupported shadow run: {shadow_run}")
+    except Exception as exc:
+        click.echo(f"✗ Shadow run failed: {exc}", err=True)
+        sys.exit(1)
+
+
 @cli.command()
 def status() -> None:
     """Show engine health — recent ingest runs and source health."""
     from sqlalchemy import func
 
     from d5_trading_engine.storage.truth.engine import get_session
-    from d5_trading_engine.storage.truth.models import IngestRun, SourceHealthEvent
+    from d5_trading_engine.storage.truth.models import (
+        ConditionGlobalRegimeSnapshotV1,
+        ConditionScoringRun,
+        IngestRun,
+        SourceHealthEvent,
+    )
 
     settings = get_settings()
     session = get_session(settings)
@@ -209,6 +274,37 @@ def status() -> None:
                 f"{event.checked_at}"
             )
 
+        click.echo("\n=== Current Condition ===")
+        latest_condition = (
+            session.query(ConditionScoringRun)
+            .filter_by(status="success")
+            .order_by(ConditionScoringRun.finished_at.desc())
+            .first()
+        )
+        if latest_condition is None:
+            click.echo("  No condition runs yet.")
+        else:
+            snapshot = (
+                session.query(ConditionGlobalRegimeSnapshotV1)
+                .filter_by(condition_run_id=latest_condition.run_id)
+                .order_by(ConditionGlobalRegimeSnapshotV1.created_at.desc())
+                .first()
+            )
+            if snapshot is None:
+                click.echo(f"  Latest run {latest_condition.run_id} has no snapshot.")
+            else:
+                block_indicator = "blocked" if snapshot.blocked_flag else "eligible"
+                click.echo(
+                    f"  {snapshot.semantic_regime:14s} "
+                    f"confidence={snapshot.confidence:.3f}  "
+                    f"{block_indicator:8s}  "
+                    f"{snapshot.bucket_start_utc}"
+                )
+                click.echo(
+                    f"  run={latest_condition.run_id}  model={latest_condition.model_family}  "
+                    f"feature_run={latest_condition.source_feature_run_id}"
+                )
+
         click.echo(f"\nDB: {settings.db_path}")
         click.echo(f"DuckDB: {settings.duckdb_path}")
         click.echo(f"Coinbase raw DB: {settings.coinbase_raw_db_path}")
@@ -241,6 +337,11 @@ def sync_duckdb(tables: tuple[str, ...]) -> None:
         "source_health_event",
         "feature_materialization_run",
         "feature_spot_chain_macro_minute_v1",
+        "feature_global_regime_input_15m_v1",
+        "condition_scoring_run",
+        "condition_global_regime_snapshot_v1",
+        "experiment_run",
+        "experiment_metric",
     ]
 
     tables_to_sync = list(tables) if tables else default_tables

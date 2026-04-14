@@ -568,6 +568,113 @@ class FeatureSpotChainMacroMinuteV1(Base):
     )
 
 
+class FeatureGlobalRegimeInput15mV1(Base):
+    """Market-wide 15-minute regime inputs derived from canonical truth."""
+
+    __tablename__ = "feature_global_regime_input_15m_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    bucket_start_utc = Column(DateTime, nullable=False, index=True)
+    regime_key = Column(String(32), nullable=False, default="global")
+    proxy_products_json = Column(Text, nullable=True)
+    proxy_count = Column(Integer, nullable=False, default=0)
+    market_return_mean_15m = Column(Float, nullable=True)
+    market_return_std_15m = Column(Float, nullable=True)
+    market_realized_vol_15m = Column(Float, nullable=True)
+    market_volume_sum_15m = Column(Float, nullable=True)
+    market_trade_count_15m = Column(Integer, nullable=False, default=0)
+    market_trade_size_sum_15m = Column(Float, nullable=True)
+    market_book_spread_bps_mean_15m = Column(Float, nullable=True)
+    market_return_mean_4h = Column(Float, nullable=True)
+    market_realized_vol_4h = Column(Float, nullable=True)
+    macro_context_available = Column(Integer, nullable=False, default=0)
+    fred_dff = Column(Float, nullable=True)
+    fred_t10y2y = Column(Float, nullable=True)
+    fred_vixcls = Column(Float, nullable=True)
+    fred_dgs10 = Column(Float, nullable=True)
+    fred_dtwexbgs = Column(Float, nullable=True)
+    event_date_utc = Column(String(10), nullable=True)
+    hour_utc = Column(Integer, nullable=True)
+    minute_of_day_utc = Column(Integer, nullable=True)
+    weekday_utc = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_feature_global_regime_input_15m_key", "regime_key", "bucket_start_utc"),
+    )
+
+
+class ConditionScoringRun(Base):
+    """Track condition scoring runs and the model semantics they produced."""
+
+    __tablename__ = "condition_scoring_run"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, unique=True, index=True)
+    condition_set = Column(String(128), nullable=False)
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    model_family = Column(String(64), nullable=False)
+    training_window_start_utc = Column(DateTime, nullable=True)
+    training_window_end_utc = Column(DateTime, nullable=True)
+    scored_bucket_start_utc = Column(DateTime, nullable=True)
+    state_semantics_json = Column(Text, nullable=True)
+    model_params_json = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, default="running")
+    confidence = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+
+class ConditionGlobalRegimeSnapshotV1(Base):
+    """Latest scored regime snapshot for a closed 15-minute bucket."""
+
+    __tablename__ = "condition_global_regime_snapshot_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    condition_run_id = Column(
+        String(64),
+        ForeignKey("condition_scoring_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    bucket_start_utc = Column(DateTime, nullable=False, index=True)
+    raw_state_id = Column(Integer, nullable=False)
+    semantic_regime = Column(String(32), nullable=False)
+    confidence = Column(Float, nullable=False)
+    blocked_flag = Column(Integer, nullable=False, default=0)
+    blocking_reason = Column(Text, nullable=True)
+    model_family = Column(String(64), nullable=False)
+    macro_context_state = Column(String(32), nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_condition_global_regime_snapshot_v1_key",
+            "bucket_start_utc",
+            "semantic_regime",
+        ),
+    )
+
+
 class ExperimentRun(Base):
     """Research experiment tracking."""
 

@@ -9,7 +9,7 @@ This note synthesizes current repo docs, the local planning lane in `~/.openclaw
 ## Current Truth
 
 - the repo currently has real source capture, normalization, raw landing, canonical SQLite truth, DuckDB mirror sync, and operator CLI surfaces
-- the repo does not yet have a runnable paper-trading engine, even though one bounded `features/` lane now exists and placeholder packages remain for `condition/`, `trajectory/`, `policy/`, `risk/`, `settlement/`, and `research_loop/`
+- the repo does not yet have a runnable paper-trading engine, even though bounded `features/`, `condition/`, and shadow `research_loop/` lanes now exist while `trajectory/`, `policy/`, `risk/`, and `settlement/` still remain placeholder surfaces
 - current docs already treat this honestly: the implemented surface is still foundation-stage ingest plus truth-building
 - the missing planning gap is not "more explanation of ingest"; it is the build sequence that connects source truth to safe paper-session behavior
 
@@ -68,12 +68,12 @@ The recommended implementation order should stay conservative:
 | `source/` | active | provider-role and source-completeness doctrine | current strongest owner in repo |
 | canonical storage | active | event-table completeness review | already authoritative for truth landing |
 | `features/` | partial | `condition/` handoff and policy-owned threshold governance | must not read providers directly |
-| `condition/` | scaffolded | condition scorer spec and outputs | should consume features, not raw capture |
+| `condition/` | partial | bounded global regime scorer and condition receipts | should keep consuming features, not raw capture |
 | `trajectory/` | scaffolded | advisory-only forecast contract | no runtime authority widening |
 | `policy/` | scaffolded | strategy eligibility and decision-trace schema | governance-sensitive |
 | `risk/` | scaffolded | veto matrix, halts, and safe defaults | final gate before paper action |
 | `settlement/` | scaffolded | paper session ledger, fills, and reports | required before "trading" claims |
-| `research_loop/` | scaffolded | experiment ledger and proposal workflow | support only, never live authority |
+| `research_loop/` | partial | shadow experiment ledger and artifact workflow | support only, never live authority |
 
 ## Documentation Descent
 
@@ -94,7 +94,7 @@ The first durable blocker set now lives in `docs/issues/paper_runtime_blockers.m
 
 ## Immediate Follow-Ons
 
-- define the first `features/` to `condition/` contract so downstream work stops coupling to ingest internals
+- turn the advisory semantic-regime YAML into the first `policy/` input instead of leaving bias mapping implicit in scorer semantics
 - decide whether freshness thresholds stay code-local or move into explicit operator policy/config
 - define the first `policy/` to `risk/` to `settlement/` trace path before adding any paper-session loop
 
@@ -106,4 +106,4 @@ The repo should still not be described as:
 - a live-trading system
 - an engine with implemented strategy selection, risk gating, settlement, or autoresearch governance
 
-The truthful description remains: this repo is a paper-first DeFi trading and research foundation with real ingest and truth-building surfaces, one bounded freshness-qualified feature-materialization lane, and explicit placeholders for the downstream runtime that still needs to be built.
+The truthful description remains: this repo is a paper-first DeFi trading and research foundation with real ingest and truth-building surfaces, two bounded freshness-qualified feature lanes, one bounded global-regime condition scorer, one shadow-only meta-stack experiment lane, and explicit placeholders for the downstream policy, risk, and settlement runtime that still needs to be built.

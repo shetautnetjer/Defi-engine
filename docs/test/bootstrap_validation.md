@@ -1,6 +1,6 @@
 # Bootstrap Validation
 
-Current validation surface for the ingest bootstrap plus the source-expansion pre-conditions slice.
+Current validation surface for the ingest bootstrap plus the first condition and shadow-evaluation slice.
 
 ## Offline Default Checks
 
@@ -71,7 +71,10 @@ d5 capture helius-ws-events
 d5 capture coinbase-products
 d5 capture fred-observations
 d5 materialize-features spot-chain-macro-v1
-d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot program_registry solana_address_registry solana_transfer_event feature_materialization_run feature_spot_chain_macro_minute_v1
+d5 materialize-features global-regime-inputs-15m-v1
+d5 score-conditions global-regime-v1
+d5 run-shadow intraday-meta-stack-v1
+d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot program_registry solana_address_registry solana_transfer_event feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 condition_scoring_run condition_global_regime_snapshot_v1 experiment_run experiment_metric
 
 sqlite3 data/db/d5.db ".tables"
 find data/raw -maxdepth 3 -type f | sort
@@ -85,6 +88,9 @@ These smoke checks prove:
 - Helius discovery, transfer capture, and bounded websocket capture can write tracked-address receipts
 - Coinbase can write raw product receipts without sharing the truth DB
 - the first bounded `features/` lane can materialize `spot_chain_macro_v1` from canonical truth
+- the first bounded 15-minute market-wide regime lane can materialize `global_regime_inputs_15m_v1`
+- the first bounded `condition/` scorer can write `condition_scoring_run` and `condition_global_regime_snapshot_v1`
+- the first bounded `research_loop/` shadow lane can write `experiment_run`, `experiment_metric`, and QMD evidence artifacts
 - `d5 materialize-features spot-chain-macro-v1` fails closed when required lane health receipts are missing
 - DuckDB can mirror selected canonical tables
 

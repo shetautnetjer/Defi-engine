@@ -31,6 +31,12 @@ dev = [
     "pytest-httpx>=0.34",
     "ruff>=0.8",
 ]
+ml = [
+    "chronos-forecasting>=2.0",
+    "hmmlearn>=0.3.2",
+    "scikit-learn>=1.5",
+    "xgboost>=2.1",
+]
 
 [project.scripts]
 d5 = "d5_trading_engine.cli:main"

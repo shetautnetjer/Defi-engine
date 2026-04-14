@@ -230,4 +230,4 @@ The first feature implementation should follow these join rules:
 
 1. decide the fail-closed versus latest-known policy for sparse minute buckets instead of relying only on current latest-row behavior
 2. decide whether freshness thresholds stay code-local or move into explicit operator policy/config
-3. define the first `features/` to `condition/` contract so scorer work can consume `spot_chain_macro_v1` without falling back to canonical source tables
+3. descend into `docs/task/global_regime_condition_and_shadow_stack.md` so the first condition scorer and shadow lane keep consuming feature truth instead of falling back to canonical source tables

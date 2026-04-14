@@ -343,6 +343,8 @@ def test_cli_help_lists_bootstrap_commands(cli_runner) -> None:
     assert "init" in result.output
     assert "capture" in result.output
     assert "materialize-features" in result.output
+    assert "score-conditions" in result.output
+    assert "run-shadow" in result.output
     assert "status" in result.output
     assert "sync-duckdb" in result.output
 

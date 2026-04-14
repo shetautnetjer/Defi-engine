@@ -20,6 +20,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - bounded next slice for freshness, completeness, and operator-visible source ownership
 - `task/first_feature_input_contract.md`
   - first post-ingest contract that defines which canonical truth the feature layer may consume
+- `task/global_regime_condition_and_shadow_stack.md`
+  - first real condition scorer plus the bounded shadow-only meta-stack and experiment receipts
 - `plans/source_expansion_preconditions.md`
   - near-term sequencing for Jupiter → Helius → Coinbase source expansion
 - `plans/historical_research_protocol.md`
