@@ -89,6 +89,73 @@ This draft names the current lane reading without locking the repo into numeric 
 - the repo does not yet have a strong current claim that any active capture lane is freshness-authoritative through cursor progression alone
 - this slice should only use cursor state where resumable semantics are actually real, rather than implying resumability across the whole ingest stack
 
+## Freshness State Model
+
+Every non-readiness lane should eventually resolve to one of these operator-visible states:
+
+- `never_started`
+  - no successful baseline receipt exists for the lane
+- `healthy_recent`
+  - the most recent successful run is still within the lane freshness window and the latest health signal is not failed
+- `degraded`
+  - the lane still has a recent successful baseline, but the latest health signal failed or the lane is nearing staleness
+- `stale`
+  - the lane is past its freshness window for downstream dependence
+- `readiness_only`
+  - the lane is intentionally excluded from runtime freshness gating
+
+Interpretation rules:
+
+- `never_started` blocks downstream dependence for every lane except explicit readiness-only probes
+- `degraded` should not silently fail open into downstream runtime decisions
+- `stale` means the lane may still contain useful historical truth, but it is no longer safe to treat it as current runtime context
+- `readiness_only` is for surfaces like current Massive capture where success or failure is informative but not freshness-authoritative
+
+## Minimum Status Surface
+
+The current `d5 status` command already shows recent `ingest_run` rows and latest provider health. This slice should define the minimum additional information required to make runtime ownership real without yet implementing a full `doctor` command.
+
+Minimum per-lane output:
+
+| Field | Why it matters |
+|------|-------|
+| `provider` | anchors the source family |
+| `capture_type` | makes freshness specific to the actual lane, not just the provider |
+| `expectation_class` | distinguishes recurring, discovery, stream, and readiness-only lanes |
+| `last_success_at_utc` | tells downstream consumers when the lane last produced a valid baseline |
+| `last_failure_at_utc` | keeps recent breakage visible instead of hidden behind an older success |
+| `latest_health_at_utc` | ties freshness to the most recent provider-health signal |
+| `freshness_state` | exposes `never_started`, `healthy_recent`, `degraded`, `stale`, or `readiness_only` directly |
+| `downstream_eligible` | answers whether later runtime layers may currently depend on this lane |
+| `latest_error_summary` | keeps operator triage close to the freshness state |
+
+Recommended derived rules:
+
+- `downstream_eligible = false` for `never_started`, `stale`, and `readiness_only`
+- `downstream_eligible = false` for `degraded` unless a later policy explicitly allows soft dependence
+- `downstream_eligible = true` only for lanes in `healthy_recent`
+
+## Threshold Strategy
+
+This repo should not guess numeric freshness windows directly from provider request spacing.
+
+Instead:
+
+- request throttles such as `JUPITER_MIN_REQUEST_INTERVAL_SECONDS = 2.0` protect the adapter, but do not define the runtime freshness window by themselves
+- bounded stream controls such as `HELIUS_WS_MAX_MESSAGES` define capture limits, but do not by themselves define a healthy stream cadence
+- the first implementation should assign freshness windows by expectation class and lane role, then make those thresholds explicit in config or operator policy
+
+Initial threshold guidance:
+
+- recurring market-data lanes
+  - need explicit freshness windows because they are the strongest candidates for downstream feature dependence
+- discovery and backfill lanes
+  - should be freshness-qualified only when a known refresh requirement exists
+- slower macro lanes
+  - should use a separate low-frequency freshness policy from market-data lanes
+- readiness-only lanes
+  - should remain outside freshness gating until promoted
+
 ## Deferred On Purpose
 
 - scheduler choice such as cron, systemd, Docker, or external orchestration
