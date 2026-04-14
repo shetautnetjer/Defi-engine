@@ -94,7 +94,7 @@ The first durable blocker set now lives in `docs/issues/paper_runtime_blockers.m
 
 ## Immediate Follow-Ons
 
-- descend `docs/plans/source_map_and_source_completeness.md` into a bounded continuous-capture and freshness-ownership task
+- execute `docs/task/continuous_capture_ownership.md` as the first runtime-ownership descent
 - define the first `features/` to `condition/` contract so downstream work stops coupling to ingest internals
 - define the first `policy/` to `risk/` to `settlement/` trace path before adding any paper-session loop
 

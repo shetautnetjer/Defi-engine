@@ -16,6 +16,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - completed hardening slice that made the bootstrap ingest contracts truthful
 - `task/source_expansion_preconditions.md`
   - active bounded execution surface for mint-locked universe expansion before `condition/`
+- `task/continuous_capture_ownership.md`
+  - bounded next slice for freshness, completeness, and operator-visible source ownership
 - `plans/source_expansion_preconditions.md`
   - near-term sequencing for Jupiter → Helius → Coinbase source expansion
 - `plans/historical_research_protocol.md`
