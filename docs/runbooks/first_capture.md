@@ -13,7 +13,7 @@ Notes:
 
 - `Jupiter` captures require `JUPITER_API_KEY`
 - `FRED` captures require `FRED_API_KEY`
-- `Helius` transaction capture also requires tracked addresses to be configured
+- `Helius` discovery, transaction, and websocket capture require tracked addresses to be configured
 - `Massive` is currently scaffold-only and should be expected to fail closed
 
 ## Setup
@@ -56,10 +56,18 @@ Optional captures:
 
 ```bash
 d5 capture jupiter-quotes
+d5 capture helius-discovery
 d5 capture helius-transactions
 ```
 
-Use Helius only after configuring tracked addresses in settings or environment. Massive is not part of the safe-first path yet.
+Optional bounded websocket receipt:
+
+```bash
+d5 capture helius-ws-events
+```
+
+Use Helius only after configuring tracked addresses in settings or environment. `HELIUS_WS_MAX_MESSAGES` counts notification frames only; the raw websocket receipts also include the subscription acknowledgement. Massive is not part of the safe-first path yet.
+The websocket path also requires a Helius plan that allows `transactionSubscribe`; REST discovery and enhanced transactions may work on plans where the websocket method is still unavailable.
 
 ## Sync Into DuckDB
 
@@ -111,4 +119,5 @@ PY
 
 - If `d5 init` fails, inspect `.env`, Python dependencies, Alembic configuration, and filesystem permissions under `data/`.
 - If a capture fails, check that the required API key is set and retry one provider at a time.
+- If `d5 capture helius-ws-events` fails, confirm the tracked addresses are active enough to emit a notification during the bounded capture window.
 - If DuckDB sync fails, confirm that the referenced SQLite tables exist first.

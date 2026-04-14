@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -17,12 +18,16 @@ from d5_trading_engine.storage.truth.models import (
     TokenRegistry,
 )
 
+REPO_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_jupiter_tokens_and_prices_end_to_end(tmp_path) -> None:
+    env_settings = Settings(_env_file=REPO_ENV_FILE if REPO_ENV_FILE.exists() else None)
     api_key = (
         os.environ.get("JUPITER_API_KEY", "").strip()
+        or env_settings.jupiter_api_key.strip()
         or get_settings().jupiter_api_key.strip()
     )
     if not api_key:

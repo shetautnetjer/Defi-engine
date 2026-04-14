@@ -37,6 +37,24 @@ What this proves:
 - `source_health_event` and `ingest_run` receipts are recorded
 - DuckDB can be created and synced from the selected SQLite truth tables
 
+## Live-Gated Helius Integration
+
+Run this only when you intentionally want a live Helius receipt and have both `HELIUS_API_KEY` and `HELIUS_TRACKED_ADDRESSES` available through `.env` or the environment:
+
+```bash
+pytest --run-integration tests/test_integration_helius.py -q
+```
+
+What this proves:
+
+- tracked-address discovery can write raw JSONL files plus `raw_helius_account_discovery` rows
+- enhanced transaction capture can write raw JSONL files plus `raw_helius_enhanced_transaction` rows
+- the bounded canonical Helius truth tables (`program_registry`, `solana_address_registry`, `solana_transfer_event`) can be populated
+- `source_health_event` and `ingest_run` receipts are recorded for the REST/discovery path
+- the bounded websocket path can write raw acknowledgement and notification rows when tracked addresses emit a live transaction during the test window
+- the websocket receipt also depends on the configured Helius plan allowing `transactionSubscribe`
+- DuckDB can sync the canonical Helius tables from SQLite
+
 ## Manual Operator Smoke Checks
 
 After copying `.env.example` to `.env` and filling in the provider keys you plan to use:
@@ -48,8 +66,10 @@ d5 capture jupiter-tokens
 d5 capture jupiter-prices
 d5 capture jupiter-quotes
 d5 capture helius-discovery
+d5 capture helius-transactions
+d5 capture helius-ws-events
 d5 capture coinbase-products
-d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot
+d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot program_registry solana_address_registry solana_transfer_event
 
 sqlite3 data/db/d5.db ".tables"
 find data/raw -maxdepth 3 -type f | sort
@@ -60,7 +80,7 @@ These smoke checks prove:
 - the storage layer can create runtime directories
 - the SQLite truth surface can be migrated to the declared Alembic head
 - Jupiter can write spot metadata, price, and quote receipts
-- Helius discovery can write tracked-address raw receipts
+- Helius discovery, transfer capture, and bounded websocket capture can write tracked-address receipts
 - Coinbase can write raw product receipts without sharing the truth DB
 - DuckDB can mirror selected canonical tables
 
@@ -75,4 +95,4 @@ Additional behavior checks:
 - live provider integration is not part of the default test pass or CI
 - Coinbase market-data coverage is currently public-market capture only
 - Massive capture remains a fail-closed readiness/probe surface
-- Helius websocket behavior is bounded raw capture, not hardened streaming infrastructure
+- Helius websocket behavior is hardened for bounded raw capture, but it still has no durable resumability policy and no canonical websocket projection

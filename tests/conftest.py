@@ -39,32 +39,38 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(autouse=True)
-def isolate_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def isolate_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+):
     """Keep tests off the real repo `.env` and runtime data paths."""
+    run_integration = request.config.getoption("--run-integration")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DB_PATH", str(tmp_path / "data" / "db" / "d5.db"))
     monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "data" / "db" / "d5_analytics.duckdb"))
     monkeypatch.setenv("COINBASE_RAW_DB_PATH", str(tmp_path / "data" / "db" / "coinbase_raw.db"))
-    for key in (
-        "SOLANA_PRIVATE_KEY",
-        "QUICKNODES_HTTPS",
-        "QUICKNODES_WSS",
-        "ALCHEMY_HTTPS",
-        "JUPITER_API_KEY",
-        "HELIUS_API_KEY",
-        "HELIUS_SENDER_HTTP",
-        "HELIUS_TIPS",
-        "HELIUS_TRACKED_ADDRESSES",
-        "COINBASE_API_KEY",
-        "COINBASE_API_SECRET",
-        "COINBASE_API_PASSPHRASE",
-        "COINBASE_SECRETS_FILE",
-        "MASSIVE_API_KEY",
-        "MASSIVE_FLATFILES_KEY",
-        "FRED_API_KEY",
-    ):
-        monkeypatch.setenv(key, "")
+    if not run_integration:
+        for key in (
+            "SOLANA_PRIVATE_KEY",
+            "QUICKNODES_HTTPS",
+            "QUICKNODES_WSS",
+            "ALCHEMY_HTTPS",
+            "JUPITER_API_KEY",
+            "HELIUS_API_KEY",
+            "HELIUS_SENDER_HTTP",
+            "HELIUS_TIPS",
+            "HELIUS_TRACKED_ADDRESSES",
+            "COINBASE_API_KEY",
+            "COINBASE_API_SECRET",
+            "COINBASE_API_PASSPHRASE",
+            "COINBASE_SECRETS_FILE",
+            "MASSIVE_API_KEY",
+            "MASSIVE_FLATFILES_KEY",
+            "FRED_API_KEY",
+        ):
+            monkeypatch.setenv(key, "")
 
     get_settings.cache_clear()
     reset_engine()

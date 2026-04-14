@@ -93,7 +93,7 @@ Current `capture` provider values:
 | Provider | Status | Notes |
 |----------|--------|-------|
 | Jupiter | implemented | spot-only token list, prices, and two-sided quote capture with default `2.0s` throttling |
-| Helius | partial | tracked-address discovery, enhanced transaction capture, bounded `solana_transfer_event` projection, and raw websocket capture |
+| Helius | partial | tracked-address discovery, enhanced transaction capture, bounded `solana_transfer_event` projection, and hardened raw websocket capture with reconnect / heartbeat |
 | Coinbase | partial | public product, candle, trade, and L2 book capture with separate raw DB and canonical market-data tables |
 | FRED | implemented | series and observation capture/normalization |
 | Massive | scaffolded | fail-closed readiness/probe path until entitlement and payload shape are confirmed |
@@ -110,7 +110,7 @@ Current `capture` provider values:
 
 ## Validation
 
-The repo keeps an offline-safe default test surface for config loading, migration/bootstrap behavior, CLI smoke, mocked adapters, fail-closed capture semantics, and docs truth contracts, plus a live-gated Jupiter integration harness for tokens + prices. Validation commands are documented in [docs/test/bootstrap_validation.md](docs/test/bootstrap_validation.md).
+The repo keeps an offline-safe default test surface for config loading, migration/bootstrap behavior, CLI smoke, mocked adapters, fail-closed capture semantics, and docs truth contracts, plus live-gated Jupiter and Helius integration harnesses for provider receipts. Validation commands are documented in [docs/test/bootstrap_validation.md](docs/test/bootstrap_validation.md).
 
 ## Governance
 

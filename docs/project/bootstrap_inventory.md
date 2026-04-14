@@ -24,7 +24,7 @@ Current snapshot of `Defi-engine` after the source-expansion pre-conditions slic
 | Raw storage | partial | JSONL writing is implemented; Parquet directories exist but Parquet export is not written yet |
 | DuckDB mirror | implemented | SQLite attach/copy flow exists in `storage/analytics/duckdb_mirror.py` |
 | Jupiter adapter/normalizer | implemented | spot token list, prices, and two-sided quotes with capture metadata are present |
-| Helius adapter | partial | enhanced transaction REST, tracked-address discovery, and bounded websocket raw capture exist |
+| Helius adapter | partial | enhanced transaction REST, tracked-address discovery, and hardened raw websocket capture with reconnect / heartbeat exist |
 | Helius normalizer | partial | address/program registry population and `solana_transfer_event` exist; deeper program decoding is still deferred |
 | Coinbase adapter/normalizer | partial | public products, candles, trade prints, and L2 book capture exist; execution and fill modeling are deferred |
 | Massive adapter/normalizer | scaffolded | fail-closed readiness/probe path surfaces auth and entitlement failure explicitly |
@@ -32,7 +32,7 @@ Current snapshot of `Defi-engine` after the source-expansion pre-conditions slic
 | CLI | implemented | current commands are `init`, `capture`, `status`, and `sync-duckdb` |
 | Condition/risk/settlement | scaffolded | placeholder modules exist, but engine behavior is not implemented |
 | Features/models/policy/research_loop/trajectory | scaffolded | package surfaces exist with little or no runtime logic |
-| Tests | implemented | default `pytest` stays offline-safe; a live-gated Jupiter integration harness exists for tokens + prices |
+| Tests | implemented | default `pytest` stays offline-safe; live-gated Jupiter and Helius integration harnesses exist for provider receipts |
 | Docs | partial | docs inventory, architecture, runbook, validation notes, active task docs, and new planning docs exist |
 
 ## Current Drifts From The Earlier Bootstrap Sketch

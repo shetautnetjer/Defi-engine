@@ -20,8 +20,8 @@ This file tracks deferred or missing capabilities that should not be mistaken fo
 - Helius normalization remains bounded.
   - Current state: tracked-address discovery and `solana_transfer_event` exist, but richer instruction decoding and protocol-aware event modeling are still deferred.
 
-- Helius websocket handling is not hardened.
-  - Current state: websocket capture is bounded raw ingest without reconnect, heartbeat, or resumability policy.
+- Helius websocket capture is still raw-first and non-resumable.
+  - Current state: websocket capture now has bounded reconnect, heartbeat, and notification-count semantics, but it still does not implement durable resumability or canonical websocket projections.
 
 - Coinbase is market-data only.
   - Current state: products, candles, trades, and L2 book snapshots are captured, but execution, paper fills, and slippage modeling are not implemented.
@@ -40,8 +40,8 @@ This file tracks deferred or missing capabilities that should not be mistaken fo
   - Current state: the repo has a live-gated Jupiter integration harness, but default `pytest` remains offline-safe and CI does not execute live provider tests.
   - Close when the repo decides how live tests should be invoked and recorded.
 
-- Coinbase and Helius live integration are not yet covered by a gated operator receipt.
-  - Current state: the code paths exist, but the repo does not yet ship live-gated integration tests for them.
+- Coinbase live integration is not yet covered by a gated operator receipt.
+  - Current state: Helius and Jupiter now have live-gated integration harnesses, but Coinbase market-data capture is still only covered by offline-safe tests and manual smoke receipts.
 
 ## Documentation Gaps
 

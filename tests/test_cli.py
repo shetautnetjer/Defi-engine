@@ -111,6 +111,34 @@ def test_cli_capture_helius_transactions_requires_tracked_addresses(cli_runner) 
     assert "HELIUS_TRACKED_ADDRESSES" in result.output
 
 
+def test_cli_capture_helius_ws_events_requires_tracked_addresses(cli_runner) -> None:
+    result = cli_runner.invoke(cli, ["capture", "helius-ws-events"])
+
+    assert result.exit_code == 1
+    assert "HELIUS_TRACKED_ADDRESSES" in result.output
+
+
+def test_cli_capture_helius_ws_events_dispatches(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    async def _fake_capture(self) -> str:
+        return "helius_ws_events_test"
+
+    monkeypatch.setattr(
+        "d5_trading_engine.capture.runner.CaptureRunner.capture_helius_ws_events",
+        _fake_capture,
+    )
+
+    result = cli_runner.invoke(cli, ["capture", "helius-ws-events"])
+
+    assert result.exit_code == 0
+    assert "✓ Helius ws events: helius_ws_events_test" in result.output
+
+
 def test_cli_capture_massive_crypto_surfaces_fail_closed_error(
     cli_runner,
     monkeypatch: pytest.MonkeyPatch,

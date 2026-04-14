@@ -1,4 +1,4 @@
-# Handoff: Bootstrap Phase 1 Receipt
+# Handoff: Bootstrap Phase 1 Receip
 
 Historical receipt for the initial bootstrap pass on 2026-04-12.
 

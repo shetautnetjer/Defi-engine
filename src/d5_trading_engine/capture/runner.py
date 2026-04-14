@@ -457,7 +457,12 @@ class CaptureRunner:
 
     async def capture_helius_ws_events(self, addresses: list[str] | None = None) -> str:
         """Capture a bounded set of raw Helius websocket transaction notifications."""
-        from d5_trading_engine.adapters.helius.ws_client import HeliusWSClient
+        from d5_trading_engine.adapters.helius.ws_client import (
+            HeliusWSClient,
+            classify_helius_ws_message,
+            extract_helius_ws_subscription_id,
+            is_helius_ws_notification,
+        )
         from d5_trading_engine.storage.truth.models import RawHeliusWsEvent
 
         tracked_addresses = addresses or self.settings.helius_tracked_addresses
@@ -478,7 +483,6 @@ class CaptureRunner:
                 max_messages=self.settings.helius_ws_max_messages,
             )
 
-            captured_at = utcnow()
             self.raw_store.write_jsonl("helius", "ws_event", messages, run_id)
             self._write_raw_rows(
                 RawHeliusWsEvent,
@@ -486,22 +490,21 @@ class CaptureRunner:
                     {
                         "ingest_run_id": run_id,
                         "provider": "helius",
-                        "subscription_id": str(
-                            message.get("params", {}).get("subscription")
-                            or message.get("id")
-                            or ""
-                        ),
-                        "event_type": message.get("method") or "transactionNotification",
+                        "subscription_id": extract_helius_ws_subscription_id(message),
+                        "event_type": classify_helius_ws_message(message),
                         "payload": orjson.dumps(message).decode(),
-                        "captured_at": captured_at,
+                        "captured_at": utcnow(),
                     }
                     for message in messages
                 ],
             )
 
+            notification_count = sum(
+                1 for message in messages if is_helius_ws_notification(message)
+            )
             elapsed_ms = (time.monotonic() - start) * 1000
             self._log_health("helius", "transactionSubscribe", True, elapsed_ms)
-            self._finish_ingest_run(run_id, "success", len(messages))
+            self._finish_ingest_run(run_id, "success", notification_count)
         except Exception as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
             self._log_health("helius", "transactionSubscribe", False, elapsed_ms, error=str(exc))
