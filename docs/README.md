@@ -18,6 +18,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - active bounded execution surface for mint-locked universe expansion before `condition/`
 - `task/continuous_capture_ownership.md`
   - bounded next slice for freshness, completeness, and operator-visible source ownership
+- `task/first_feature_input_contract.md`
+  - first post-ingest contract that defines which canonical truth the feature layer may consume
 - `plans/source_expansion_preconditions.md`
   - near-term sequencing for Jupiter → Helius → Coinbase source expansion
 - `plans/historical_research_protocol.md`
