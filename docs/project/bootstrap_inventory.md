@@ -35,6 +35,7 @@ The condition and shadow surfaces are now real repo truth with point-in-time-saf
 | Condition/risk/settlement | partial | `condition/` now owns `global_regime_v1` plus explicit receipts, while `risk/` and `settlement/` remain placeholder surfaces |
 | Features | partial | `spot_chain_macro_v1` and `global_regime_inputs_15m_v1` now materialize freshness-gated feature tables plus `feature_materialization_run` receipts |
 | Models/policy/research_loop/trajectory | partial | `research_loop/` now owns one bounded PIT-safe shadow experiment lane, but it remains research-only; `policy/` and `trajectory/` remain mostly scaffolded |
+| Orchestration | implemented | repo-local Ralph/tmux swarm pack now exists under `.ai/`, `prd.json`, `progress.txt`, and `scripts/ralph/` for story-driven multi-lane execution |
 | Tests | implemented | default `pytest` stays offline-safe; live-gated Jupiter and Helius integration harnesses exist for provider receipts |
 | Docs | partial | docs inventory, architecture, runbook, validation notes, active task docs, and new planning docs exist |
 
@@ -44,3 +45,11 @@ The condition and shadow surfaces are now real repo truth with point-in-time-saf
 - the CLI lives in `src/d5_trading_engine/cli.py`, not `src/d5_trading_engine/cli/main.py`
 - the current scaffold still uses single-file placeholders like `condition/scorer.py`, `risk/gate.py`, and `settlement/paper.py`
 - README and docs must continue to treat current code as truth until deeper research and runtime layers are actually implemented
+
+## Repo-Local Orchestration
+
+- `.ai/agents/` owns lane guidance for the research, builder, architecture, and writer-integrator roles
+- `.ai/index/current_repo_map.md` is the fast current-truth index for the swarm
+- `.ai/dropbox/` is working exchange only, not canonical repo truth
+- `prd.json` and `progress.txt` are the canonical story ledger for long-horizon Ralph loops
+- the writer-integrator lane is the only lane allowed to advance story state or convert accepted work into repo docs truth

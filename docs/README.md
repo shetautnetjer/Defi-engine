@@ -42,6 +42,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - operator path for the first local capture run
 - `runbooks/feature_condition_shadow_cycle.md`
   - operator path for the current feature -> condition -> shadow loop and failure triage
+- `runbooks/ralph_tmux_swarm.md`
+  - repo-local four-lane tmux/Ralph orchestration for long-horizon, story-driven work
 - `math/regime_shadow_modeling_contracts.md`
   - bounded mathematical and modeling contract for the current feature, regime, and shadow surfaces
 - `test/bootstrap_validation.md`
@@ -71,6 +73,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - operator procedures
 - `docs/math/`
   - bounded mathematical, modeling, and experiment-contract guidance
+- repo-local orchestration lives outside `docs/` in `.ai/`, `prd.json`, `progress.txt`, and `scripts/ralph/`
+  - treat those as execution-control surfaces, not product or runtime authority
 - `docs/test/`
   - validation notes and smoke checks
 - `docs/handoff/`

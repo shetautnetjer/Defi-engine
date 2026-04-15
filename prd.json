@@ -1,0 +1,92 @@
+{
+  "project": "Defi-engine",
+  "branchName": "main",
+  "description": "Use a Ralph-style 4-lane tmux swarm to keep repo execution grounded in source truth, bounded feature/condition/shadow surfaces, and the still-missing runtime owners of policy, risk, and settlement.",
+  "activeStoryId": "POL-001",
+  "userStories": [
+    {
+      "id": "ORCH-001",
+      "title": "Bootstrap the repo-local orchestration pack",
+      "description": "As a repo operator, I want a tracked .ai pack with lane guides, a current repo index, a shared dropbox shape, and a story ledger so future multi-agent loops stop inventing structure or rediscovering existing surfaces.",
+      "acceptanceCriteria": [
+        "The repo contains a tracked .ai control surface with lane guides, templates, and a current repo map",
+        "The repo contains a canonical story ledger and append-only progress surface",
+        "The structure makes writer-integrator the only owner of story advancement and accepted docs truth",
+        "The current repo map explicitly names the implemented source, feature, condition, and shadow surfaces plus the still-missing policy, risk, and settlement owners"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15."
+    },
+    {
+      "id": "ORCH-002",
+      "title": "Add tmux and Ralph runner wrappers for the swarm",
+      "description": "As a repo operator, I want repo-local wrappers for starting, inspecting, capturing, and stopping a four-lane tmux session, plus a local Ralph runner, so the loop is repeatable and not just a chat convention.",
+      "acceptanceCriteria": [
+        "scripts/agents contains wrappers for starting, inspecting, sending to, capturing, and stopping the swarm",
+        "The wrappers default to four lanes with the fixed research, builder, architecture, and writer-integrator roles",
+        "The repo contains a local scripts/ralph/ralph.sh runner and matching prompt assets for Codex-based iteration",
+        "The builder lane can be launched with Codex Spark and the architecture lane can be launched with JetBrains-guided review prompts"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15."
+    },
+    {
+      "id": "ORCH-003",
+      "title": "Document and validate the swarm contract",
+      "description": "As a repo operator, I want one current runbook and one test surface for the orchestration pack so future loops can trust the session shape and repo-local state rules.",
+      "acceptanceCriteria": [
+        "docs/runbooks contains a runbook for the Ralph/tmux swarm",
+        "docs/README and project inventory mention the orchestration surface",
+        "The repo has a contract test that checks the presence and minimal shape of the orchestration files",
+        "The docs continue to state that policy, risk, and settlement are still the remaining runtime owners"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15."
+    },
+    {
+      "id": "POL-001",
+      "title": "Open the first explicit policy decision-trace owner",
+      "description": "As a repo operator, I want policy to consume bounded condition truth explicitly so strategy eligibility and no-trade outcomes stop living as implication or future intent.",
+      "acceptanceCriteria": [
+        "The repo has a first explicit policy contract that consumes bounded condition truth such as global_regime_v1",
+        "Policy outputs include explicit no-trade states and traceable eligibility decisions",
+        "The contract leaves advisory and shadow modeling outside runtime authority",
+        "Docs and tests describe the policy boundary clearly"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "RISK-001",
+      "title": "Open the first explicit hard risk gate",
+      "description": "As a repo operator, I want risk to become the final veto on top of explicit policy output so bounded condition and policy surfaces still cannot imply paper action on their own.",
+      "acceptanceCriteria": [
+        "The repo has a first hard risk gate surface with explicit veto outcomes",
+        "The risk gate consumes policy output instead of condition output directly",
+        "Stale-data, anomaly, and unresolved-state paths default safely to no-trade or halted paper behavior",
+        "Tests prove that risk remains the final gate"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "SETTLE-001",
+      "title": "Open paper session and settlement ownership",
+      "description": "As a repo operator, I want settlement to own paper session state, paper fills, and feedback receipts so the engine can close the loop honestly without pretending shadow evidence is equivalent to execution truth.",
+      "acceptanceCriteria": [
+        "The repo has an explicit paper session and settlement owner surface",
+        "Paper fills and paper session receipts are stored in a truthful runtime home",
+        "Feedback and reporting are tied to settlement truth rather than only experiment artifacts",
+        "The docs clearly distinguish settlement truth from shadow evidence"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

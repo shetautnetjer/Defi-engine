@@ -50,3 +50,18 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+
+# Repo-local orchestration runtime state
+.ai/dropbox/**
+!.ai/dropbox/
+!.ai/dropbox/README.md
+!.ai/dropbox/research/
+!.ai/dropbox/research/.gitkeep
+!.ai/dropbox/build/
+!.ai/dropbox/build/.gitkeep
+!.ai/dropbox/architecture/
+!.ai/dropbox/architecture/.gitkeep
+!.ai/dropbox/state/
+!.ai/dropbox/state/.gitkeep
+scripts/ralph/.last-branch
+scripts/ralph/runs/

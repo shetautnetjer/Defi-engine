@@ -1,0 +1,57 @@
+## Codebase Patterns
+- The writer-integrator lane is the only lane allowed to advance `prd.json`,
+  append `progress.txt`, or convert accepted work into repo docs truth.
+- Defi-engine already has implemented source, bounded feature, bounded
+  condition, and bounded shadow surfaces; future multi-agent loops should bias
+  toward `policy/`, `risk/`, and `settlement/` unless a real blocker requires a
+  lower-layer refinement first.
+- Research should prefer existing repo truth, official docs, and the
+  `research-skill` -> `exa-search-skill` -> `crawl4ai-skill` sequence before
+  proposing new paid provider surfaces.
+
+# Ralph Progress Log
+Started: 2026-04-15T11:00:00Z
+---
+## Historical note
+- Pre-start repo truth for this swarm bootstrap: `main` at `2c13f43`,
+  bounded source/feature/condition/shadow surfaces were already real, and
+  `policy/`, `risk/`, and `settlement/` were still the missing runtime owners.
+- The repo worktree already had a user-owned modification in `AGENTS.md` and an
+  unrelated untracked `docs/issues/memory_hindsight_observer_hygiene.md` note,
+  so this orchestration slice should not absorb either by accident.
+---
+## 2026-04-15T11:00:00Z - ORCH-001 / ORCH-002 / ORCH-003
+- What was implemented
+- Added a tracked `.ai` orchestration pack with lane guides, prompt templates,
+  a current repo map, and a shared dropbox structure.
+- Added `prd.json` and `progress.txt` as the canonical Ralph-style story
+  ledger and append-only carry-forward state.
+- Added repo-local tmux wrappers in `scripts/agents/` plus a repo-local
+  `scripts/ralph/` runner and Codex prompt assets.
+- Added docs and a contract test for the orchestration pack.
+- Files changed
+- `.ai/`
+- `scripts/agents/`
+- `scripts/ralph/`
+- `prd.json`
+- `progress.txt`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `tests/test_orchestration_contract.py`
+- Checks run and their results
+- `bash -n scripts/agents/common.sh scripts/agents/start_swarm.sh scripts/agents/status_swarm.sh scripts/agents/send_swarm.sh scripts/agents/capture_swarm.sh scripts/agents/stop_swarm.sh scripts/ralph/ralph.sh` -> passed
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` -> `7 passed`
+- `git diff --check` -> clean
+- throwaway tmux session proof with `defi-engine-swarm-test`:
+  - `./scripts/agents/start_swarm.sh --repo /home/netjer/Projects/AI-Frame/Brain/Defi-engine --session defi-engine-swarm-test` -> created a 4-lane session
+  - `./scripts/agents/status_swarm.sh --repo /home/netjer/Projects/AI-Frame/Brain/Defi-engine --session defi-engine-swarm-test` -> reported 9 session-scoped panes (control + 4 lanes + 4 watch panes)
+  - `./scripts/agents/capture_swarm.sh --repo /home/netjer/Projects/AI-Frame/Brain/Defi-engine --session defi-engine-swarm-test` -> captured 9 session-scoped panes
+  - `./scripts/agents/stop_swarm.sh --repo /home/netjer/Projects/AI-Frame/Brain/Defi-engine --session defi-engine-swarm-test` -> stopped cleanly
+- Learnings for future iterations
+- Lane count matters less than state ownership; one lane must own acceptance and
+  story progression or the swarm will drift.
+- Useful context for the next loop
+- `POL-001` is the next active story and should become the first explicit policy
+  decision-trace owner for bounded condition truth.

@@ -22,7 +22,7 @@ bounded shadow evaluation -> DuckDB sync on demand + research artifacts
 - `data/db/d5_analytics.duckdb` is the research mirror
 - `data/db/coinbase_raw.db` is a separate raw provider store for Coinbase payloads
 
-See [docs/README.md](docs/README.md) for the full docs map, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, and [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded modeling contract.
+See [docs/README.md](docs/README.md) for the full docs map, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded modeling contract, and [docs/runbooks/ralph_tmux_swarm.md](docs/runbooks/ralph_tmux_swarm.md) for the repo-local four-lane orchestration workflow.
 
 ## Tracked Universe
 

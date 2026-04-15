@@ -13,6 +13,9 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "task" / "bootstrap_truth_sync.md",
     REPO_ROOT / "docs" / "architecture" / "bootstrap_architecture.md",
     REPO_ROOT / "docs" / "runbooks" / "first_capture.md",
+    REPO_ROOT / "docs" / "runbooks" / "feature_condition_shadow_cycle.md",
+    REPO_ROOT / "docs" / "runbooks" / "ralph_tmux_swarm.md",
+    REPO_ROOT / "docs" / "math" / "regime_shadow_modeling_contracts.md",
     REPO_ROOT / "docs" / "test" / "bootstrap_validation.md",
 ]
 REQUIRED_DOCS = ACTIVE_DOCS + [
