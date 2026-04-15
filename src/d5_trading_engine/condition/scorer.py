@@ -28,6 +28,7 @@ _CONDITION_SET_NAME = "global_regime_v1"
 _TRAINING_WINDOW = timedelta(days=90)
 _MIN_TRAIN_ROWS = 32
 _N_COMPONENTS = 4
+_REFIT_CADENCE_BUCKETS = 4
 _CONFIDENCE_DEGRADE_FACTOR = 0.75
 _BLOCKED_REGIMES = {"risk_off", "no_trade"}
 _NUMERIC_FEATURE_COLUMNS = [
@@ -98,7 +99,7 @@ class ConditionScorer:
 
     def score_global_regime_v1(self) -> dict[str, object]:
         """Fit the bounded regime model and persist the latest snapshot."""
-        result = self.build_regime_history()
+        result = self.build_latest_regime_history()
         run_id = f"condition_{_CONDITION_SET_NAME}_{uuid.uuid4().hex[:12]}"
         latest = result.history.iloc[-1]
         confidence = float(latest["confidence"])
@@ -163,7 +164,11 @@ class ConditionScorer:
         }
 
     def build_regime_history(self) -> RegimeHistoryResult:
-        """Build a scored regime history from the latest successful feature run."""
+        """Compatibility wrapper for the latest runtime scoring path."""
+        return self.build_latest_regime_history()
+
+    def build_latest_regime_history(self) -> RegimeHistoryResult:
+        """Build the latest runtime-scoring history from the newest feature run."""
         feature_run = self._latest_feature_run()
         history = self._load_feature_history(feature_run.run_id)
         if history.empty:
@@ -178,30 +183,53 @@ class ConditionScorer:
                 f"found {len(training_history)}."
             )
 
-        feature_matrix = self._prepare_feature_matrix(training_history)
-        raw_states, probabilities, model_family = self._fit_regime_model(feature_matrix)
-        training_history["raw_state_id"] = raw_states
-        training_history["confidence"] = probabilities.max(axis=1)
-
-        semantics = self._state_semantics(training_history)
-        training_history["semantic_regime"] = training_history["raw_state_id"].map(
-            lambda state_id: semantics[int(state_id)]["semantic_regime"]
-        )
-
         macro_context_state = self._macro_context_state(feature_run)
-        if macro_context_state != "healthy_recent":
-            training_history["confidence"] = training_history["confidence"].apply(
-                lambda value: max(0.0, min(1.0, float(value) * _CONFIDENCE_DEGRADE_FACTOR))
-            )
+        model, model_family, semantics = self._fit_model_and_semantics(training_history)
+        scored_history = self._score_history_with_model(
+            training_history,
+            model,
+            semantics,
+            macro_context_state=macro_context_state,
+            model_family=model_family,
+        )
 
         return RegimeHistoryResult(
             feature_run_id=feature_run.run_id,
-            history=training_history,
+            history=scored_history,
             state_semantics=semantics,
             model_family=model_family,
             macro_context_state=macro_context_state,
-            training_window_start_utc=training_history["bucket_start_utc"].iloc[0].to_pydatetime(),
-            training_window_end_utc=training_history["bucket_start_utc"].iloc[-1].to_pydatetime(),
+            training_window_start_utc=scored_history["bucket_start_utc"].iloc[0].to_pydatetime(),
+            training_window_end_utc=scored_history["bucket_start_utc"].iloc[-1].to_pydatetime(),
+        )
+
+    def build_walk_forward_regime_history(self) -> RegimeHistoryResult:
+        """Build point-in-time-safe regime history for shadow evaluation."""
+        feature_run = self._latest_feature_run()
+        history = self._load_feature_history(feature_run.run_id)
+        if history.empty:
+            raise RuntimeError("No global regime input rows available for condition scoring.")
+
+        macro_context_state = self._macro_context_state(feature_run)
+        scored_history, state_semantics, model_family = self._build_walk_forward_history_frame(
+            history,
+            macro_context_state=macro_context_state,
+        )
+        if scored_history.empty:
+            raise RuntimeError(
+                f"Need at least {_MIN_TRAIN_ROWS} 15-minute rows for walk-forward regime scoring; "
+                "no scored buckets were produced."
+            )
+
+        latest_row = scored_history.iloc[-1]
+        return RegimeHistoryResult(
+            feature_run_id=feature_run.run_id,
+            history=scored_history,
+            state_semantics=state_semantics,
+            model_family=model_family,
+            macro_context_state=macro_context_state,
+            training_window_start_utc=latest_row["training_window_start_utc"].to_pydatetime(),
+            training_window_end_utc=latest_row["training_window_end_utc"].to_pydatetime(),
         )
 
     def _latest_feature_run(self) -> FeatureMaterializationRun:
@@ -268,11 +296,7 @@ class ConditionScorer:
                 random_state=42,
             )
             model.fit(feature_matrix)
-            return (
-                model.predict(feature_matrix),
-                model.predict_proba(feature_matrix),
-                "gaussian_mixture_regime_proxy_4state",
-            )
+            return model, "gaussian_mixture_regime_proxy_4state"
 
         model = GaussianHMM(
             n_components=_N_COMPONENTS,
@@ -281,11 +305,132 @@ class ConditionScorer:
             random_state=42,
         )
         model.fit(feature_matrix)
-        return (
-            model.predict(feature_matrix),
-            model.predict_proba(feature_matrix),
-            "gaussian_hmm_4state",
+        return model, "gaussian_hmm_4state"
+
+    def _predict_regime_states(self, model, feature_matrix):
+        return model.predict(feature_matrix), model.predict_proba(feature_matrix)
+
+    def _fit_model_and_semantics(self, history: pd.DataFrame):
+        feature_matrix = self._prepare_feature_matrix(history)
+        model, model_family = self._fit_regime_model(feature_matrix)
+        raw_states, probabilities = self._predict_regime_states(model, feature_matrix)
+        semantic_history = history.copy()
+        semantic_history["raw_state_id"] = raw_states
+        semantic_history["confidence"] = probabilities.max(axis=1)
+        semantics = self._state_semantics(semantic_history)
+        return model, model_family, semantics
+
+    def _score_history_with_model(
+        self,
+        history: pd.DataFrame,
+        model,
+        semantics: dict[int, dict[str, object]],
+        *,
+        macro_context_state: str,
+        model_family: str,
+        model_epoch_bucket_start_utc=None,
+        training_window_start_utc=None,
+        training_window_end_utc=None,
+    ) -> pd.DataFrame:
+        feature_matrix = self._prepare_feature_matrix(history)
+        raw_states, probabilities = self._predict_regime_states(model, feature_matrix)
+        scored_history = history.copy()
+        scored_history["raw_state_id"] = raw_states
+        scored_history["confidence"] = probabilities.max(axis=1)
+        scored_history["semantic_regime"] = scored_history["raw_state_id"].map(
+            lambda state_id: semantics[int(state_id)]["semantic_regime"]
         )
+        scored_history["model_family"] = model_family
+        if model_epoch_bucket_start_utc is not None:
+            scored_history["model_epoch_bucket_start_utc"] = pd.Timestamp(
+                ensure_utc(model_epoch_bucket_start_utc)
+            )
+        if training_window_start_utc is not None:
+            scored_history["training_window_start_utc"] = pd.Timestamp(
+                ensure_utc(training_window_start_utc)
+            )
+        if training_window_end_utc is not None:
+            scored_history["training_window_end_utc"] = pd.Timestamp(
+                ensure_utc(training_window_end_utc)
+            )
+        if macro_context_state != "healthy_recent":
+            scored_history["confidence"] = scored_history["confidence"].apply(
+                lambda value: max(0.0, min(1.0, float(value) * _CONFIDENCE_DEGRADE_FACTOR))
+            )
+        return scored_history
+
+    def _build_walk_forward_history_frame(
+        self,
+        history: pd.DataFrame,
+        *,
+        macro_context_state: str,
+    ) -> tuple[pd.DataFrame, dict[int, dict[str, object]], str]:
+        scored_rows: list[pd.DataFrame] = []
+        latest_state_semantics: dict[int, dict[str, object]] = {}
+        latest_model_family = ""
+        current_model = None
+        current_semantics: dict[int, dict[str, object]] | None = None
+        current_model_family: str | None = None
+        model_epoch_bucket_start_utc = None
+        training_window_start_utc = None
+        training_window_end_utc = None
+        scored_bucket_count = 0
+
+        for row_index in range(len(history)):
+            current_bucket = history.iloc[row_index]["bucket_start_utc"]
+            training_history = history.loc[
+                (history["bucket_start_utc"] <= current_bucket)
+                & (history["bucket_start_utc"] >= (current_bucket - _TRAINING_WINDOW))
+            ].copy()
+            if len(training_history) < _MIN_TRAIN_ROWS:
+                continue
+
+            if current_model is None or (scored_bucket_count % _REFIT_CADENCE_BUCKETS == 0):
+                (
+                    current_model,
+                    current_model_family,
+                    current_semantics,
+                ) = self._fit_model_and_semantics(training_history)
+                model_epoch_bucket_start_utc = current_bucket
+                training_window_start_utc = training_history["bucket_start_utc"].iloc[0]
+                training_window_end_utc = training_history["bucket_start_utc"].iloc[-1]
+                latest_state_semantics = current_semantics
+                latest_model_family = current_model_family
+
+            assert current_model is not None
+            assert current_semantics is not None
+            assert current_model_family is not None
+
+            scored_row = self._score_history_with_model(
+                history.iloc[[row_index]],
+                current_model,
+                current_semantics,
+                macro_context_state=macro_context_state,
+                model_family=current_model_family,
+                model_epoch_bucket_start_utc=model_epoch_bucket_start_utc,
+                training_window_start_utc=training_window_start_utc,
+                training_window_end_utc=training_window_end_utc,
+            )
+            scored_rows.append(scored_row)
+            scored_bucket_count += 1
+
+        if not scored_rows:
+            return pd.DataFrame(), latest_state_semantics, latest_model_family
+
+        walk_forward_history = pd.concat(scored_rows, ignore_index=True)
+        walk_forward_history["bucket_start_utc"] = pd.to_datetime(
+            walk_forward_history["bucket_start_utc"], utc=True
+        )
+        walk_forward_history["model_epoch_bucket_start_utc"] = pd.to_datetime(
+            walk_forward_history["model_epoch_bucket_start_utc"], utc=True
+        )
+        walk_forward_history["training_window_start_utc"] = pd.to_datetime(
+            walk_forward_history["training_window_start_utc"], utc=True
+        )
+        walk_forward_history["training_window_end_utc"] = pd.to_datetime(
+            walk_forward_history["training_window_end_utc"], utc=True
+        )
+        return walk_forward_history, latest_state_semantics, latest_model_family
 
     def _state_semantics(self, history: pd.DataFrame) -> dict[int, dict[str, object]]:
         summaries: dict[int, dict[str, object]] = {}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import pytest
 
@@ -11,6 +12,8 @@ from d5_trading_engine.features.materializer import _FEATURE_SET_NAME
 from d5_trading_engine.storage.analytics.duckdb_mirror import DuckDBMirror
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
+    ConditionGlobalRegimeSnapshotV1,
+    ConditionScoringRun,
     FeatureMaterializationRun,
     FeatureSpotChainMacroMinuteV1,
     FredObservation,
@@ -27,6 +30,7 @@ from d5_trading_engine.storage.truth.models import (
     TokenPriceSnapshot,
     TokenRegistry,
 )
+from tests.test_condition_scoring import _seed_global_regime_inputs
 
 
 def _seed_ingest_run(settings) -> None:
@@ -50,9 +54,15 @@ def _seed_ingest_run(settings) -> None:
         session.close()
 
 
-def _seed_feature_inputs(settings, *, include_health: bool = True) -> None:
+def _seed_feature_inputs(
+    settings,
+    *,
+    include_health: bool = True,
+    anchor_now=None,
+    current_fred_captured_at=None,
+) -> None:
     session = get_session(settings)
-    now = utcnow().replace(second=0, microsecond=0)
+    now = anchor_now or utcnow().replace(second=0, microsecond=0)
     try:
         for run_id, provider, capture_type in (
             ("price_run_001", "jupiter", "prices"),
@@ -323,12 +333,24 @@ def _seed_feature_inputs(settings, *, include_health: bool = True) -> None:
             FredObservation(
                 ingest_run_id="fred_run_001",
                 series_id="DFF",
+                observation_date=(now - timedelta(days=1)).strftime("%Y-%m-%d"),
+                value=4.21,
+                realtime_start=(now - timedelta(days=1)).strftime("%Y-%m-%d"),
+                realtime_end=(now - timedelta(days=1)).strftime("%Y-%m-%d"),
+                provider="fred",
+                captured_at=now - timedelta(days=1),
+            )
+        )
+        session.add(
+            FredObservation(
+                ingest_run_id="fred_run_001",
+                series_id="DFF",
                 observation_date=now.strftime("%Y-%m-%d"),
                 value=4.33,
                 realtime_start=now.strftime("%Y-%m-%d"),
                 realtime_end=now.strftime("%Y-%m-%d"),
                 provider="fred",
-                captured_at=now,
+                captured_at=current_fred_captured_at or now,
             )
         )
         session.commit()
@@ -380,6 +402,101 @@ def test_cli_status_reports_empty_initialized_db(cli_runner) -> None:
     assert result.exit_code == 0
     assert "No ingest runs yet." in result.output
     assert "No health events yet." in result.output
+
+
+def test_status_surfaces_latest_failed_condition_run(cli_runner, settings) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    session = get_session(settings)
+    now = utcnow().replace(second=0, microsecond=0)
+    try:
+        session.add(
+            FeatureMaterializationRun(
+                run_id="feature_run_status",
+                feature_set="global_regime_inputs_15m_v1",
+                source_tables="[]",
+                status="success",
+                started_at=now - timedelta(hours=1),
+                finished_at=now - timedelta(hours=1),
+                created_at=now - timedelta(hours=1),
+            )
+        )
+        session.flush()
+        session.add(
+            ConditionScoringRun(
+                run_id="condition_success_old",
+                condition_set="global_regime_v1",
+                source_feature_run_id="feature_run_status",
+                model_family="gaussian_hmm_4state",
+                status="success",
+                confidence=0.84,
+                started_at=now - timedelta(minutes=40),
+                finished_at=now - timedelta(minutes=39),
+                created_at=now - timedelta(minutes=40),
+            )
+        )
+        session.flush()
+        session.add(
+            ConditionGlobalRegimeSnapshotV1(
+                condition_run_id="condition_success_old",
+                source_feature_run_id="feature_run_status",
+                bucket_start_utc=now - timedelta(minutes=45),
+                raw_state_id=1,
+                semantic_regime="long_friendly",
+                confidence=0.84,
+                blocked_flag=0,
+                blocking_reason=None,
+                model_family="gaussian_hmm_4state",
+                macro_context_state="healthy_recent",
+                created_at=now - timedelta(minutes=39),
+            )
+        )
+        session.add(
+            ConditionScoringRun(
+                run_id="condition_failed_latest",
+                condition_set="global_regime_v1",
+                source_feature_run_id="feature_run_status",
+                model_family="gaussian_hmm_4state",
+                status="failed",
+                confidence=None,
+                error_message="freshness authorization failed",
+                started_at=now - timedelta(minutes=5),
+                finished_at=now - timedelta(minutes=4),
+                created_at=now - timedelta(minutes=5),
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    result = cli_runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0
+    assert "latest run failed" in result.output
+    assert "condition_failed_latest" in result.output
+    assert "freshness authorization failed" in result.output
+    assert "no current eligible snapshot from the latest run." in result.output
+    assert "long_friendly" not in result.output
+
+
+def test_status_shows_latest_successful_condition_snapshot(cli_runner, settings) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    _seed_global_regime_inputs(settings)
+    assert (
+        cli_runner.invoke(cli, ["materialize-features", "global-regime-inputs-15m-v1"]).exit_code
+        == 0
+    )
+    assert cli_runner.invoke(cli, ["score-conditions", "global-regime-v1"]).exit_code == 0
+
+    result = cli_runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0
+    assert "=== Current Condition ===" in result.output
+    assert "run=condition_global_regime_v1_" in result.output
+    assert "feature_run=feature_global_regime_inputs_15m_v1_" in result.output
 
 
 def test_cli_sync_duckdb_copies_seeded_table(cli_runner, settings) -> None:
@@ -459,6 +576,30 @@ def test_cli_materialize_features_writes_first_feature_rows(cli_runner, settings
     assert feature_row.chain_amount_in == pytest.approx(4.0)
     assert feature_row.chain_amount_out == pytest.approx(2.0)
     assert feature_row.fred_dff == pytest.approx(4.33)
+
+
+def test_spot_chain_materialization_respects_fred_captured_at(cli_runner, settings) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    anchor_now = utcnow().replace(second=0, microsecond=0)
+    _seed_feature_inputs(
+        settings,
+        anchor_now=anchor_now,
+        current_fred_captured_at=anchor_now + timedelta(hours=2),
+    )
+
+    result = cli_runner.invoke(cli, ["materialize-features", "spot-chain-macro-v1"])
+
+    assert result.exit_code == 0
+
+    session = get_session(settings)
+    try:
+        feature_row = session.query(FeatureSpotChainMacroMinuteV1).one()
+    finally:
+        session.close()
+
+    assert feature_row.fred_dff == pytest.approx(4.21)
 
 
 def test_cli_materialize_features_fails_closed_without_health_receipts(

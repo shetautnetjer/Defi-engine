@@ -34,6 +34,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - deferred or missing capabilities that should not be treated as shipped
 - `issues/paper_runtime_blockers.md`
   - durable blockers that still prevent a truthful paper-runtime claim
+- `issues/regime_shadow_corrective_slice.md`
+  - corrective findings for the current condition and shadow lane before policy work should consume them
 - `architecture/bootstrap_architecture.md`
   - current capture and storage architecture
 - `runbooks/first_capture.md`

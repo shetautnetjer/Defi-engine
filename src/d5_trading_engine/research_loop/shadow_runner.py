@@ -15,7 +15,11 @@ from xgboost import XGBClassifier
 
 from d5_trading_engine.common.logging import get_logger
 from d5_trading_engine.common.time_utils import ensure_utc, utcnow
-from d5_trading_engine.condition.scorer import ConditionScorer
+from d5_trading_engine.condition.scorer import (
+    _REFIT_CADENCE_BUCKETS,
+    _TRAINING_WINDOW,
+    ConditionScorer,
+)
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.features.materializer import _FEATURE_SET_NAME
 from d5_trading_engine.storage.truth.engine import get_session
@@ -79,7 +83,7 @@ class ShadowRunner:
 
     def run_intraday_meta_stack_v1(self) -> dict[str, object]:
         """Run the shadow meta-stack and persist experiment receipts."""
-        regime_result = ConditionScorer(self.settings).build_regime_history()
+        regime_result = ConditionScorer(self.settings).build_walk_forward_regime_history()
         spot_feature_run = self._latest_feature_run(_FEATURE_SET_NAME)
         spot_frame = self._load_spot_feature_frame(spot_feature_run.run_id)
         if spot_frame.empty:
@@ -110,6 +114,9 @@ class ShadowRunner:
             "regime_feature_run_id": regime_result.feature_run_id,
             "regime_model_family": regime_result.model_family,
             "macro_context_state": regime_result.macro_context_state,
+            "regime_history_mode": "walk_forward",
+            "regime_refit_cadence_buckets": _REFIT_CADENCE_BUCKETS,
+            "regime_training_window_days": _TRAINING_WINDOW.days,
             "artifact_dir": str(artifact_dir),
             "label_specs": _LABEL_SPECS,
             "atr_window": _ATR_WINDOW,
@@ -341,12 +348,17 @@ class ShadowRunner:
                     "condition_regime",
                     "condition_confidence",
                     "blocked_flag",
+                    "model_epoch_bucket_start_utc",
+                    "training_window_start_utc",
+                    "training_window_end_utc",
                 ]
             ],
-            how="left",
+            how="inner",
             on="bucket_15m",
         )
-        dataset = dataset.sort_values(["coinbase_product_id", "bucket_5m"]).reset_index(drop=True)
+        dataset = dataset.sort_values(
+            ["bucket_5m", "coinbase_product_id", "mint"]
+        ).reset_index(drop=True)
         return dataset
 
     def _run_meta_models(self, dataset: pd.DataFrame) -> dict[str, object]:

@@ -2,6 +2,8 @@
 
 Current snapshot of `Defi-engine` after the first condition and shadow-evaluation slice on 2026-04-14.
 
+The new condition and shadow surfaces are real repo truth, but the shadow metrics remain provisional until the corrective slice in `docs/issues/regime_shadow_corrective_slice.md` is closed.
+
 ## Public Surface
 
 - Python distribution metadata: `d5engine`
@@ -32,7 +34,7 @@ Current snapshot of `Defi-engine` after the first condition and shadow-evaluatio
 | CLI | implemented | current commands are `init`, `capture`, `materialize-features`, `score-conditions`, `run-shadow`, `status`, and `sync-duckdb` |
 | Condition/risk/settlement | partial | `condition/` now owns `global_regime_v1` plus explicit receipts, while `risk/` and `settlement/` remain placeholder surfaces |
 | Features | partial | `spot_chain_macro_v1` and `global_regime_inputs_15m_v1` now materialize freshness-gated feature tables plus `feature_materialization_run` receipts |
-| Models/policy/research_loop/trajectory | partial | `research_loop/` now owns one bounded shadow experiment lane; `policy/` and `trajectory/` remain mostly scaffolded |
+| Models/policy/research_loop/trajectory | partial | `research_loop/` now owns one bounded shadow experiment lane, but its metrics are still provisional until the point-in-time and macro-timing corrective slice lands; `policy/` and `trajectory/` remain mostly scaffolded |
 | Tests | implemented | default `pytest` stays offline-safe; live-gated Jupiter and Helius integration harnesses exist for provider receipts |
 | Docs | partial | docs inventory, architecture, runbook, validation notes, active task docs, and new planning docs exist |
 

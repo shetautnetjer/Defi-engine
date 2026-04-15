@@ -252,6 +252,9 @@ def test_cli_run_shadow_persists_receipts_and_artifacts(cli_runner, settings, mo
     assert run.status == "success"
     assert "chronos=ok" in (run.conclusion or "")
     assert config["shadow_run"] == _SHADOW_RUN_NAME
+    assert config["regime_history_mode"] == "walk_forward"
+    assert config["regime_refit_cadence_buckets"] == 4
+    assert config["regime_training_window_days"] == 90
     assert artifact_dir.exists()
     assert (artifact_dir / "config.json").exists()
     assert (artifact_dir / "chronos_summary.json").exists()
@@ -297,3 +300,5 @@ def test_cli_run_shadow_succeeds_when_chronos_is_unavailable(
 
     assert run.status == "success"
     assert "chronos=skipped:ModuleNotFoundError" in (run.conclusion or "")
+    config = json.loads(run.config_json or "{}")
+    assert config["regime_history_mode"] == "walk_forward"

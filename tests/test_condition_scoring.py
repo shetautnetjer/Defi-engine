@@ -4,8 +4,11 @@ import json
 import math
 from datetime import timedelta
 
+import pandas.testing as pdt
+
 from d5_trading_engine.cli import cli
 from d5_trading_engine.common.time_utils import utcnow
+from d5_trading_engine.condition.scorer import ConditionScorer
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ConditionGlobalRegimeSnapshotV1,
@@ -23,10 +26,17 @@ from d5_trading_engine.storage.truth.models import (
 )
 
 
-def _seed_global_regime_inputs(settings, *, include_macro_health: bool = True) -> None:
+def _seed_global_regime_inputs(
+    settings,
+    *,
+    include_macro_health: bool = True,
+    total_15m_buckets: int = 96,
+    anchor_now=None,
+    same_day_fred_captured_at=None,
+) -> None:
     session = get_session(settings)
-    now = utcnow().replace(second=0, microsecond=0)
-    minute_start = now - timedelta(minutes=48 * 15)
+    now = anchor_now or utcnow().replace(second=0, microsecond=0)
+    minute_start = now - timedelta(minutes=total_15m_buckets * 15)
     products = {
         "BTC-USD": {"base": "BTC", "price": 64000.0, "offset": 0.1},
         "ETH-USD": {"base": "ETH", "price": 3200.0, "offset": 0.7},
@@ -96,7 +106,7 @@ def _seed_global_regime_inputs(settings, *, include_macro_health: bool = True) -
             )
 
         prices = {product_id: config["price"] for product_id, config in products.items()}
-        total_minutes = 48 * 15
+        total_minutes = total_15m_buckets * 15
         for minute_index in range(total_minutes):
             ts = minute_start + timedelta(minutes=minute_index)
             phase_size = total_minutes // 4
@@ -183,6 +193,11 @@ def _seed_global_regime_inputs(settings, *, include_macro_health: bool = True) -
             (0, {"DFF": 4.33, "T10Y2Y": -0.28, "VIXCLS": 18.4, "DGS10": 4.18, "DTWEXBGS": 121.7}),
         ):
             obs_date = (now - timedelta(days=offset_days)).strftime("%Y-%m-%d")
+            captured_at = (
+                now - timedelta(days=1)
+                if offset_days == 1
+                else (same_day_fred_captured_at or now)
+            )
             for series_id, value in value_map.items():
                 if offset_days == 1:
                     session.add(
@@ -207,7 +222,7 @@ def _seed_global_regime_inputs(settings, *, include_macro_health: bool = True) -
                         realtime_start=obs_date,
                         realtime_end=obs_date,
                         provider="fred",
-                        captured_at=now,
+                        captured_at=captured_at,
                     )
                 )
 
@@ -306,3 +321,101 @@ def test_global_regime_materialization_allows_degraded_macro_lane(cli_runner, se
         == "degraded"
     )
     assert snapshot.macro_context_state == "degraded"
+
+
+def test_walk_forward_regime_history_is_point_in_time_safe(cli_runner, settings) -> None:
+    assert cli_runner.invoke(cli, ["init"]).exit_code == 0
+    _seed_global_regime_inputs(settings)
+    assert (
+        cli_runner.invoke(cli, ["materialize-features", "global-regime-inputs-15m-v1"]).exit_code
+        == 0
+    )
+
+    scorer = ConditionScorer(settings)
+    session = get_session(settings)
+    try:
+        feature_run = (
+            session.query(FeatureMaterializationRun)
+            .filter_by(feature_set="global_regime_inputs_15m_v1")
+            .one()
+        )
+    finally:
+        session.close()
+
+    full_history = scorer._load_feature_history(feature_run.run_id)
+    truncated_history = full_history.iloc[:80].copy()
+    truncated_scored, _, _ = scorer._build_walk_forward_history_frame(
+        truncated_history,
+        macro_context_state="healthy_recent",
+    )
+    full_scored, _, _ = scorer._build_walk_forward_history_frame(
+        full_history,
+        macro_context_state="healthy_recent",
+    )
+
+    overlap = full_scored.loc[
+        full_scored["bucket_start_utc"].isin(truncated_scored["bucket_start_utc"])
+    ].reset_index(drop=True)
+    columns = [
+        "bucket_start_utc",
+        "raw_state_id",
+        "semantic_regime",
+        "model_family",
+        "model_epoch_bucket_start_utc",
+        "training_window_start_utc",
+        "training_window_end_utc",
+    ]
+    pdt.assert_frame_equal(
+        overlap[columns],
+        truncated_scored[columns].reset_index(drop=True),
+    )
+    assert overlap["confidence"].round(10).tolist() == truncated_scored[
+        "confidence"
+    ].round(10).tolist()
+
+
+def test_walk_forward_regime_history_refits_every_four_buckets(cli_runner, settings) -> None:
+    assert cli_runner.invoke(cli, ["init"]).exit_code == 0
+    _seed_global_regime_inputs(settings)
+    assert (
+        cli_runner.invoke(cli, ["materialize-features", "global-regime-inputs-15m-v1"]).exit_code
+        == 0
+    )
+
+    history = ConditionScorer(settings).build_walk_forward_regime_history().history
+    epoch_counts = history.groupby("model_epoch_bucket_start_utc").size().tolist()
+
+    assert epoch_counts
+    assert all(count == 4 for count in epoch_counts[:-1])
+    assert 1 <= epoch_counts[-1] <= 4
+
+
+def test_global_regime_materialization_respects_fred_captured_at(cli_runner, settings) -> None:
+    assert cli_runner.invoke(cli, ["init"]).exit_code == 0
+    anchor_now = utcnow().replace(second=0, microsecond=0)
+    _seed_global_regime_inputs(
+        settings,
+        anchor_now=anchor_now,
+        same_day_fred_captured_at=anchor_now,
+    )
+
+    materialize_result = cli_runner.invoke(
+        cli,
+        ["materialize-features", "global-regime-inputs-15m-v1"],
+    )
+    assert materialize_result.exit_code == 0
+
+    session = get_session(settings)
+    try:
+        same_day_rows = (
+            session.query(FeatureGlobalRegimeInput15mV1)
+            .filter_by(event_date_utc=anchor_now.strftime("%Y-%m-%d"))
+            .order_by(FeatureGlobalRegimeInput15mV1.bucket_start_utc.asc())
+            .all()
+        )
+    finally:
+        session.close()
+
+    assert same_day_rows
+    assert same_day_rows[0].fred_dff == 4.25
+    assert same_day_rows[-1].fred_dff == 4.33

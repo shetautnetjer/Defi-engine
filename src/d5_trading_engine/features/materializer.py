@@ -663,7 +663,10 @@ class FeatureMaterializer:
             for row in (
                 session.query(FredObservation)
                 .filter(FredObservation.series_id.in_(list(_FRED_SERIES_FIELDS)))
-                .order_by(FredObservation.observation_date.asc())
+                .order_by(
+                    FredObservation.observation_date.asc(),
+                    FredObservation.captured_at.asc(),
+                )
                 .all()
             ):
                 fred_rows_by_series[row.series_id].append(row)
@@ -681,6 +684,7 @@ class FeatureMaterializer:
                 feature_values = self._fred_feature_values(
                     fred_rows_by_series,
                     minute.strftime("%Y-%m-%d"),
+                    bucket_end_utc=minute + timedelta(minutes=1),
                 )
                 minute_fields = _minute_fields(minute)
 
@@ -742,7 +746,10 @@ class FeatureMaterializer:
             for row in (
                 session.query(FredObservation)
                 .filter(FredObservation.series_id.in_(list(_FRED_SERIES_FIELDS)))
-                .order_by(FredObservation.observation_date.asc())
+                .order_by(
+                    FredObservation.observation_date.asc(),
+                    FredObservation.captured_at.asc(),
+                )
                 .all()
             ):
                 fred_rows_by_series[row.series_id].append(row)
@@ -816,6 +823,7 @@ class FeatureMaterializer:
                 macro_values = self._fred_feature_values(
                     fred_rows_by_series,
                     row["bucket"].strftime("%Y-%m-%d"),
+                    bucket_end_utc=row["bucket"] + timedelta(minutes=_REGIME_BUCKET_MINUTES),
                 )
                 macro_available = any(value is not None for value in macro_values.values())
 
@@ -984,14 +992,23 @@ class FeatureMaterializer:
         self,
         fred_rows_by_series: dict[str, list[FredObservation]],
         target_date: str,
+        *,
+        bucket_end_utc,
     ) -> dict[str, float | None]:
         values = {column_name: None for column_name in _FRED_SERIES_FIELDS.values()}
+        bucket_end = ensure_utc(bucket_end_utc)
         for series_id, column_name in _FRED_SERIES_FIELDS.items():
             for row in fred_rows_by_series.get(series_id, []):
-                if row.observation_date <= target_date:
+                captured_at = ensure_utc(row.captured_at)
+                if (
+                    row.observation_date <= target_date
+                    and captured_at is not None
+                    and captured_at <= bucket_end
+                ):
                     values[column_name] = row.value
                 else:
-                    break
+                    if row.observation_date > target_date:
+                        break
         return values
 
     @staticmethod

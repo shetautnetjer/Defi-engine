@@ -15,7 +15,7 @@ This note documents the HMM-style regime scorer, the bounded fallback behavior w
 - `d5 run-shadow intraday-meta-stack-v1`
   - runs the shadow-only ensemble and writes experiment receipts plus evidence artifacts
 - `d5 status`
-  - now shows the latest condition run and regime snapshot alongside ingest health
+  - shows the latest condition run alongside ingest health, including failed-run visibility instead of silently falling back to an older success receipt
 
 ## Truth Surfaces
 
@@ -52,7 +52,7 @@ This note documents the HMM-style regime scorer, the bounded fallback behavior w
 - one-minute Coinbase candles
 - Coinbase market trades
 - Coinbase book snapshots
-- optional FRED macro context, forward-filled within a relaxed freshness window
+- optional FRED macro context, forward-filled within a relaxed freshness window and only after the observation was actually captured for the relevant bucket
 
 The current proxy set prefers `BTC-USD`, `ETH-USD`, and `SOL-USD` and rolls those into one market-wide 15-minute row.
 
@@ -66,6 +66,8 @@ The current proxy set prefers `BTC-USD`, `ETH-USD`, and `SOL-USD` and rolls thos
 - `no_trade`
 
 When `hmmlearn` is available, the scorer uses a four-state Gaussian HMM. When it is not available, it falls back to a four-component Gaussian mixture proxy and records that model family explicitly in the receipt.
+
+The runtime scoring path persists only the latest closed-bucket snapshot. The shadow lane must use a walk-forward regime history with past-only fits and explicit refit metadata; a one-shot full-window fit is not acceptable evidence for shadow metrics.
 
 Macro staleness does not block scoring in v1. It degrades confidence instead, while required market-structure lanes still fail closed at the feature layer.
 
@@ -86,6 +88,8 @@ Current shadow components:
 - Fibonacci confluence as a research annotation only
 
 The runner writes `success` even when Chronos is unavailable, as long as the bounded shadow models still produce evaluable receipts.
+
+Shadow metrics are provisional until the point-in-time corrective slice in `docs/issues/regime_shadow_corrective_slice.md` is closed and revalidated.
 
 ## Policy Stub
 
@@ -109,11 +113,13 @@ The truthful claim is narrower:
 
 - `condition/` now has one bounded regime scorer backed by feature truth
 - `research_loop/` now has one bounded shadow experiment lane with non-promoting receipts
+- the shadow lane is only trustworthy after the point-in-time corrective slice is closed; until then its metrics are research-only and provisional
 - runtime policy, risk, and settlement remain unimplemented
 
 ## Next Actions
 
-1. Turn the advisory YAML bias map into the first real `policy/` trace input instead of leaving it file-only.
-2. Define the first `condition/` to `policy/` consumer so regime state becomes explainable eligibility rather than a standalone score.
-3. Add the first paper-safe `risk/` veto surface before any strategy or settlement work expands.
-4. After paper-session receipts exist, connect `experiment_run` comparison to realized paper outcomes rather than pure shadow labels.
+1. Close the corrective findings in `docs/issues/regime_shadow_corrective_slice.md` before promoting any condition or shadow outputs into policy work.
+2. Turn the advisory YAML bias map into the first real `policy/` trace input instead of leaving it file-only.
+3. Define the first `condition/` to `policy/` consumer so regime state becomes explainable eligibility rather than a standalone score.
+4. Add the first paper-safe `risk/` veto surface before any strategy or settlement work expands.
+5. After paper-session receipts exist, connect `experiment_run` comparison to realized paper outcomes rather than pure shadow labels.

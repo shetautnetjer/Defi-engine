@@ -277,33 +277,47 @@ def status() -> None:
         click.echo("\n=== Current Condition ===")
         latest_condition = (
             session.query(ConditionScoringRun)
-            .filter_by(status="success")
-            .order_by(ConditionScoringRun.finished_at.desc())
+            .order_by(
+                ConditionScoringRun.finished_at.desc(),
+                ConditionScoringRun.started_at.desc(),
+            )
             .first()
         )
         if latest_condition is None:
             click.echo("  No condition runs yet.")
         else:
-            snapshot = (
-                session.query(ConditionGlobalRegimeSnapshotV1)
-                .filter_by(condition_run_id=latest_condition.run_id)
-                .order_by(ConditionGlobalRegimeSnapshotV1.created_at.desc())
-                .first()
-            )
-            if snapshot is None:
-                click.echo(f"  Latest run {latest_condition.run_id} has no snapshot.")
+            finished_at = latest_condition.finished_at or latest_condition.started_at
+            if latest_condition.status != "success":
+                click.echo(
+                    f"  latest run failed  run={latest_condition.run_id}  "
+                    f"model={latest_condition.model_family}  finished={finished_at}"
+                )
+                if latest_condition.error_message:
+                    click.echo(f"  error={latest_condition.error_message}")
+                click.echo("  no current eligible snapshot from the latest run.")
             else:
-                block_indicator = "blocked" if snapshot.blocked_flag else "eligible"
-                click.echo(
-                    f"  {snapshot.semantic_regime:14s} "
-                    f"confidence={snapshot.confidence:.3f}  "
-                    f"{block_indicator:8s}  "
-                    f"{snapshot.bucket_start_utc}"
+                snapshot = (
+                    session.query(ConditionGlobalRegimeSnapshotV1)
+                    .filter_by(condition_run_id=latest_condition.run_id)
+                    .order_by(ConditionGlobalRegimeSnapshotV1.created_at.desc())
+                    .first()
                 )
-                click.echo(
-                    f"  run={latest_condition.run_id}  model={latest_condition.model_family}  "
-                    f"feature_run={latest_condition.source_feature_run_id}"
-                )
+                if snapshot is None:
+                    click.echo(
+                        f"  latest successful run {latest_condition.run_id} has no snapshot."
+                    )
+                else:
+                    block_indicator = "blocked" if snapshot.blocked_flag else "eligible"
+                    click.echo(
+                        f"  {snapshot.semantic_regime:14s} "
+                        f"confidence={snapshot.confidence:.3f}  "
+                        f"{block_indicator:8s}  "
+                        f"{snapshot.bucket_start_utc}"
+                    )
+                    click.echo(
+                        f"  run={latest_condition.run_id}  model={latest_condition.model_family}  "
+                        f"feature_run={latest_condition.source_feature_run_id}"
+                    )
 
         click.echo(f"\nDB: {settings.db_path}")
         click.echo(f"DuckDB: {settings.duckdb_path}")
