@@ -94,9 +94,6 @@ if [[ "$run_mode" == "true" ]]; then
     "$repo_root" \
     "swarm-$lane")"
 
-  if [[ "$lane" == "research" ]]; then
-    command_text+=" --extra-arg --search"
-  fi
   if [[ "$lane" == "builder" ]]; then
     command_text+=" --extra-arg -m --extra-arg $(printf '%q' "${model:-gpt-5.3-codex-spark}")"
   elif [[ -n "$model" ]]; then
