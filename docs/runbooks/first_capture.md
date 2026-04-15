@@ -2,6 +2,8 @@
 
 Operator path for the first local bootstrap capture.
 
+For the current downstream feature -> condition -> shadow loop after source truth is already seeded, use [feature_condition_shadow_cycle.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/runbooks/feature_condition_shadow_cycle.md).
+
 ## Prerequisites
 
 - Python 3.12+

@@ -3,11 +3,11 @@
 ## Document Status
 
 - status: active
-- scope: current software design for the bootstrap plus source-preconditions surface
+- scope: current software design for the source-truth stack plus bounded feature, condition, and shadow owners
 
 ## System Overview
 
-The system is organized around an auditable ingest pipeline:
+The system is organized around an auditable, paper-first evidence pipeline:
 
 ```text
 adapter client
@@ -15,13 +15,18 @@ adapter client
   -> raw JSONL / raw SQL receipts
   -> source normalizer
   -> canonical SQLite truth
-  -> optional DuckDB sync
+  -> bounded deterministic feature materialization
+  -> bounded condition scoring
+  -> bounded shadow evaluation
+  -> optional DuckDB sync + research artifacts
 ```
 
 This design keeps write authority narrow and explicit:
 - SQLite is canonical truth
 - DuckDB is an analytical mirror
 - raw payloads remain replayable
+- feature, condition, and experiment receipts remain first-class truth surfaces
+- policy, risk, settlement, and promotion do not inherit authority implicitly from model outputs
 
 ## Design Principles
 
@@ -29,8 +34,10 @@ This design keeps write authority narrow and explicit:
 - Source-specific raw surfaces
 - Shared canonical tables
 - UTC-first event timing
+- Deterministic feature inputs
+- Explicit model-family receipts
 - Minimal layer crossing
-- Fail closed on uncertain provider behavior
+- Fail closed on uncertain provider or freshness behavior
 
 ## Runtime Surfaces
 
@@ -65,6 +72,59 @@ This design keeps write authority narrow and explicit:
 
 `src/d5_trading_engine/storage/coinbase_raw/`
 - separate raw SQLite store for Coinbase payloads
+
+### Source Layer
+
+`src/d5_trading_engine/adapters/`
+- provider-specific capture clients
+
+`src/d5_trading_engine/capture/runner.py`
+- owns ingest bookkeeping
+- calls adapters
+- writes raw files
+- persists raw rows
+- invokes normalizers
+- records provider health
+
+`src/d5_trading_engine/normalize/`
+- owns source-specific projection into canonical truth
+
+### Feature Layer
+
+`src/d5_trading_engine/features/materializer.py`
+- owns deterministic feature materialization from canonical truth
+- enforces freshness authorization through `ingest_run` and `source_health_event`
+- writes `feature_materialization_run`
+- currently implements:
+  - `spot_chain_macro_v1`
+  - `global_regime_inputs_15m_v1`
+
+### Condition Layer
+
+`src/d5_trading_engine/condition/scorer.py`
+- owns bounded regime scoring from feature truth
+- currently implements:
+  - `global_regime_v1`
+- writes:
+  - `condition_scoring_run`
+  - `condition_global_regime_snapshot_v1`
+- persists only the latest closed-bucket runtime snapshot
+- exposes point-in-time-safe walk-forward regime history for shadow evaluation
+
+### Shadow Research Layer
+
+`src/d5_trading_engine/research_loop/shadow_runner.py`
+- owns bounded experiment comparison and shadow receipts
+- currently implements:
+  - `intraday_meta_stack_v1`
+- writes:
+  - `experiment_run`
+  - `experiment_metric`
+  - artifact files under `data/research/shadow_runs/<run_id>/`
+
+### Policy, Risk, Settlement, Trajectory
+
+These package boundaries exist, but only `policy/` has an advisory YAML stub today. None of these layers yet own runtime trade eligibility, vetoes, fills, or promoted forecast authority.
 
 ## Canonical Data Model
 
@@ -102,10 +162,19 @@ This design keeps write authority narrow and explicit:
 - `market_trade_event`
 - `order_book_l2_event`
 
-### Derived Features And Research Scaffolding
+### Feature Truth
 
 - `feature_materialization_run`
 - `feature_spot_chain_macro_minute_v1`
+- `feature_global_regime_input_15m_v1`
+
+### Condition Truth
+
+- `condition_scoring_run`
+- `condition_global_regime_snapshot_v1`
+
+### Shadow Truth
+
 - `experiment_run`
 - `experiment_metric`
 
@@ -141,7 +210,7 @@ Current behavior:
 - tracked-address discovery via RPC
 - enhanced transaction capture
 - bounded transfer projection
-- raw websocket capture scaffold
+- hardened raw websocket capture with reconnect and heartbeat semantics
 
 Canonical outputs:
 - `program_registry`
@@ -157,7 +226,7 @@ Owned files:
 
 Current behavior:
 - public product discovery
-- candle capture
+- one-minute candle capture
 - recent trade capture
 - L2 snapshot capture
 - raw payloads land in separate Coinbase SQLite DB
@@ -207,30 +276,118 @@ Primary clock rule:
 - use `source_event_time_utc` when present
 - fall back to `captured_at_utc` when provider event time is absent
 
+Feature-clock rules:
+- `spot_chain_macro_v1` is one row per tracked mint per UTC minute bucket
+- `global_regime_inputs_15m_v1` is one market-wide row per closed UTC 15-minute bucket
+- macro observations are eligible only if `captured_at <= bucket_end_utc` and `observation_date <= bucket_date`
+
+## Feature Design
+
+### `spot_chain_macro_v1`
+
+- grain: one row per tracked mint per UTC minute bucket
+- inputs:
+  - Jupiter spot price and quotes
+  - Coinbase market structure
+  - bounded Helius transfer activity
+  - FRED macro context
+- gating:
+  - fails closed when required source lanes are not `healthy_recent`
+- receipt:
+  - `feature_materialization_run`
+
+### `global_regime_inputs_15m_v1`
+
+- grain: one market-wide row per UTC 15-minute bucket
+- proxy preference:
+  - `SOL-USD`
+  - `BTC-USD`
+  - `ETH-USD`
+- aggregates:
+  - 15-minute market return mean/std
+  - 15-minute realized volatility
+  - market volume and trade summaries
+  - mean L2 spread
+  - rolling 4-hour return and realized volatility summaries
+  - macro context availability plus selected FRED values
+
+## Condition Design
+
+### `global_regime_v1`
+
+- training window:
+  - trailing 90 days
+- minimum rows:
+  - 32 closed 15-minute rows
+- model family:
+  - four-state Gaussian HMM when `hmmlearn` is installed
+  - four-component Gaussian mixture fallback otherwise
+- runtime output:
+  - latest closed-bucket snapshot only
+- walk-forward output:
+  - point-in-time-safe history for shadow evaluation
+  - refit cadence: every 4 scored 15-minute buckets
+- semantic states:
+  - `long_friendly`
+  - `short_friendly`
+  - `risk_off`
+  - `no_trade`
+- blocked states:
+  - `risk_off`
+  - `no_trade`
+
+## Shadow Design
+
+### `intraday_meta_stack_v1`
+
+- regime input:
+  - walk-forward regime history from `global_regime_v1`
+- execution feature lane:
+  - `spot_chain_macro_v1`
+- labels:
+  - fixed ATR-style triple-barrier labels on 5-minute bars
+  - `tb_60m_atr1x`
+  - `tb_240m_atr1x`
+- model family:
+  - `IsolationForest` anomaly flags
+  - `RandomForestClassifier` baseline meta-labeler
+  - `XGBClassifier` primary meta-labeler
+- optional research enrichments:
+  - Chronos-2 forecast when available
+  - Monte Carlo summaries derived from Chronos quantiles
+  - Fibonacci confluence as a research annotation only
+- evidence path:
+  - `data/research/shadow_runs/<run_id>/`
+
+The shadow lane is bounded, research-only, and non-promoting. It is not policy authority.
+
 ## CLI Design
 
-`src/d5_trading_engine/cli.py` provides a generic operational surface:
+`src/d5_trading_engine/cli.py` provides the current operational surface:
 - `d5 init`
 - `d5 capture <provider>`
 - `d5 materialize-features <feature-set>`
+- `d5 score-conditions <condition-set>`
+- `d5 run-shadow <shadow-run>`
 - `d5 status`
 - `d5 sync-duckdb [tables...]`
 
-This keeps the surface small while provider behavior is still settling.
+`d5 status` now exposes the latest condition run directly, including failed-run visibility instead of silently falling back to an older success.
 
 ## Deferred Layers
 
-The following package surfaces still exist as placeholders and ownership boundaries, not active runtime behavior:
+The following package surfaces remain incomplete runtime owners:
 
-- `features/` is only partially implemented through the bounded `spot_chain_macro_v1` materialization path.
-
-- `condition/`
 - `policy/`
+  - advisory YAML exists, but no decision-trace ownership yet
 - `risk/`
+  - placeholder veto surface only
 - `settlement/`
+  - placeholder paper-session surface only
 - `models/`
-- `research_loop/`
+  - no governed model registry or promotion path
 - `trajectory/`
+  - no promoted scenario or forecast owner yet
 
 ## Validation Design
 
@@ -240,19 +397,22 @@ Default validation is offline-safe:
 - CLI tests
 - mocked adapter tests
 - docs contract tests
+- feature/condition/shadow targeted tests
 
 Live integration is gated separately and not part of default CI.
 
 ## Design Risks
 
 - Helius websocket capture remains raw-first and lightly validated compared with REST.
-- Coinbase currently uses public market endpoints only, so authenticated or execution-aware behavior is still absent.
+- Coinbase currently uses public market endpoints only, so authenticated or execution-aware behavior is absent.
 - Massive remains a planned source, not an operational one.
-- The downstream trading runtime layers are still intentionally unimplemented.
+- Chronos-2 is optional in the current shadow path and may skip cleanly when its dependencies are unavailable.
+- Policy, risk, settlement, and promotion-sensitive governance are still intentionally unimplemented.
 
 ## References
 
 - [README.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/README.md)
 - [docs/architecture/bootstrap_architecture.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/architecture/bootstrap_architecture.md)
-- [docs/task/source_expansion_preconditions.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/task/source_expansion_preconditions.md)
-- [docs/plans/source_expansion_preconditions.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/plans/source_expansion_preconditions.md)
+- [docs/task/first_feature_input_contract.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/task/first_feature_input_contract.md)
+- [docs/task/global_regime_condition_and_shadow_stack.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/task/global_regime_condition_and_shadow_stack.md)
+- [docs/math/regime_shadow_modeling_contracts.md](/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/math/regime_shadow_modeling_contracts.md)

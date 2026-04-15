@@ -9,13 +9,13 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `project/bootstrap_inventory.md`
   - stable snapshot of what is implemented, scaffolded, and missing
 - `prd/d5_trading_engine_prd.md`
-  - repo-local product requirements for the paper-first ingest and research surface
+  - repo-local product requirements for the paper-first source, feature, condition, and shadow surface
 - `sdd/d5_trading_engine_sdd.md`
-  - current software design for the bootstrap plus source-preconditions surface
+  - current software design for the source-truth stack plus bounded feature, condition, and shadow owners
 - `task/ingest_hardening_phase_1.md`
   - completed hardening slice that made the bootstrap ingest contracts truthful
 - `task/source_expansion_preconditions.md`
-  - active bounded execution surface for mint-locked universe expansion before `condition/`
+  - active bounded execution surface for mint-locked universe expansion without bypassing downstream contracts
 - `task/continuous_capture_ownership.md`
   - bounded next slice for freshness, completeness, and operator-visible source ownership
 - `task/first_feature_input_contract.md`
@@ -37,9 +37,13 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `issues/regime_shadow_corrective_slice.md`
   - corrective findings for the current condition and shadow lane before policy work should consume them
 - `architecture/bootstrap_architecture.md`
-  - current capture and storage architecture
+  - current capture, feature, condition, and shadow architecture
 - `runbooks/first_capture.md`
   - operator path for the first local capture run
+- `runbooks/feature_condition_shadow_cycle.md`
+  - operator path for the current feature -> condition -> shadow loop and failure triage
+- `math/regime_shadow_modeling_contracts.md`
+  - bounded mathematical and modeling contract for the current feature, regime, and shadow surfaces
 - `test/bootstrap_validation.md`
   - installed-deps validation commands, smoke procedures, and pytest coverage
 - `handoff/2026-04-12_bootstrap_phase_1.md`
@@ -65,6 +69,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - current architecture and data-flow descriptions
 - `docs/runbooks/`
   - operator procedures
+- `docs/math/`
+  - bounded mathematical, modeling, and experiment-contract guidance
 - `docs/test/`
   - validation notes and smoke checks
 - `docs/handoff/`
@@ -72,8 +78,6 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 
 ## Reserved But Intentionally Absent In This Phase
 
-- `docs/math/`
-  - deferred until model and feature surfaces are real enough to justify normative math guidance
 - `docs/setup/`
   - deferred until Solana CLI or Anchor setup becomes an active implementation requirement
 - `docs/hld/`, `docs/lld/`, `docs/done/`

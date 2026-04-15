@@ -1,11 +1,11 @@
 # D5 Trading Engine
 
-Paper-only crypto data capture and research bootstrap.
+Paper-only crypto capture, bounded feature materialization, bounded condition scoring, and shadow-only research.
 
-The current repo truth is a pre-conditions ingest engine with one bounded post-ingest feature lane:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, the generic `d5` CLI, and the first freshness-gated `spot_chain_macro_v1` feature materializer
-- active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, and Coinbase market-data capture
-- still deferred: perps, live order routing, paper fill simulation, deep Helius decoding, and real Massive historical ingest
+The current repo truth is a paper-first evidence engine with bounded downstream layers:
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, the generic `d5` CLI, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), and one bounded shadow lane (`intraday_meta_stack_v1`)
+- active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, Coinbase market-data capture, and point-in-time-safe regime history for shadow evaluation
+- still deferred: policy/risk/settlement runtime ownership, paper session and fill simulation, governed model promotion, deep Helius decoding, and real Massive historical ingest
 
 No live trading. No wallet signing. No perps.
 
@@ -13,7 +13,8 @@ No live trading. No wallet signing. No perps.
 
 ```text
 Adapter clients -> CaptureRunner -> Raw JSONL + raw SQL receipts -> source normalizers ->
-canonical SQLite truth -> bounded feature materialization -> DuckDB sync on demand
+canonical SQLite truth -> bounded feature materialization -> bounded condition scoring ->
+bounded shadow evaluation -> DuckDB sync on demand + research artifacts
 ```
 
 - `data/raw/{provider}/{YYYY-MM-DD}/` is the raw landing zone
@@ -21,7 +22,7 @@ canonical SQLite truth -> bounded feature materialization -> DuckDB sync on dema
 - `data/db/d5_analytics.duckdb` is the research mirror
 - `data/db/coinbase_raw.db` is a separate raw provider store for Coinbase payloads
 
-See [docs/README.md](docs/README.md) for the full docs map and [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up.
+See [docs/README.md](docs/README.md) for the full docs map, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, and [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded modeling contract.
 
 ## Tracked Universe
 
@@ -62,9 +63,18 @@ d5 capture fred-observations
 
 # first bounded post-ingest feature lane
 d5 materialize-features spot-chain-macro-v1
+d5 materialize-features global-regime-inputs-15m-v1
+
+# first bounded condition lane
+d5 score-conditions global-regime-v1
+
+# first bounded shadow lane
+d5 run-shadow intraday-meta-stack-v1
 
 # optional: sync canonical tables into DuckDB
-d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot feature_materialization_run feature_spot_chain_macro_minute_v1
+d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
+  feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 \
+  condition_scoring_run condition_global_regime_snapshot_v1 experiment_run experiment_metric
 ```
 
 ## Current CLI Surface
@@ -74,7 +84,9 @@ d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapsho
 | `d5 init` | Apply Alembic migrations to the canonical SQLite truth database |
 | `d5 capture <provider|all>` | Run one capture flow using the current generic dispatcher |
 | `d5 materialize-features <feature-set>` | Materialize a bounded deterministic feature set from canonical truth |
-| `d5 status` | Show recent ingest runs and latest provider health events |
+| `d5 score-conditions <condition-set>` | Score a bounded condition set from deterministic feature inputs |
+| `d5 run-shadow <shadow-run>` | Run a bounded shadow-only ML evaluation lane |
+| `d5 status` | Show recent ingest runs, latest provider health events, and the latest condition run |
 | `d5 sync-duckdb [tables...]` | Copy selected SQLite truth tables into DuckDB |
 
 Current `capture` provider values:
@@ -102,6 +114,19 @@ Current `capture` provider values:
 | Coinbase | partial | public product, candle, trade, and L2 book capture with separate raw DB and canonical market-data tables |
 | FRED | implemented | series and observation capture/normalization |
 | Massive | scaffolded | fail-closed readiness/probe path until entitlement and payload shape are confirmed |
+
+## Bounded Model Surfaces
+
+- `spot_chain_macro_v1`
+  - minute-by-mint feature lane from canonical spot, market-structure, chain, and macro truth
+- `global_regime_inputs_15m_v1`
+  - market-wide 15-minute feature lane built from Coinbase proxy products plus captured-at-safe macro context
+- `global_regime_v1`
+  - bounded regime scorer with a four-state Gaussian HMM when `hmmlearn` is installed and a Gaussian-mixture fallback when it is not
+- `intraday_meta_stack_v1`
+  - shadow-only evaluation lane with walk-forward regime history, ATR-style triple-barrier labels, `IsolationForest`, `RandomForest`, `XGBoost`, optional Chronos-2 summaries, Monte Carlo summaries, and Fibonacci annotations as research-only evidence
+
+These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, and a shadow evaluation lane; it does not yet have policy eligibility, a hard risk gate, or paper settlement ownership.
 
 ## Time Handling
 

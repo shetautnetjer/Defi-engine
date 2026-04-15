@@ -1,6 +1,6 @@
 # Bootstrap Architecture
 
-Current architecture for the implemented `Defi-engine` bootstrap.
+Current architecture for the implemented `Defi-engine` paper-first stack.
 
 ## Core Flow
 
@@ -12,10 +12,12 @@ Adapter client
   -> source normalizer
   -> canonical SQLite truth tables
   -> bounded feature materialization
-  -> optional DuckDB sync
+  -> bounded condition scoring
+  -> bounded shadow evaluation
+  -> optional DuckDB sync + research artifacts
 ```
 
-This is a paper-only ingestion and research bootstrap. No live order routing, wallet automation, or promotion-sensitive runtime behavior is implemented here.
+This remains a paper-only engine. No live order routing, wallet automation, policy-owned eligibility, hard risk gating, or paper settlement loop is implemented here.
 
 ## Storage Surfaces
 
@@ -49,6 +51,11 @@ This is a paper-only ingestion and research bootstrap. No live order routing, wa
 - mirror helper: `src/d5_trading_engine/storage/analytics/duckdb_mirror.py`
 - selected SQLite tables are copied into DuckDB on demand with `d5 sync-duckdb`
 
+### Research artifact surface
+
+- shadow artifacts land under `data/research/shadow_runs/<run_id>/`
+- these files are evidence, not runtime authority
+
 ### Reserved storage surface
 
 - `data/parquet/` directories are created by the storage layer
@@ -59,8 +66,8 @@ This is a paper-only ingestion and research bootstrap. No live order routing, wa
 - `adapters/`
   - provider-specific fetchers
   - Jupiter is the current spot reference source
-  - Helius now includes tracked-address REST discovery and enhanced transactions
-  - Coinbase now provides public spot market-data capture
+  - Helius includes tracked-address REST discovery and bounded raw websocket capture
+  - Coinbase provides public spot market-data capture
   - Massive remains a fail-closed readiness/probe path only
 
 - `capture/runner.py`
@@ -72,7 +79,7 @@ This is a paper-only ingestion and research bootstrap. No live order routing, wa
   - records provider health
 
 - `normalize/`
-  - owns source-specific projection into canonical tables
+  - owns source-specific projection into canonical truth
   - Jupiter projects spot tokens, prices, and quotes
   - Helius projects tracked-address discovery and bounded transfer rows
   - Coinbase projects market instruments, candles, trades, and L2 book snapshots
@@ -85,23 +92,51 @@ The active schema includes:
 - raw source tables such as `raw_jupiter_*`, `raw_helius_*`, `raw_fred_*`, and `raw_massive_crypto_event`
 - canonical spot and macro tables such as `token_registry`, `token_metadata_snapshot`, `token_price_snapshot`, `quote_snapshot`, `fred_series_registry`, and `fred_observation`
 - chain and market event tables such as `program_registry`, `solana_address_registry`, `solana_transfer_event`, `market_instrument_registry`, `market_candle`, `market_trade_event`, and `order_book_l2_event`
-- bounded feature and research tables such as `feature_materialization_run`, `feature_spot_chain_macro_minute_v1`, `experiment_run`, and `experiment_metric`
+- bounded feature tables such as `feature_materialization_run`, `feature_spot_chain_macro_minute_v1`, and `feature_global_regime_input_15m_v1`
+- bounded condition tables such as `condition_scoring_run` and `condition_global_regime_snapshot_v1`
+- bounded experiment tables such as `experiment_run` and `experiment_metric`
+
+## Layered Runtime Owners
+
+### `features/`
+
+- real but bounded
+- owns:
+  - `spot_chain_macro_v1`
+  - `global_regime_inputs_15m_v1`
+- gating source freshness through `ingest_run` and `source_health_event`
+
+### `condition/`
+
+- real but bounded
+- owns:
+  - `global_regime_v1`
+- runtime persistence is limited to the latest closed-bucket snapshot
+- walk-forward history exists for research use only
+
+### `research_loop/`
+
+- real but bounded
+- owns:
+  - `intraday_meta_stack_v1`
+- writes experiment receipts and evidence artifacts
+- remains shadow-only and non-promoting
 
 ## Time Model
 
 - event-style canonical tables store `captured_at_utc`
 - when the provider emits an event time, they also store `source_event_time_utc`
 - helper fields `event_date_utc`, `hour_utc`, `minute_of_day_utc`, and `weekday_utc` are materialized now so later session logic does not rely on local wall-clock time
+- FRED observations are broadcast into feature rows only when the observation had already been captured by the feature bucket end
 
 ## Deliberate Non-Claims
 
-- `features/` now has one bounded implementation path for `spot_chain_macro_v1`, but it is not yet a broad feature store or a freshness-authorized runtime layer.
-- `condition/`
+- `features/` is not yet a broad feature store or online serving layer.
+- `condition/` is not yet a broad condition catalog.
 - `policy/`
 - `risk/`
 - `settlement/`
 - `models/`
-- `research_loop/`
 - `trajectory/`
 
-Those package boundaries still should not be documented as active trading runtime behavior until the remaining layers are implemented.
+Those package boundaries still must not be documented as active trading runtime behavior until their own owners are implemented.
