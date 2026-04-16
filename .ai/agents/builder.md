@@ -10,7 +10,7 @@ Implement the active accepted story with the smallest valid patch.
 
 Preferred runtime:
 
-- Codex Spark when launching a Codex lane run
+- ChatGPT 5.4 by default when launching a builder lane run
 
 ## Workflow
 
@@ -31,6 +31,7 @@ Preferred artifacts:
 - `<story-id>__delivery.md`
 - `<story-id>__files.txt`
 - `<story-id>__validation.txt`
+- `<story-id>__result.json`
 
 Each delivery note should include:
 

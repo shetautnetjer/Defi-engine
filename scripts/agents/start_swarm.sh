@@ -10,7 +10,7 @@ usage() {
   cat <<'EOF'
 Usage: start_swarm.sh [--repo PATH] [--session NAME] [--project-id ID] [--launch-all]
 
-Start the Defi-engine four-lane tmux swarm.
+Start the Defi-engine four-lane tmux session only.
 EOF
 }
 
@@ -66,6 +66,7 @@ tmux select-pane -t "$session_name:lanes.0" -T "research"
 tmux select-pane -t "$session_name:lanes.1" -T "builder"
 tmux select-pane -t "$session_name:lanes.2" -T "architecture"
 tmux select-pane -t "$session_name:lanes.3" -T "writer-integrator"
+"$script_dir/refresh_watch_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
 
 printf 'active story: %s\n' "$(defi_swarm_active_story "$repo_root")"
 defi_swarm_print_lane_map
@@ -77,6 +78,8 @@ if [[ "$launch_all" == "true" ]]; then
   "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run
 fi
 
+"$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --no-mail --quiet >/dev/null
+
 cat <<EOF
 
 Session ready: $session_name
@@ -84,6 +87,11 @@ Repo: $repo_root
 
 Common next commands:
   $script_dir/status_swarm.sh --repo $repo_root
+  $script_dir/start_supervisor.sh --repo $repo_root
+  $script_dir/refresh_watch_swarm.sh --repo $repo_root
+  $script_dir/health_swarm.sh --repo $repo_root
+  $script_dir/relaunch_stale_lanes.sh --repo $repo_root
+  $script_dir/run_persistent_cycle.sh --repo $repo_root --max-cycles 5 --interval 60
   $script_dir/send_swarm.sh --repo $repo_root --lane research --run
   $script_dir/send_swarm.sh --repo $repo_root --lane builder --run
   $script_dir/send_swarm.sh --repo $repo_root --lane architecture --run

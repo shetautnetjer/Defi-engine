@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Track the concrete corrective work required before `global_regime_v1` and `intraday_meta_stack_v1` can be treated as trustworthy paper-runtime support surfaces.
+Track the concrete corrective work that was required before `global_regime_v1` and `intraday_meta_stack_v1` could be treated as trustworthy paper-runtime support surfaces.
 
-This page is narrower than `paper_runtime_blockers.md`. It focuses on the current condition and shadow lane findings that must be closed before policy work should consume them.
+This page is narrower than `paper_runtime_blockers.md`. The findings below are now materially implemented in repo truth and should be treated as a historical corrective receipt plus guardrail, not as a hard blocker that prevents the first policy consumer from existing.
 
 ## Findings
 
@@ -16,15 +16,15 @@ This page is narrower than `paper_runtime_blockers.md`. It focuses on the curren
 
 ## Guardrail
 
-Until these findings are closed and revalidated:
+These findings are now materially closed and revalidated in targeted tests. The remaining guardrail is narrower:
 
-- `global_regime_v1` remains a bounded condition scorer, not a policy input
+- `global_regime_v1` is now a valid input to the first explicit `policy/` trace owner
 - `intraday_meta_stack_v1` remains a shadow-only research surface
 - policy, risk, and settlement work should not promote the current shadow metrics into runtime authority
 
 ## Verification Target
 
-The corrective slice is only complete when:
+The corrective slice is materially complete because:
 
 1. the scorer provides a walk-forward regime history for shadow use
 2. shadow metrics are built from chronologically ordered, point-in-time-safe features

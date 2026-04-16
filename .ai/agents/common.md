@@ -15,14 +15,28 @@ Implemented and real now:
   - `global_regime_inputs_15m_v1`
 - bounded condition scoring:
   - `global_regime_v1`
+- explicit policy tracing:
+  - `global_regime_v1`
+  - `policy_global_regime_trace_v1`
+- explicit risk gating:
+  - `RiskGate`
+  - `risk_global_regime_gate_v1`
+- explicit paper settlement:
+  - `PaperSettlement`
+  - `paper_session`
+  - `paper_fill`
+  - `paper_position`
+  - `paper_session_report`
 - bounded shadow evaluation:
   - `intraday_meta_stack_v1`
 
-Still missing as runtime owners:
+Remaining blockers to a fully governed paper engine:
 
-- `policy/`
-- `risk/`
-- `settlement/`
+- continuous capture ownership still needs an explicit runtime owner
+- runtime-owned execution intent between `risk/` and `settlement/` does not exist yet
+- `research_loop/` still does not compare realized paper outcomes against shadow receipts
+- the swarm still needs a clean terminal completion contract that distinguishes
+  backlog exhaustion, audit-known follow-ons, and true terminal completion
 
 ## Authority order
 
@@ -37,12 +51,20 @@ Forecasting, shadow evaluation, memory, and external research are advisory only.
 ## Shared rules
 
 - Work one accepted story at a time.
+- Keep looping until no eligible stories remain and the final architect +
+  writer-integrator audit is clean.
+- Keep the existing 4-lane swarm. Do not invent new permanent lanes.
+- Finder work runs inside trusted lanes:
+  - `architecture-finder` is subtraction-first
+  - `research-finder` is evidence-first
+- Finder outputs are advisory only until writer-integrator promotes, defers,
+  rejects, or marks them audit-known.
 - Read the current repo map before proposing anything.
 - Do not invent a new surface if an existing one already serves the need.
 - Do not silently widen runtime authority.
 - Default safe action is no-trade and no-promotion.
-- `policy/`, `risk/`, and `settlement/` are the next missing owners unless a
-  real blocker in `source/`, `features/`, or `condition/` prevents progress.
+- Future stories should now descend the real blocker list instead of assuming a
+  placeholder owner is still missing.
 
 ## Write boundaries
 
@@ -52,6 +74,7 @@ Forecasting, shadow evaluation, memory, and external research are advisory only.
   writer-integrator explicitly accepts a doc patch for the current story
 - writer-integrator owns:
   - `.ai/dropbox/state/`
+  - `accepted_receipts/*.json`
   - `prd.json`
   - `progress.txt`
   - accepted docs synchronization
@@ -63,6 +86,7 @@ Forecasting, shadow evaluation, memory, and external research are advisory only.
   - `exa-search-skill`
   - `crawl4ai-skill`
 - builder lane:
+  - default model: ChatGPT 5.4
   - `jetbrains-mcp`
   - repo-native tests/checks
 - architecture lane:

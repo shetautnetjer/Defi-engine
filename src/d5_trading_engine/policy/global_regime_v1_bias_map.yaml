@@ -1,26 +1,27 @@
 version: 1
 condition_set: global_regime_v1
-status: advisory_only
+status: runtime_policy_input
 description: >
-  First bounded semantic-regime to advisory-bias mapping. This file is not yet a
-  runtime policy owner; it exists so later policy traces consume explicit YAML
-  instead of hard-coded semantic assumptions.
+  First bounded semantic-regime to eligibility-bias mapping for the explicit
+  condition-to-policy handoff. This file is now consumed by the runtime policy
+  trace evaluator and remains fully upstream of downstream risk and settlement
+  owners.
 regimes:
   long_friendly:
     advisory_bias: long_friendly
     allow_new_long_hypotheses: true
     allow_new_short_hypotheses: false
-    notes: Prefer long-side research and paper hypotheses only after policy/risk gates exist.
+    notes: Prefer long-side policy eligibility; any paper action still depends on downstream risk and settlement owners.
   short_friendly:
     advisory_bias: short_friendly
     allow_new_long_hypotheses: false
     allow_new_short_hypotheses: true
-    notes: Prefer short-side research and paper hypotheses only after policy/risk gates exist.
+    notes: Prefer short-side policy eligibility; any paper action still depends on downstream risk and settlement owners.
   risk_off:
     advisory_bias: risk_off
     allow_new_long_hypotheses: false
     allow_new_short_hypotheses: false
-    notes: Treat as defensive and fail-closed until a real policy trace and risk gate are present.
+    notes: Treat as defensive and fail-closed while downstream risk and settlement owners are still absent.
   no_trade:
     advisory_bias: no_trade
     allow_new_long_hypotheses: false

@@ -63,5 +63,7 @@ htmlcov/
 !.ai/dropbox/architecture/.gitkeep
 !.ai/dropbox/state/
 !.ai/dropbox/state/.gitkeep
+!.ai/dropbox/state/accepted_receipts/
+!.ai/dropbox/state/accepted_receipts/.gitkeep
 scripts/ralph/.last-branch
 scripts/ralph/runs/

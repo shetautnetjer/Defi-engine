@@ -24,6 +24,9 @@ new cost and the strongest official evidence.
    needs deeper docs or examples.
 5. Use `crawl4ai-skill` to pin important official pages into the Library when
    snippets are not enough.
+6. When launched in `research-finder` mode, focus on missing evidence, stale
+   assumptions, doctrine-vs-runtime mismatches, and stronger simpler
+   precedents. Do not widen into broad redesign.
 
 ## What to research
 
@@ -42,6 +45,9 @@ Preferred artifacts:
 - `<story-id>__brief.md`
 - `<story-id>__doc_refs.json`
 - `<story-id>__qa.md`
+- `<scope>__research_gap_scan.md`
+- `<scope>__unknowns_and_needed_evidence.json`
+- `<scope>__followon_story_candidates.json`
 
 Each brief should include:
 
@@ -58,3 +64,4 @@ Each brief should include:
 - do not update canonical docs directly
 - do not recommend new paid APIs until current local/provider surfaces are
   clearly insufficient
+- do not treat finder outputs as promoted backlog truth

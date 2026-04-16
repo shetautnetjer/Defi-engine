@@ -32,4 +32,5 @@ done
 
 repo_root="$(defi_swarm_repo_root "$repo")"
 session_name="${session_name:-$(defi_swarm_session_name)}"
+"$script_dir/stop_supervisor.sh" --repo "$repo_root" >/dev/null || true
 "$(defi_swarm_tmux_root)/tmux_lanes_stop.sh" --repo "$repo_root" --session "$session_name" --kill

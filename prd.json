@@ -1,8 +1,12 @@
 {
   "project": "Defi-engine",
   "branchName": "main",
-  "description": "Use a Ralph-style 4-lane tmux swarm to keep repo execution grounded in source truth, bounded feature/condition/shadow surfaces, and the still-missing runtime owners of policy, risk, and settlement.",
-  "activeStoryId": "POL-001",
+  "description": "Use a Ralph-style 4-lane tmux swarm to keep repo execution grounded in source truth, bounded feature/condition/shadow surfaces, explicit policy/risk/settlement owners, and receipt-backed follow-on runtime hardening.",
+  "activeStoryId": "ORCH-005",
+  "swarmState": "active",
+  "completionAuditState": "pending",
+  "lastCompletionAuditReceiptId": "",
+  "lastFinderAuditId": "",
   "userStories": [
     {
       "id": "ORCH-001",
@@ -16,7 +20,11 @@
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15."
+      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15.",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
     },
     {
       "id": "ORCH-002",
@@ -30,7 +38,11 @@
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15."
+      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15.",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
     },
     {
       "id": "ORCH-003",
@@ -44,7 +56,47 @@
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15."
+      "notes": "Completed in the orchestration bootstrap slice on 2026-04-15.",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
+    },
+    {
+      "id": "ORCH-004",
+      "title": "Add continuous completion supervision and receipt-backed acceptance",
+      "description": "As a repo operator, I want the four-lane swarm to keep cycling until no eligible stories remain and the final architect plus writer audit is clean, with acceptance receipts and recovery flow making semantic progress explicit instead of inferred.",
+      "acceptanceCriteria": [
+        "prd.json carries explicit story state fields that make eligibility and progression machine-runnable",
+        "The swarm writes structured acceptance receipts and uses them to update story state and progress truth",
+        "The persistent supervisor keeps looping until no eligible stories remain, then runs a final architect plus writer completion audit",
+        "Docs, prompts, and contract tests describe the continuous completion semantics clearly"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Completed in the continuous-completion supervision slice on 2026-04-16.",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
+    },
+    {
+      "id": "ORCH-005",
+      "title": "Add the terminal completion contract and finder-governed follow-on flow",
+      "description": "As a repo operator, I want backlog exhaustion, audit-found follow-ons, and truly terminal completion to become explicit top-level swarm states so the four-lane loop can stay honest when seeded stories are done but governance still has receipt-backed next work to decide.",
+      "acceptanceCriteria": [
+        "prd.json carries explicit top-level swarm completion fields such as swarmState and completionAuditState, and the active follow-on orchestration story makes backlog exhaustion distinct from terminal completion.",
+        "The supervisor, health, and status surfaces distinguish active work, backlog exhaustion, audit-followons-present, and terminal-complete states without treating stale mailbox noise as canonical truth.",
+        "Architecture-finder and research-finder exist as mode switches inside the existing lanes, emit advisory audit artifacts, and never mutate backlog truth directly.",
+        "Writer-integrator remains the only promotion authority for finder outputs, and docs/tests describe the terminal-completion plus audit-followon contract clearly."
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Promoted from the 2026-04-16 architecture completion audit to make backlog exhaustion, audit-known follow-ons, and terminal completion governed states instead of implicit swarm behavior.",
+      "state": "active",
+      "recovery_round": 0,
+      "origin": "promoted_gap",
+      "promoted_by": "completion_audit_architecture@2026-04-16T06:35:27-07:00"
     },
     {
       "id": "POL-001",
@@ -56,9 +108,13 @@
         "The contract leaves advisory and shadow modeling outside runtime authority",
         "Docs and tests describe the policy boundary clearly"
       ],
-      "priority": 4,
-      "passes": false,
-      "notes": ""
+      "priority": 5,
+      "passes": true,
+      "notes": "last_receipt=2026-04-16T113343Z__POL-001",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
     },
     {
       "id": "RISK-001",
@@ -70,9 +126,13 @@
         "Stale-data, anomaly, and unresolved-state paths default safely to no-trade or halted paper behavior",
         "Tests prove that risk remains the final gate"
       ],
-      "priority": 5,
-      "passes": false,
-      "notes": ""
+      "priority": 6,
+      "passes": true,
+      "notes": "last_receipt=2026-04-16T121155Z__RISK-001",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
     },
     {
       "id": "SETTLE-001",
@@ -84,9 +144,67 @@
         "Feedback and reporting are tied to settlement truth rather than only experiment artifacts",
         "The docs clearly distinguish settlement truth from shadow evidence"
       ],
-      "priority": 6,
+      "priority": 7,
+      "passes": true,
+      "notes": "last_receipt=2026-04-16T124731Z__SETTLE-001",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
+    },
+    {
+      "id": "SOURCE-001",
+      "title": "Open explicit continuous capture runtime ownership",
+      "description": "As a repo operator, I want continuous capture to become an explicit runtime owner with lane freshness states, cadence expectations, and operator-visible health so downstream feature, policy, risk, and settlement decisions depend on governed ingest continuity instead of ad hoc manual capture runs.",
+      "acceptanceCriteria": [
+        "The repo defines explicit runtime expectation classes plus freshness and completeness rules for active Jupiter, Helius, Coinbase, and FRED capture lanes without widening readiness-only surfaces into runtime authority.",
+        "An operator-visible status or doctor surface resolves each governed capture lane to explicit freshness states and downstream eligibility using repo-owned truth such as ingest_run, source_health_event, and capture_cursor where it is actually authoritative.",
+        "Downstream runtime consumers fail closed on stale or degraded required capture lanes under the explicit source owner instead of relying on implicit manual capture assumptions.",
+        "Docs, blocker tracking, and validation artifacts describe continuous capture ownership as an accepted runtime owner rather than an active missing blocker."
+      ],
+      "priority": 9,
       "passes": false,
-      "notes": ""
+      "notes": "",
+      "state": "ready",
+      "recovery_round": 0,
+      "origin": "promoted_gap",
+      "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+    },
+    {
+      "id": "RESEARCH-001",
+      "title": "Bind research-loop comparison to realized paper outcomes",
+      "description": "As a repo operator, I want research_loop to consume settlement-owned paper receipts so shadow experiments are evaluated against realized paper outcomes instead of only upstream traces and experiment artifacts.",
+      "acceptanceCriteria": [
+        "research_loop consumes settlement-owned paper receipts as comparison inputs without promoting shadow outputs into runtime authority.",
+        "Experiment comparison can evaluate bounded shadow receipts against realized paper outcomes from paper_session, paper_fill, paper_position, and paper_session_report.",
+        "Feedback-governance docs and tests make clear that realized comparison informs research and promotion review without self-promoting models or strategies into runtime eligibility.",
+        "Docs, blocker tracking, and the repo map no longer describe realized-feedback comparison as a missing blocker once the accepted comparison path exists."
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "state": "ready",
+      "recovery_round": 0,
+      "origin": "promoted_gap",
+      "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+    },
+    {
+      "id": "EXEC-001",
+      "title": "Open the first runtime-owned execution-intent surface",
+      "description": "As a repo operator, I want a bounded execution-intent owner between risk and settlement so allowed risk verdicts can become explicit spot-only mint, size, and entry-exit intent without inventing hidden strategy authority or implying live execution behavior.",
+      "acceptanceCriteria": [
+        "The repo has an explicit execution-intent contract downstream of risk_global_regime_gate_v1 and upstream of PaperSettlement instead of treating a market-wide risk verdict as full intent by implication.",
+        "The execution-intent owner persists or selects quote-backed spot-only mint, size, and entry-exit intent and fails closed on ambiguous, unsupported, or stale intent inputs.",
+        "Settlement consumes the explicit execution-intent surface rather than requiring manual explicit ids at every call site or inferring hidden strategy selection from risk alone.",
+        "Docs, blocker tracking, and tests describe execution intent as a bounded paper-only owner that remains separate from policy eligibility, promotion, and live trading authority."
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Deferred until SOURCE-001 and RESEARCH-001 land because execution intent should follow the source-owner and realized-feedback hardening work, not jump ahead of them.",
+      "state": "deferred",
+      "recovery_round": 0,
+      "origin": "promoted_gap",
+      "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
     }
   ]
 }

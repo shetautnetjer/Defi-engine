@@ -46,3 +46,31 @@ def test_active_docs_do_not_reference_stale_cli_strings() -> None:
         contents = path.read_text()
         for stale in stale_strings:
             assert stale not in contents, f"found stale text {stale!r} in {path}"
+
+
+def test_ralph_runbook_mentions_persistent_supervision() -> None:
+    runbook = (REPO_ROOT / "docs" / "runbooks" / "ralph_tmux_swarm.md").read_text()
+    assert "start_supervisor.sh" in runbook
+    assert "supervisor_status.sh" in runbook
+    assert "health_swarm.sh" in runbook
+    assert "refresh_watch_swarm.sh" in runbook
+    assert "relaunch_stale_lanes.sh" in runbook
+    assert "run_persistent_cycle.sh" in runbook
+    assert "mailbox.jsonl" in runbook
+    assert "stops both the detached supervisor and the tmux session" in runbook
+    assert "session control only" in runbook
+    assert "lane-health" in runbook
+    assert "accepted_receipts" in runbook
+    assert "detached supervisor state" in runbook
+    assert "alive" in runbook
+    assert "producing" in runbook
+    assert "accepted" in runbook
+    assert "mailbox_current.json" in runbook
+    assert "finder_state.json" in runbook
+    assert "finder_decision.json" in runbook
+    assert "architecture-finder" in runbook
+    assert "research-finder" in runbook
+    assert "swarmState" in runbook
+    assert "completionAuditState" in runbook
+    assert "terminal_complete" in runbook
+    assert "audit_followons_present" in runbook

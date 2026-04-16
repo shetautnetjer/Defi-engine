@@ -675,6 +675,225 @@ class ConditionGlobalRegimeSnapshotV1(Base):
     )
 
 
+class PolicyGlobalRegimeTraceV1(Base):
+    """Policy-owned trace for bounded global regime eligibility decisions."""
+
+    __tablename__ = "policy_global_regime_trace_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    condition_run_id = Column(
+        String(64),
+        ForeignKey("condition_scoring_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    condition_snapshot_id = Column(
+        Integer,
+        ForeignKey("condition_global_regime_snapshot_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    bucket_start_utc = Column(DateTime, nullable=False, index=True)
+    semantic_regime = Column(String(32), nullable=False)
+    condition_confidence = Column(Float, nullable=False)
+    macro_context_state = Column(String(32), nullable=True)
+    condition_blocked_flag = Column(Integer, nullable=False, default=0)
+    condition_blocking_reason = Column(Text, nullable=True)
+    policy_state = Column(String(32), nullable=False)
+    advisory_bias = Column(String(32), nullable=False)
+    allow_new_long_hypotheses = Column(Integer, nullable=False, default=0)
+    allow_new_short_hypotheses = Column(Integer, nullable=False, default=0)
+    config_hash = Column(String(64), nullable=False)
+    config_version = Column(Integer, nullable=False)
+    config_status = Column(String(32), nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    trace_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_policy_global_regime_trace_v1_key",
+            "bucket_start_utc",
+            "policy_state",
+        ),
+    )
+
+
+class RiskGlobalRegimeGateV1(Base):
+    """Risk-owned veto receipt over persisted global regime policy truth."""
+
+    __tablename__ = "risk_global_regime_gate_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    policy_trace_id = Column(
+        Integer,
+        ForeignKey("policy_global_regime_trace_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    condition_run_id = Column(
+        String(64),
+        ForeignKey("condition_scoring_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    condition_snapshot_id = Column(
+        Integer,
+        ForeignKey("condition_global_regime_snapshot_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    bucket_start_utc = Column(DateTime, nullable=False, index=True)
+    policy_state = Column(String(32), nullable=False)
+    risk_state = Column(String(32), nullable=False)
+    macro_context_state = Column(String(32), nullable=True)
+    condition_blocked_flag = Column(Integer, nullable=False, default=0)
+    stale_data_authorized_flag = Column(Integer, nullable=False, default=0)
+    unresolved_input_flag = Column(Integer, nullable=False, default=0)
+    anomaly_signal_state = Column(String(32), nullable=False, default="not_owned")
+    reason_codes_json = Column(Text, nullable=False)
+    trace_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_risk_global_regime_gate_v1_key",
+            "bucket_start_utc",
+            "risk_state",
+        ),
+    )
+
+
+class PaperSession(Base):
+    """Settlement-owned paper session lifecycle receipt."""
+
+    __tablename__ = "paper_session"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_key = Column(String(128), nullable=False, unique=True, index=True)
+    status = Column(String(16), nullable=False, index=True)
+    base_currency = Column(String(16), nullable=False, default="USDC")
+    quote_size_lamports = Column(Integer, nullable=False, default=0)
+    opened_at = Column(DateTime, nullable=False)
+    closed_at = Column(DateTime, nullable=True)
+    starting_cash_usdc = Column(Float, nullable=False, default=0.0)
+    ending_cash_usdc = Column(Float, nullable=True)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
+class PaperFill(Base):
+    """Append-only paper fill receipt tied to explicit upstream provenance."""
+
+    __tablename__ = "paper_fill"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("paper_session.id"), nullable=False, index=True)
+    risk_verdict_id = Column(
+        Integer,
+        ForeignKey("risk_global_regime_gate_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    policy_trace_id = Column(
+        Integer,
+        ForeignKey("policy_global_regime_trace_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    condition_snapshot_id = Column(
+        Integer,
+        ForeignKey("condition_global_regime_snapshot_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    quote_snapshot_id = Column(
+        Integer,
+        ForeignKey("quote_snapshot.id"),
+        nullable=False,
+        index=True,
+    )
+    policy_state = Column(String(32), nullable=False)
+    risk_state = Column(String(32), nullable=False)
+    request_direction = Column(String(16), nullable=False)
+    input_mint = Column(String(64), nullable=False)
+    output_mint = Column(String(64), nullable=False)
+    input_amount = Column(String(32), nullable=False)
+    output_amount = Column(String(32), nullable=False)
+    fill_price_usdc = Column(Float, nullable=False)
+    price_impact_pct = Column(Float, nullable=True)
+    slippage_bps = Column(Integer, nullable=True)
+    fill_side = Column(String(16), nullable=False)
+    fill_role = Column(String(16), nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
+class PaperPosition(Base):
+    """Current paper position state for one mint inside one paper session."""
+
+    __tablename__ = "paper_position"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("paper_session.id"), nullable=False, index=True)
+    mint = Column(String(64), nullable=False, index=True)
+    net_quantity = Column(Float, nullable=False)
+    cost_basis_usdc = Column(Float, nullable=False)
+    last_fill_id = Column(Integer, ForeignKey("paper_fill.id"), nullable=False, index=True)
+    last_mark_source = Column(String(32), nullable=True)
+    last_mark_quote_snapshot_id = Column(
+        Integer,
+        ForeignKey("quote_snapshot.id"),
+        nullable=True,
+        index=True,
+    )
+    last_mark_price_usdc = Column(Float, nullable=True)
+    last_marked_at = Column(DateTime, nullable=True)
+    realized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    unrealized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "mint", name="uq_paper_position_session_mint"),
+    )
+
+
+class PaperSessionReport(Base):
+    """Settlement-owned report derived from paper sessions, fills, and positions."""
+
+    __tablename__ = "paper_session_report"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("paper_session.id"), nullable=False, index=True)
+    report_type = Column(String(32), nullable=False)
+    cash_usdc = Column(Float, nullable=False)
+    position_value_usdc = Column(Float, nullable=False)
+    equity_usdc = Column(Float, nullable=False)
+    realized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    unrealized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    mark_method = Column(String(32), nullable=False)
+    mark_inputs_json = Column(Text, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
 class ExperimentRun(Base):
     """Research experiment tracking."""
 

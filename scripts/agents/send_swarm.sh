@@ -78,6 +78,7 @@ fi
 repo_root="$(defi_swarm_repo_root "$repo")"
 session_name="${session_name:-$(defi_swarm_session_name)}"
 lane_target="$(defi_swarm_lane_number "$lane")"
+story_id="$(defi_swarm_active_story "$repo_root")"
 
 if [[ "$run_mode" == "true" ]]; then
   if [[ -z "$prompt_file" ]]; then
@@ -88,19 +89,34 @@ if [[ "$run_mode" == "true" ]]; then
     exit 1
   fi
 
-  command_text="$(printf 'cd %q && %q --repo %q --run-name %q' \
-    "$repo_root" \
+  runner_args="$(printf '%q --repo %q --run-name %q' \
     "$(defi_swarm_codex_runner)" \
     "$repo_root" \
     "swarm-$lane")"
 
-  if [[ "$lane" == "builder" ]]; then
-    command_text+=" --extra-arg -m --extra-arg $(printf '%q' "${model:-gpt-5.3-codex-spark}")"
+  default_model="$(defi_swarm_default_model_for_lane "$lane")"
+  effective_model="${model:-$default_model}"
+  if [[ -n "$effective_model" ]]; then
+    runner_args+=" --extra-arg -m --extra-arg $(printf '%q' "$effective_model")"
   elif [[ -n "$model" ]]; then
-    command_text+=" --extra-arg -m --extra-arg $(printf '%q' "$model")"
+    runner_args+=" --extra-arg -m --extra-arg $(printf '%q' "$model")"
   fi
 
-  command_text+=" --prompt-file $(printf '%q' "$prompt_file")"
+  runner_args+=" --prompt-file $(printf '%q' "$prompt_file")"
+  launch_marker="$(defi_swarm_lane_launch_marker_path "$repo_root" "$lane")"
+  completion_marker="$(defi_swarm_lane_completion_marker_path "$repo_root" "$lane")"
+  active_marker="$(defi_swarm_lane_active_marker_path "$repo_root" "$lane")"
+  jq -nc \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg lane "$lane" \
+    --arg storyId "$story_id" \
+    --arg promptFile "$prompt_file" \
+    --arg session "$session_name" \
+    --argjson epoch "$(date -u +%s)" \
+    '{ts:$ts, epoch:$epoch, lane:$lane, storyId:$storyId, promptFile:$promptFile, session:$session}' > "$launch_marker"
+  payload="cd $(printf '%q' "$repo_root") && jq -nc --arg ts \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" --arg lane $(printf '%q' "$lane") --arg storyId $(printf '%q' "$story_id") --arg promptFile $(printf '%q' "$prompt_file") --arg session $(printf '%q' "$session_name") --argjson epoch \"\$(date -u +%s)\" --argjson pid \"\$\$\" '{ts:\$ts, epoch:\$epoch, lane:\$lane, storyId:\$storyId, promptFile:\$promptFile, session:\$session, pid:\$pid}' > $(printf '%q' "$active_marker"); trap 'rm -f $(printf '%q' "$active_marker")' EXIT; $runner_args; _defi_status=\$?; jq -nc --arg ts \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" --arg lane $(printf '%q' "$lane") --arg storyId $(printf '%q' "$story_id") --arg promptFile $(printf '%q' "$prompt_file") --arg session $(printf '%q' "$session_name") --argjson epoch \"\$(date -u +%s)\" --argjson exitCode \"\$_defi_status\" '{ts:\$ts, epoch:\$epoch, lane:\$lane, storyId:\$storyId, promptFile:\$promptFile, session:\$session, exitCode:\$exitCode}' > $(printf '%q' "$completion_marker"); exit \$_defi_status"
+  command_text="$(printf 'bash -lc %q' "$payload")"
+  defi_swarm_append_mailbox_event "$repo_root" "lane_launch" "$lane" "$story_id" "$session_name" "" "" "" "lane run requested"
   "$(defi_swarm_tmux_root)/tmux_lanes_send.sh" --repo "$repo_root" --session "$session_name" --lane "$lane_target" --prompt "$command_text"
   exit 0
 fi

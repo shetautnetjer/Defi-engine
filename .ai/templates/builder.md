@@ -27,6 +27,17 @@ Required outputs:
 - `.ai/dropbox/build/<story-id>__delivery.md`
 - `.ai/dropbox/build/<story-id>__files.txt`
 - `.ai/dropbox/build/<story-id>__validation.txt`
+- `.ai/dropbox/build/<story-id>__result.json`
+
+`<story-id>__result.json` must include:
+
+- `story_id`
+- `result`: `success | partial | blocked`
+- `files_changed`
+- `checks_run`
+- `needs_research`
+- `needs_architecture`
+- `rationale`
 
 Do not update docs, `prd.json`, or `progress.txt`.
 Do not broaden scope because a larger refactor looks cleaner.

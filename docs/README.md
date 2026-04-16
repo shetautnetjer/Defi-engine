@@ -11,7 +11,7 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `prd/d5_trading_engine_prd.md`
   - repo-local product requirements for the paper-first source, feature, condition, and shadow surface
 - `sdd/d5_trading_engine_sdd.md`
-  - current software design for the source-truth stack plus bounded feature, condition, and shadow owners
+  - current software design for the source-truth stack plus bounded feature, condition, policy, and shadow owners
 - `task/ingest_hardening_phase_1.md`
   - completed hardening slice that made the bootstrap ingest contracts truthful
 - `task/source_expansion_preconditions.md`
@@ -35,7 +35,7 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `issues/paper_runtime_blockers.md`
   - durable blockers that still prevent a truthful paper-runtime claim
 - `issues/regime_shadow_corrective_slice.md`
-  - corrective findings for the current condition and shadow lane before policy work should consume them
+  - historical corrective findings and guardrails for the condition and shadow lane after the first policy consumer landed
 - `architecture/bootstrap_architecture.md`
   - current capture, feature, condition, and shadow architecture
 - `runbooks/first_capture.md`
@@ -43,7 +43,7 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `runbooks/feature_condition_shadow_cycle.md`
   - operator path for the current feature -> condition -> shadow loop and failure triage
 - `runbooks/ralph_tmux_swarm.md`
-  - repo-local four-lane tmux/Ralph orchestration for long-horizon, story-driven work
+  - repo-local four-lane tmux/Ralph orchestration plus lane-health, mailbox, acceptance receipts, detached supervisor lifecycle, and continuous completion supervision
 - `math/regime_shadow_modeling_contracts.md`
   - bounded mathematical and modeling contract for the current feature, regime, and shadow surfaces
 - `test/bootstrap_validation.md`
@@ -74,6 +74,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `docs/math/`
   - bounded mathematical, modeling, and experiment-contract guidance
 - repo-local orchestration lives outside `docs/` in `.ai/`, `prd.json`, `progress.txt`, and `scripts/ralph/`
+  - detached supervisor lifecycle also lives there through `scripts/agents/start_supervisor.sh`, `stop_supervisor.sh`, and `supervisor_status.sh`
+  - finder modes also live there through `.ai/templates/architecture_finder.md`, `.ai/templates/research_finder.md`, and `.ai/dropbox/state/{finder_state.json,finder_decision.json}`
   - treat those as execution-control surfaces, not product or runtime authority
 - `docs/test/`
   - validation notes and smoke checks

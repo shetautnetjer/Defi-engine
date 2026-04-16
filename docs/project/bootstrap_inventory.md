@@ -1,8 +1,8 @@
 # Bootstrap Inventory
 
-Current snapshot of `Defi-engine` after the first condition, shadow-evaluation, and corrective slice on 2026-04-15.
+Current snapshot of `Defi-engine` after the first condition, policy, risk, and settlement descent slices on 2026-04-16.
 
-The condition and shadow surfaces are now real repo truth with point-in-time-safe regime history and captured-at-safe macro timing, but they remain bounded and non-promoting until policy, risk, and settlement own downstream decisions.
+The condition, policy, risk, settlement, and shadow surfaces are now real repo truth with point-in-time-safe regime history and captured-at-safe macro timing, but they remain bounded and non-promoting until continuous capture ownership, runtime execution intent, and realized-feedback governance are explicit.
 
 ## Public Surface
 
@@ -32,10 +32,10 @@ The condition and shadow surfaces are now real repo truth with point-in-time-saf
 | Massive adapter/normalizer | scaffolded | fail-closed readiness/probe path surfaces auth and entitlement failure explicitly |
 | Capture runner | implemented | ingest run bookkeeping, raw write, normalization, and health logging are wired across Jupiter, Helius, Coinbase, FRED, and Massive |
 | CLI | implemented | current commands are `init`, `capture`, `materialize-features`, `score-conditions`, `run-shadow`, `status`, and `sync-duckdb` |
-| Condition/risk/settlement | partial | `condition/` now owns `global_regime_v1` plus explicit receipts, while `risk/` and `settlement/` remain placeholder surfaces |
+| Condition/policy/risk/settlement | partial | `condition/` now owns `global_regime_v1`, `policy/` now owns the first explicit `global_regime_v1` eligibility traces, `risk/` now owns the first explicit `global_regime_v1` veto receipts, and `settlement/` now owns the first explicit quote-backed paper session / fill / position / report ledger while execution intent remains explicit-id only |
 | Features | partial | `spot_chain_macro_v1` and `global_regime_inputs_15m_v1` now materialize freshness-gated feature tables plus `feature_materialization_run` receipts |
-| Models/policy/research_loop/trajectory | partial | `research_loop/` now owns one bounded PIT-safe shadow experiment lane, but it remains research-only; `policy/` and `trajectory/` remain mostly scaffolded |
-| Orchestration | implemented | repo-local Ralph/tmux swarm pack now exists under `.ai/`, `prd.json`, `progress.txt`, and `scripts/ralph/` for story-driven multi-lane execution |
+| Models/research_loop/trajectory | partial | `research_loop/` now owns one bounded PIT-safe shadow experiment lane, but it remains research-only; `trajectory/` remains mostly scaffolded |
+| Orchestration | implemented | repo-local Ralph/tmux swarm pack now exists under `.ai/`, `prd.json`, `progress.txt`, `scripts/ralph/`, and `scripts/agents/` for story-driven multi-lane execution with lane-health supervision |
 | Tests | implemented | default `pytest` stays offline-safe; live-gated Jupiter and Helius integration harnesses exist for provider receipts |
 | Docs | partial | docs inventory, architecture, runbook, validation notes, active task docs, and new planning docs exist |
 
@@ -43,7 +43,7 @@ The condition and shadow surfaces are now real repo truth with point-in-time-saf
 
 - the current CLI is generic (`d5 capture <provider>`) rather than provider-specific top-level commands
 - the CLI lives in `src/d5_trading_engine/cli.py`, not `src/d5_trading_engine/cli/main.py`
-- the current scaffold still uses single-file placeholders like `condition/scorer.py`, `risk/gate.py`, and `settlement/paper.py`
+- the current implementation still uses concentrated single-file owners like `condition/scorer.py`, `risk/gate.py`, and `settlement/paper.py`
 - README and docs must continue to treat current code as truth until deeper research and runtime layers are actually implemented
 
 ## Repo-Local Orchestration
@@ -51,5 +51,8 @@ The condition and shadow surfaces are now real repo truth with point-in-time-saf
 - `.ai/agents/` owns lane guidance for the research, builder, architecture, and writer-integrator roles
 - `.ai/index/current_repo_map.md` is the fast current-truth index for the swarm
 - `.ai/dropbox/` is working exchange only, not canonical repo truth
-- `prd.json` and `progress.txt` are the canonical story ledger for long-horizon Ralph loops
+- `.ai/dropbox/state/` now produces runtime lane-health, compacted mailbox, finder, runtime, acceptance, and detached-supervisor receipts for continuous supervision
+- `prd.json` and `progress.txt` are the canonical story ledger for long-horizon Ralph loops and now carry explicit story states plus top-level swarm completion truth (`swarmState`, `completionAuditState`)
 - the writer-integrator lane is the only lane allowed to advance story state or convert accepted work into repo docs truth
+- tmux startup and detached supervision are now intentionally separate lifecycle commands
+- the 4-lane swarm remains fixed; architecture-finder and research-finder are mode switches inside the existing lanes rather than new permanent panes

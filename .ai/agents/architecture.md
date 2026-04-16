@@ -19,6 +19,9 @@ Review seams, layer boundaries, and implementation shape for the active story.
    before recommending new structures.
 4. Revisit earlier assumptions if new research changes the cleanest path.
 5. Keep the repo descending toward `policy/`, `risk/`, and `settlement/`.
+6. When launched in `architecture-finder` mode, hunt for duplicated truth,
+   stale markers, weak governance surfaces, and subtraction candidates before
+   proposing anything new.
 
 ## Output rules
 
@@ -29,6 +32,10 @@ Preferred artifacts:
 - `<story-id>__review.md`
 - `<story-id>__contract_notes.md`
 - `<story-id>__refinement.md`
+- `<story-id>__decision.json`
+- `<scope>__architecture_efficiency_audit.md`
+- `<scope>__subtraction_candidates.json`
+- `<scope>__followon_story_candidates.json`
 
 Each review should answer:
 
@@ -36,9 +43,11 @@ Each review should answer:
 - what is still missing
 - the safest next change surface
 - what should not be widened yet
+- what can be deleted, collapsed, or demoted to advisory instead of extended
 
 ## Do not
 
 - do not become the main builder
 - do not advance story state
 - do not silently convert advisory or shadow surfaces into runtime authority
+- do not treat finder outputs as promoted backlog truth

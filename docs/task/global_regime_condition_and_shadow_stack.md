@@ -91,35 +91,60 @@ The runner writes `success` even when Chronos is unavailable, as long as the bou
 
 Shadow metrics are provisional until the point-in-time corrective slice in `docs/issues/regime_shadow_corrective_slice.md` is closed and revalidated.
 
-## Policy Stub
+## Policy Owner
 
-The first semantic-regime to advisory-bias mapping now lives at:
+The first semantic-regime YAML policy input still lives at:
 
 - `src/d5_trading_engine/policy/global_regime_v1_bias_map.yaml`
 
-This file is intentionally advisory-only. It exists so later `policy/` work reads YAML instead of silently baking semantic-to-bias assumptions into code.
+That YAML is now consumed by:
+
+- `src/d5_trading_engine/policy/global_regime_v1.py`
+- `policy_global_regime_trace_v1`
+
+The accepted `POL-001` slice turns the existing YAML bias map into the first explicit `condition/ -> policy/` handoff. It emits `eligible_long`, `eligible_short`, or `no_trade` while staying fully upstream of `risk/` and `settlement/`.
+
+## Risk Owner
+
+The accepted `RISK-001` slice turns the existing risk scaffold into the first explicit `policy/ -> risk/` handoff. It now:
+
+- consumes `policy_global_regime_trace_v1`
+- reuses `feature_materialization_run.freshness_snapshot_json` through `source_feature_run_id`
+- persists `risk_global_regime_gate_v1`
+- emits explicit `allowed`, `no_trade`, or `halted` verdicts
+- keeps runtime anomaly explicitly `not_owned` instead of promoting shadow signals
+- stays fully upstream of `settlement/`
+
+## Settlement Owner
+
+The accepted `SETTLE-001` slice turns the existing settlement scaffold into the first explicit `risk/ -> settlement/` handoff. It now:
+
+- consumes explicit `risk_verdict_id` plus `quote_snapshot_id`
+- persists `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report`
+- keeps settlement quote-backed, paper-only, and spot-only in v1
+- fails closed on stale, missing, or unsupported quote / policy / risk inputs
+- leaves short-open behavior explicitly unsupported instead of inventing borrow or perp semantics
 
 ## Not Yet Safe To Claim
 
 This slice does **not** mean the repo has:
 
-- strategy eligibility
-- a paper-session loop
-- a hard risk gate
-- settlement receipts
+- automatic execution intent routing from `allowed` risk verdicts into mint or size selection
+- governed realized-feedback comparison inside `research_loop/`
 - governed model promotion
+- spot-short settlement semantics
 
 The truthful claim is narrower:
 
 - `condition/` now has one bounded regime scorer backed by feature truth
+- `policy/` now has one explicit consumer that turns persisted condition truth into traceable `eligible_long`, `eligible_short`, or `no_trade` receipts
+- `risk/` now has one explicit hard gate that turns persisted policy truth into traceable `allowed`, `no_trade`, or `halted` receipts while keeping anomaly out of runtime authority
+- `settlement/` now has one explicit quote-backed paper ledger that turns persisted risk truth plus explicit quote intent into traceable paper sessions, fills, positions, and reports
 - `research_loop/` now has one bounded shadow experiment lane with non-promoting receipts
-- the shadow lane is only trustworthy after the point-in-time corrective slice is closed; until then its metrics are research-only and provisional
-- runtime policy, risk, and settlement remain unimplemented
+- shadow remains research-only, and realized-feedback governance still remains unimplemented
 
 ## Next Actions
 
-1. Close the corrective findings in `docs/issues/regime_shadow_corrective_slice.md` before promoting any condition or shadow outputs into policy work.
-2. Turn the advisory YAML bias map into the first real `policy/` trace input instead of leaving it file-only.
-3. Define the first `condition/` to `policy/` consumer so regime state becomes explainable eligibility rather than a standalone score.
-4. Add the first paper-safe `risk/` veto surface before any strategy or settlement work expands.
-5. After paper-session receipts exist, connect `experiment_run` comparison to realized paper outcomes rather than pure shadow labels.
+1. Define the first runtime-owned execution-intent surface between `risk/` and `settlement/` if the repo wants automatic paper action.
+2. Keep operator wording and docs aligned so `allowed` risk verdicts do not imply automatic paper action without explicit quote-backed intent.
+3. Connect `experiment_run` comparison to realized paper outcomes now that settlement receipts exist.

@@ -16,12 +16,17 @@ integration decisions.
 2. Read `progress.txt`.
 3. Read the current repo map and all active dropbox outputs for the active
    story.
-4. Decide whether the current loop output is accepted or rejected.
-5. Only after acceptance:
+4. Write a structured receipt with `scripts/agents/write_acceptance_receipt.sh`.
+5. Decide whether the current loop output is accepted, rejected, blocked, or escalated.
+6. Consume finder outputs and decide whether they are promoted, deferred,
+   rejected, or audit-known only.
+7. Only after receipt-backed judgment:
    - update `prd.json`
    - append `progress.txt`
    - update the relevant docs
    - refresh `.ai/index/current_repo_map.md` if repo truth changed materially
+7. If the active story is no longer eligible and another eligible story exists,
+   rotate to the next eligible story.
 
 ## Doc ownership
 
@@ -46,9 +51,13 @@ Preferred artifacts:
 - `accepted_loops.md`
 - `open_questions.md`
 - `rejections.md`
+- `accepted_receipts/*.json`
+- `finder_decision.json`
 
 ## Do not
 
 - do not treat in-flight lane output as repo truth
 - do not advance a story without evidence-backed acceptance
 - do not let docs drift ahead of accepted code and validated behavior
+- do not allow finder outputs to mutate `prd.json` until you have written the
+  writer decision that justifies the promotion or deferral

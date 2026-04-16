@@ -55,3 +55,237 @@ Started: 2026-04-15T11:00:00Z
 - Useful context for the next loop
 - `POL-001` is the next active story and should become the first explicit policy
   decision-trace owner for bounded condition truth.
+---
+## 2026-04-16T11:15:00Z - ORCH-004
+- Previous state -> new state
+- implicit bounded persistent supervision -> receipt-backed continuous completion supervision
+- What was implemented
+- Added explicit story-state semantics to `prd.json`: `ready`, `active`, `recovery`, `blocked_external`, `deferred`, `done`, and `escalated`.
+- Added receipt-backed story progression helpers in `scripts/agents/write_acceptance_receipt.sh`, `scripts/agents/update_story_state.sh`, and `scripts/agents/promote_gap_story.sh`.
+- Upgraded lane supervision so health/status now separate `alive`, `producing`, and `accepted`, and story summaries include receipt, eligibility, recovery, and path-exhaustion state.
+- Upgraded relaunch and persistent-cycle flow so the swarm keeps cycling until no eligible stories remain, then routes through an architect-plus-writer completion audit instead of stopping at a bounded single-loop convention.
+- Updated prompts, lane guides, and docs so builder defaults to `gpt-5.4`, architecture emits `__decision.json`, writer owns `accepted_receipts/`, and completion is defined by both ledger exhaustion and a clean final audit.
+- Files changed
+- `.gitignore`
+- `.ai/README.md`
+- `.ai/agents/common.md`
+- `.ai/agents/builder.md`
+- `.ai/agents/architecture.md`
+- `.ai/agents/writer_integrator.md`
+- `.ai/dropbox/README.md`
+- `.ai/dropbox/state/accepted_receipts/.gitkeep`
+- `.ai/templates/builder.md`
+- `.ai/templates/architecture.md`
+- `.ai/templates/writer_integrator.md`
+- `.ai/templates/architecture_completion_audit.md`
+- `.ai/templates/writer_completion_audit.md`
+- `prd.json`
+- `progress.txt`
+- `scripts/agents/common.sh`
+- `scripts/agents/send_swarm.sh`
+- `scripts/agents/status_swarm.sh`
+- `scripts/agents/health_swarm.sh`
+- `scripts/agents/relaunch_stale_lanes.sh`
+- `scripts/agents/run_persistent_cycle.sh`
+- `scripts/agents/write_acceptance_receipt.sh`
+- `scripts/agents/update_story_state.sh`
+- `scripts/agents/promote_gap_story.sh`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `tests/test_orchestration_contract.py`
+- `tests/test_docs_contract.py`
+- Checks run and their results
+- `bash -n scripts/agents/common.sh scripts/agents/send_swarm.sh scripts/agents/health_swarm.sh scripts/agents/relaunch_stale_lanes.sh scripts/agents/run_persistent_cycle.sh scripts/agents/write_acceptance_receipt.sh scripts/agents/update_story_state.sh scripts/agents/promote_gap_story.sh` -> passed
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` -> `8 passed`
+- `git diff --check` -> clean
+- temp sandbox smoke:
+  - `write_acceptance_receipt.sh` -> wrote valid receipt JSON
+  - `update_story_state.sh` -> advanced a story into `recovery` and incremented `recovery_round`
+  - `promote_gap_story.sh` -> created a promoted-gap story and activated it
+  - python assertion -> `ok`
+- live supervision receipt
+- `./scripts/agents/run_persistent_cycle.sh --session defi-engine-swarm --interval 5 --max-cycles 3` launched the architecture lane for `POL-001` and health correctly reported it as `running` with an active PID instead of inferring progress from pane existence.
+- The first live completion proof is still incomplete: architecture entered a real Codex run and read the expected repo surfaces, but it did not yet emit `POL-001__decision.json` within the short observation window, so builder remained correctly locked behind architecture.
+- Learnings for future iterations
+- Continuous completion needs both orchestration receipts and bounded lane contracts; liveness alone is not enough to prove semantic progress.
+- The next hardening slice is probably hung-lane or max-runtime handling plus stricter lane result sidecars so the supervisor can distinguish `still working`, `finished with no semantic output`, and `needs escalation`.
+---
+## 2026-04-16T11:33:43Z - POL-001
+- Previous state -> new state
+- policy placeholder and advisory YAML stub -> explicit condition-to-policy trace owner
+- What was implemented
+- Added repo-local YAML support in `pyproject.toml` for the first real policy slice.
+- Added `src/d5_trading_engine/policy/global_regime_v1.py` so policy now consumes persisted condition receipts plus the existing YAML bias map and emits `eligible_long`, `eligible_short`, or `no_trade`.
+- Added `policy_global_regime_trace_v1` to the ORM and Alembic so policy decisions now persist as explicit downstream truth.
+- Added targeted policy tests for long/short eligibility, fail-closed `no_trade`, malformed YAML, and latest-failed-run no-fallback behavior.
+- Synced the policy YAML metadata plus the truth-facing README, repo map, runbook, blocker, task, and SDD surfaces so accepted docs no longer describe `policy/` as missing.
+- Files changed
+- `pyproject.toml`
+- `src/d5_trading_engine/policy/__init__.py`
+- `src/d5_trading_engine/policy/global_regime_v1.py`
+- `src/d5_trading_engine/policy/global_regime_v1_bias_map.yaml`
+- `src/d5_trading_engine/storage/truth/models.py`
+- `sql/migrations/versions/005_policy_global_regime_trace_v1.py`
+- `tests/test_policy_global_regime_v1.py`
+- `README.md`
+- `.ai/agents/common.md`
+- `.ai/index/current_repo_map.md`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/issues/paper_runtime_blockers.md`
+- `docs/issues/regime_shadow_corrective_slice.md`
+- `docs/task/global_regime_condition_and_shadow_stack.md`
+- `docs/sdd/d5_trading_engine_sdd.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/rejections.md`
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T113343Z__POL-001.json`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `pytest tests/test_policy_global_regime_v1.py tests/test_migrations.py tests/test_cli.py -q` -> `25 passed in 27.12s`
+- `pytest tests/test_policy_global_regime_v1.py tests/test_migrations.py tests/test_cli.py tests/test_docs_contract.py -q` -> `29 passed in 27.23s`
+- `ruff check src/d5_trading_engine/policy/__init__.py src/d5_trading_engine/policy/global_regime_v1.py src/d5_trading_engine/storage/truth/models.py tests/test_policy_global_regime_v1.py sql/migrations/versions/005_policy_global_regime_trace_v1.py` -> passed
+- `git diff --check` -> clean
+- Story progression
+- Wrote acceptance receipt `2026-04-16T113343Z__POL-001`.
+- Marked `POL-001` as `done`.
+- Rotated `activeStoryId` to `RISK-001`.
+- Learnings for future iterations
+- The accepted `POL-001` slice is intentionally trace-only; a separate `policy_decision_run` receipt remains a non-blocking follow-on if downstream joins need it.
+- `RISK-001` is now the next real missing runtime owner and should consume `policy_global_regime_trace_v1` instead of reaching back into `condition/`.
+---
+## 2026-04-16T12:11:55Z - RISK-001
+- Previous state -> new state
+- fail-closed risk scaffold -> explicit policy-to-risk gate owner
+- What was implemented
+- `src/d5_trading_engine/risk/gate.py` now evaluates persisted `policy_global_regime_trace_v1` inputs, reuses `feature_materialization_run.freshness_snapshot_json` through `source_feature_run_id`, and emits explicit `allowed`, `no_trade`, or `halted` verdicts.
+- `risk_global_regime_gate_v1` now persists the first explicit risk-owned receipt surface without widening into settlement, provider re-queries, or shadow-anomaly promotion.
+- Added targeted risk tests for allowed policy traces, preserved `no_trade`, stale-data halts, and unresolved-input halts.
+- Writer-integrator synced the repo map, common lane doctrine, README, SDD, runbook, blocker list, and active task note so accepted repo truth no longer describes `risk/` as missing.
+- Files changed
+- `src/d5_trading_engine/risk/gate.py`
+- `src/d5_trading_engine/risk/__init__.py`
+- `src/d5_trading_engine/storage/truth/models.py`
+- `sql/migrations/versions/006_risk_global_regime_gate_v1.py`
+- `tests/test_risk_global_regime_v1.py`
+- `README.md`
+- `.ai/agents/common.md`
+- `.ai/index/current_repo_map.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/issues/paper_runtime_blockers.md`
+- `docs/task/global_regime_condition_and_shadow_stack.md`
+- `docs/sdd/d5_trading_engine_sdd.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T121155Z__RISK-001.json`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `ruff check src/d5_trading_engine/risk/gate.py src/d5_trading_engine/risk/__init__.py src/d5_trading_engine/storage/truth/models.py tests/test_risk_global_regime_v1.py sql/migrations/versions/006_risk_global_regime_gate_v1.py` -> passed
+- `pytest tests/test_risk_global_regime_v1.py tests/test_policy_global_regime_v1.py tests/test_migrations.py tests/test_docs_contract.py tests/test_orchestration_contract.py -q` -> `26 passed in 21.33s`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `git diff --check` -> clean
+- Story progression
+- Wrote acceptance receipt `2026-04-16T121155Z__RISK-001`.
+- Marked `RISK-001` as `done`.
+- Rotated `activeStoryId` to `SETTLE-001`.
+- Learnings for future iterations
+- `lane_health.md` can lag behind actual build completion, so writer-integrator must continue to verify candidate artifacts and repo diffs directly before accepting a loop.
+- `allowed` remains a risk-cleared candidate only; the repo still needs `SETTLE-001` before paper action, session state, or fill truth can exist.
+- Runtime anomaly remains intentionally `not_owned`; future anomaly-based halts need a separate bounded owner instead of a silent shadow promotion.
+---
+## 2026-04-16T12:47:31Z - SETTLE-001
+- Previous state -> new state
+- settlement scaffold -> explicit quote-backed paper settlement owner
+- What was implemented
+- `src/d5_trading_engine/settlement/paper.py` now turns explicit `risk_verdict_id` plus `quote_snapshot_id` into settlement-owned paper sessions, fills, positions, and reports.
+- `src/d5_trading_engine/storage/truth/models.py` and `sql/migrations/versions/007_paper_settlement_v1.py` now persist `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report` as canonical SQLite truth.
+- `tests/test_settlement_paper.py` now covers successful quote-backed fills plus fail-closed non-allowed, stale-quote, and missing-quote paths.
+- Writer-integrator synced the repo map, common lane doctrine, README, blocker/task notes, SDD, bootstrap inventory, and swarm runbook so accepted repo truth no longer describes `settlement/` as missing.
+- Files changed
+- `src/d5_trading_engine/settlement/__init__.py`
+- `src/d5_trading_engine/settlement/paper.py`
+- `src/d5_trading_engine/storage/truth/models.py`
+- `sql/migrations/versions/007_paper_settlement_v1.py`
+- `tests/test_settlement_paper.py`
+- `README.md`
+- `.ai/index/current_repo_map.md`
+- `.ai/agents/common.md`
+- `docs/issues/paper_runtime_blockers.md`
+- `docs/task/global_regime_condition_and_shadow_stack.md`
+- `docs/sdd/d5_trading_engine_sdd.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T124731Z__SETTLE-001.json`
+- `prd.json`
+- `progress.txt`
+- `tests/test_orchestration_contract.py`
+- Checks run and their results
+- `ruff check src/d5_trading_engine/settlement/paper.py src/d5_trading_engine/settlement/__init__.py src/d5_trading_engine/storage/truth/models.py sql/migrations/versions/007_paper_settlement_v1.py tests/test_settlement_paper.py` -> passed
+- `pytest tests/test_settlement_paper.py tests/test_risk_global_regime_v1.py tests/test_migrations.py -q` -> `14 passed in 19.27s`
+- `pytest tests/test_settlement_paper.py tests/test_risk_global_regime_v1.py tests/test_migrations.py tests/test_docs_contract.py tests/test_orchestration_contract.py -q` -> `23 passed in 24.02s`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `git diff --check` -> clean
+- Story progression
+- Wrote acceptance receipt `2026-04-16T124731Z__SETTLE-001`.
+- Marked `SETTLE-001` as `done`.
+- No eligible seeded story remains, so `activeStoryId` stays `SETTLE-001` until a final audit or receipt-backed gap promotion changes the backlog.
+- Learnings for future iterations
+- The repo now owns a truthful bounded settlement ledger, but it still does not own runtime instrument or size selection between `risk/` and `settlement/`.
+- Realized paper feedback is now available downstream of settlement, so the next research-loop hardening can compare experiments against settlement truth instead of pure shadow labels.
+---
+## 2026-04-16T12:58:48Z - completion audit gap promotion
+- Promoted `SOURCE-001` because accepted repo truth still names continuous capture ownership as a runtime blocker in `docs/issues/paper_runtime_blockers.md`, `.ai/index/current_repo_map.md`, `.ai/agents/common.md`, and the active task surface `docs/task/continuous_capture_ownership.md`.
+- Promoted `EXEC-001` because the post-`SETTLE-001` repo still documents execution intent between `risk/` and `settlement/` as missing in `docs/issues/paper_runtime_blockers.md`, `docs/project/bootstrap_inventory.md`, and `docs/task/global_regime_condition_and_shadow_stack.md`, even though architecture did not include it in its candidate list.
+- Promoted `RESEARCH-001` because current repo truth still says `research_loop/` does not compare shadow outputs against realized paper outcomes, and `src/d5_trading_engine/research_loop/` still has no settlement-receipt comparison path.
+- Did not promote `ORCH-005` because the accepted `SETTLE-001` receipt already required the orchestration contract update and `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` now passes with backlog exhaustion treated as a valid state.
+- Story progression:
+- `activeStoryId` moved to `SOURCE-001`.
+- `EXEC-001` and `RESEARCH-001` were added as ready promoted-gap follow-ons.
+---
+## 2026-04-16T13:42:00Z - ORCH-005
+- Previous state -> new state
+- backlog exhaustion treated as “good enough” -> explicit terminal-completion and finder-governed follow-on contract
+- What was implemented
+- Promoted `ORCH-005` from the architecture completion audit after the full dropbox/runtime review showed that backlog exhaustion, audit-known follow-ons, and terminal completion were still being conflated in repo truth.
+- Added top-level swarm completion fields to `prd.json` and rotated `activeStoryId` to `ORCH-005`.
+- Deferred `EXEC-001` until after `SOURCE-001` and `RESEARCH-001`, keeping the post-settlement backlog honest and ordered.
+- Added compacted mailbox truth and finder-state surfaces to the operator docs and `.ai` control pack.
+- Added `architecture-finder` and `research-finder` as mode switches inside the existing 4-lane swarm instead of widening the swarm with new permanent lanes.
+- Upgraded `status_swarm.sh` and `lane_health` surfacing so the operator view now includes swarm completion state, completion-audit state, compacted mailbox, and the latest receipt contradictions, unresolved risks, promotion targets, and next action.
+- Synced the contract tests so `ORCH-005`, finder prompts, `sync_swarm_state.sh`, and the terminal-completion wording are part of the enforced repo surface.
+- Files changed
+- `prd.json`
+- `progress.txt`
+- `.ai/README.md`
+- `.ai/dropbox/README.md`
+- `.ai/index/current_repo_map.md`
+- `.ai/agents/common.md`
+- `.ai/agents/architecture.md`
+- `.ai/agents/research.md`
+- `.ai/agents/writer_integrator.md`
+- `.ai/templates/research_finder.md`
+- `scripts/agents/status_swarm.sh`
+- `scripts/agents/sync_swarm_state.sh`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `tests/test_orchestration_contract.py`
+- `tests/test_docs_contract.py`
+- Checks run and their results
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `bash -n scripts/agents/common.sh scripts/agents/status_swarm.sh scripts/agents/health_swarm.sh scripts/agents/run_persistent_cycle.sh scripts/agents/sync_swarm_state.sh scripts/agents/start_supervisor.sh scripts/agents/stop_supervisor.sh scripts/agents/relaunch_stale_lanes.sh scripts/agents/update_story_state.sh scripts/agents/promote_gap_story.sh scripts/agents/write_acceptance_receipt.sh scripts/agents/stop_swarm.sh` -> passed
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` -> `9 passed`
+- `git diff --check` -> clean
+- Live supervision receipt
+- `./scripts/agents/status_swarm.sh --repo .` now reports `active story: ORCH-005`, `swarm_state=active`, `completion_audit_state=pending`, a live detached supervisor heartbeat, and a story-scoped `research` run for `ORCH-005` instead of silently treating the earlier `SOURCE-001` promotion as the final orchestration answer.
+- Learnings for future iterations
+- The swarm is now honest about seeded-backlog exhaustion versus true terminal completion, but the next real work is still implementation: `ORCH-005` must land before `SOURCE-001`, `RESEARCH-001`, or deferred `EXEC-001` can be claimed as the correct next governed follow-ons.
+- Compacted mailbox state is more useful than raw mailbox tail for active-story operations, but stale cross-story notifications still need later cleanup or supersession semantics if they start distracting operators.

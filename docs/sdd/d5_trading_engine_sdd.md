@@ -124,7 +124,7 @@ This design keeps write authority narrow and explicit:
 
 ### Policy, Risk, Settlement, Trajectory
 
-These package boundaries exist, but only `policy/` has an advisory YAML stub today. None of these layers yet own runtime trade eligibility, vetoes, fills, or promoted forecast authority.
+These package boundaries exist, and `policy/` now owns one explicit condition-to-policy evaluator plus `policy_global_regime_trace_v1`, `risk/` now owns one explicit final-veto surface through `RiskGate` plus `risk_global_regime_gate_v1`, and `settlement/` now owns one explicit quote-backed paper ledger through `PaperSettlement` plus `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report`. `trajectory/` still does not own promoted forecast authority, and runtime-owned execution intent between risk and settlement remains a follow-on surface.
 
 ## Canonical Data Model
 
@@ -172,6 +172,21 @@ These package boundaries exist, but only `policy/` has an advisory YAML stub tod
 
 - `condition_scoring_run`
 - `condition_global_regime_snapshot_v1`
+
+### Policy Truth
+
+- `policy_global_regime_trace_v1`
+
+### Risk Truth
+
+- `risk_global_regime_gate_v1`
+
+### Settlement Truth
+
+- `paper_session`
+- `paper_fill`
+- `paper_position`
+- `paper_session_report`
 
 ### Shadow Truth
 
@@ -378,12 +393,6 @@ The shadow lane is bounded, research-only, and non-promoting. It is not policy a
 
 The following package surfaces remain incomplete runtime owners:
 
-- `policy/`
-  - advisory YAML exists, but no decision-trace ownership yet
-- `risk/`
-  - placeholder veto surface only
-- `settlement/`
-  - placeholder paper-session surface only
 - `models/`
   - no governed model registry or promotion path
 - `trajectory/`
@@ -407,7 +416,7 @@ Live integration is gated separately and not part of default CI.
 - Coinbase currently uses public market endpoints only, so authenticated or execution-aware behavior is absent.
 - Massive remains a planned source, not an operational one.
 - Chronos-2 is optional in the current shadow path and may skip cleanly when its dependencies are unavailable.
-- Policy, risk, settlement, and promotion-sensitive governance are still intentionally unimplemented.
+- Runtime-owned execution intent, richer settlement lifecycle / mark history, and promotion-sensitive governance are still intentionally unimplemented.
 
 ## References
 

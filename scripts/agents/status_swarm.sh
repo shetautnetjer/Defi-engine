@@ -32,16 +32,27 @@ done
 
 repo_root="$(defi_swarm_repo_root "$repo")"
 session_name="${session_name:-$(defi_swarm_session_name)}"
+defi_swarm_bootstrap_runtime_dirs "$repo_root"
+"$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --no-mail --quiet >/dev/null
 
 printf 'active story: %s\n' "$(defi_swarm_active_story "$repo_root")"
 defi_swarm_print_lane_map
 
 manifest_file="$HOME/.local/state/ai-frame/tmux-lanes/$session_name/manifest.env"
 activity_log="$HOME/.local/state/ai-frame/tmux-lanes/$session_name/lane-activity.log"
+lane_health_md="$(defi_swarm_lane_health_md_path "$repo_root")"
+lane_health_json="$(defi_swarm_lane_health_json_path "$repo_root")"
+mailbox_path="$(defi_swarm_mailbox_path "$repo_root")"
+mailbox_current_path="$(defi_swarm_mailbox_current_path "$repo_root")"
 
 printf 'repo: %s\n' "$repo_root"
 printf 'session: %s\n' "$session_name"
 printf 'manifest: %s\n' "$manifest_file"
+printf 'lane_health: %s\n' "$lane_health_md"
+printf 'mailbox: %s\n' "$mailbox_path"
+printf 'mailbox_current: %s\n' "$mailbox_current_path"
+printf '%s\n' 'supervisor_summary:'
+"$script_dir/supervisor_status.sh" --repo "$repo_root" | sed 's/^/  /'
 
 if tmux has-session -t "$session_name" >/dev/null 2>&1; then
   printf 'state: running\n'
@@ -61,4 +72,54 @@ fi
 if [[ -f "$activity_log" ]]; then
   printf '%s\n' 'recent_activity:'
   tail -n 20 "$activity_log" || true
+fi
+if [[ -f "$lane_health_md" ]]; then
+  printf '%s\n' 'lane_health_summary:'
+  sed -n '1,120p' "$lane_health_md"
+fi
+if [[ -f "$lane_health_json" ]]; then
+  printf '%s\n' 'story_summary:'
+  jq -r '
+    .story
+    | [
+        "state=" + (.state // "unknown"),
+        "eligible=" + ((.eligible // false) | tostring),
+        "recovery_round=" + ((.recoveryRound // 0) | tostring),
+        "accepted=" + (.acceptedState // "none"),
+        "swarm_state=" + (.swarmState // "unknown"),
+        "completion_audit_state=" + (.completionAuditState // "unknown"),
+        "last_receipt=" + (.lastReceiptId // "none"),
+        "decision=" + (.lastReceiptDecision // "none"),
+        "promotion=" + (.promotionStatus // "none"),
+        "path_exhausted=" + ((.pathExhausted // false) | tostring),
+        "next_eligible=" + (.nextEligibleStoryId // "none"),
+        "last_completion_audit_receipt=" + (.lastCompletionAuditReceiptId // "none"),
+        "last_finder_audit_id=" + (.lastFinderAuditId // "none"),
+        "next_action=" + (.lastReceiptNextAction // "none")
+      ]
+    | .[]
+  ' "$lane_health_json"
+  printf '%s\n' 'latest_receipt_contradictions:'
+  jq -r '.story.lastReceiptContradictionsFound[]? // empty' "$lane_health_json" | sed 's/^/  - /'
+  printf '%s\n' 'latest_receipt_unresolved_risks:'
+  jq -r '.story.lastReceiptUnresolvedRisks[]? // empty' "$lane_health_json" | sed 's/^/  - /'
+  printf '%s\n' 'latest_receipt_promotion_targets:'
+  jq -r '.story.lastReceiptPromotionTargets[]? // empty' "$lane_health_json" | sed 's/^/  - /'
+fi
+if [[ -f "$mailbox_current_path" ]]; then
+  active_story="$(defi_swarm_active_story "$repo_root")"
+  printf '%s\n' 'current_mailbox_for_active_story:'
+  jq -r --arg story "$active_story" '
+    [.[] | select((.storyId // "") == $story)]
+    | if length == 0 then
+        ["(no compacted mailbox events for active story)"]
+      else
+        map("[\(.ts // "unknown")] story=\(.storyId // "none") lane=\(.lane // "none") type=\(.type // "none") status=\(.status // "none") reason=\(.reason // "none")")
+      end
+    | .[]
+  ' "$mailbox_current_path"
+fi
+if [[ -f "$mailbox_path" ]]; then
+  printf '%s\n' 'recent_mailbox_raw:'
+  tail -n 20 "$mailbox_path" || true
 fi

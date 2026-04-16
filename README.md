@@ -1,11 +1,11 @@
 # D5 Trading Engine
 
-Paper-only crypto capture, bounded feature materialization, bounded condition scoring, and shadow-only research.
+Paper-only crypto capture, bounded feature materialization, bounded condition scoring, explicit policy tracing, the first hard risk gate, explicit paper settlement ownership, and shadow-only research.
 
 The current repo truth is a paper-first evidence engine with bounded downstream layers:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, the generic `d5` CLI, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), and one bounded shadow lane (`intraday_meta_stack_v1`)
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, the generic `d5` CLI, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), and one bounded shadow lane (`intraday_meta_stack_v1`)
 - active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, Coinbase market-data capture, and point-in-time-safe regime history for shadow evaluation
-- still deferred: policy/risk/settlement runtime ownership, paper session and fill simulation, governed model promotion, deep Helius decoding, and real Massive historical ingest
+- still deferred: runtime-owned execution-intent routing between risk and settlement, realized-feedback governance for `research_loop/`, governed model promotion, deep Helius decoding, and real Massive historical ingest
 
 No live trading. No wallet signing. No perps.
 
@@ -14,7 +14,8 @@ No live trading. No wallet signing. No perps.
 ```text
 Adapter clients -> CaptureRunner -> Raw JSONL + raw SQL receipts -> source normalizers ->
 canonical SQLite truth -> bounded feature materialization -> bounded condition scoring ->
-bounded shadow evaluation -> DuckDB sync on demand + research artifacts
+explicit policy tracing -> explicit risk gating -> explicit paper settlement + bounded shadow evaluation ->
+DuckDB sync on demand + research artifacts
 ```
 
 - `data/raw/{provider}/{YYYY-MM-DD}/` is the raw landing zone
@@ -74,7 +75,9 @@ d5 run-shadow intraday-meta-stack-v1
 # optional: sync canonical tables into DuckDB
 d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
   feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 \
-  condition_scoring_run condition_global_regime_snapshot_v1 experiment_run experiment_metric
+  condition_scoring_run condition_global_regime_snapshot_v1 policy_global_regime_trace_v1 \
+  risk_global_regime_gate_v1 paper_session paper_fill paper_position paper_session_report \
+  experiment_run experiment_metric
 ```
 
 ## Current CLI Surface
@@ -126,7 +129,7 @@ Current `capture` provider values:
 - `intraday_meta_stack_v1`
   - shadow-only evaluation lane with walk-forward regime history, ATR-style triple-barrier labels, `IsolationForest`, `RandomForest`, `XGBoost`, optional Chronos-2 summaries, Monte Carlo summaries, and Fibonacci annotations as research-only evidence
 
-These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, and a shadow evaluation lane; it does not yet have policy eligibility, a hard risk gate, or paper settlement ownership.
+These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one quote-backed paper settlement owner, and a shadow evaluation lane; it does not yet have runtime-owned instrument selection, automatic execution intent routing, or governed realized-feedback comparison.
 
 ## Time Handling
 
