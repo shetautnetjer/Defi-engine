@@ -1,6 +1,6 @@
 # Continuous Capture Ownership
 
-Active execution surface for promoting ingest from a truthful bootstrap capture runner into a runtime freshness and completeness owner that downstream layers can safely depend on.
+Accepted execution surface for promoting ingest from a truthful bootstrap capture runner into a runtime freshness owner that downstream layers can safely depend on, with cursor-backed completeness explicitly deferred from v1.
 
 ## Goal
 
@@ -10,23 +10,17 @@ Make continuous and recurring capture behavior explicit enough that later `featu
 
 - `CaptureRunner` already owns `ingest_run` lifecycle, raw receipt writing, normalization dispatch, and `source_health_event` logging
 - the canonical schema already has `ingest_run`, `source_health_event`, and `capture_cursor`
-- `d5 status` can show recent ingest runs and the latest health event per provider
-- the repo still does not define which capture lanes are expected to be continuously fresh, how stale state is recognized, or what operator-visible response should happen when a source falls behind
+- `capture/lane_status.py` now owns the governed lane manifest, lane-specific freshness derivation, readiness-only handling, and required-blocker reporting
+- `FeatureMaterializer` now consumes the shared source-owner snapshot instead of a private `_FRESHNESS_RULES` copy
+- `d5 status` now shows recent ingest runs, the latest provider health event per provider, and a per-lane capture-freshness section
 
-## Implementation Update — 2026-04-14
+## Implementation Update — 2026-04-16
 
-- `FeatureMaterializer` now refuses to materialize `spot_chain_macro_v1` unless its required lanes resolve to `healthy_recent`
-- the feature run receipt now stores `freshness_snapshot_json`, `input_window_start_utc`, and `input_window_end_utc`
-- the first explicit freshness windows now live in code for the lanes that gate the feature path:
-  - `jupiter-prices` = 15 minutes
-  - `jupiter-quotes` = 15 minutes
-  - `helius-transactions` = 30 minutes
-  - `coinbase-products` = 24 hours
-  - `coinbase-candles` = 30 minutes
-  - `coinbase-market-trades` = 30 minutes
-  - `coinbase-book` = 30 minutes
-  - `fred-observations` = 2 days
-- operator visibility is still incomplete because `status` does not yet expose per-lane freshness states directly
+- `capture/lane_status.py` defines the governed lane matrix for Jupiter, Helius, Coinbase, FRED, and Massive without widening readiness-only surfaces into runtime authority.
+- `FeatureMaterializer` still refuses to materialize freshness-gated feature lanes unless required capture lanes resolve to `healthy_recent`, but it now delegates that decision to the shared source owner.
+- `feature_materialization_run.freshness_snapshot_json` remains the downstream serialized source receipt.
+- `d5 status` now exposes a `=== Capture Lanes ===` section with lane-level freshness, eligibility, latest receipts, and blocker summaries.
+- `capture_cursor` remains schema-only and explicitly deferred from v1 completeness authority.
 
 ## This Slice Covers
 
@@ -180,8 +174,8 @@ Initial threshold guidance:
 - condition, policy, risk, settlement, or research-loop implementation
 - live trading, wallet automation, or promotion-sensitive runtime behavior
 
-## Next Actions After This Slice
+## Deferred Follow-Ons After This Slice
 
-1. expose per-lane freshness states through `status` or a dedicated `doctor` surface instead of keeping them inside feature receipts only
-2. decide whether discovery and slower reference lanes should use the same explicit threshold strategy or a more policy-driven authorization rule
-3. keep the `features/` dependency contract aligned so every downstream scorer consumes only freshness-qualified canonical truth
+1. add `d5 status --json` or a dedicated `doctor` surface only if the current text output proves insufficient for operator automation
+2. decide whether discovery and slower reference lanes need a more policy-driven authorization rule than the current expectation-class thresholds
+3. add cursor-backed completeness only when a bounded Helius-history slice persists and reuses `capture_cursor` as real runtime evidence

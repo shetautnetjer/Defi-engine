@@ -1,11 +1,16 @@
 # D5 Trading Engine
 
-Paper-only crypto capture, bounded feature materialization, bounded condition scoring, explicit policy tracing, the first hard risk gate, explicit paper settlement ownership, and shadow-only research.
+Paper-only crypto capture with explicit capture-lane freshness ownership, bounded feature materialization, bounded condition scoring, explicit policy tracing, the first hard risk gate, explicit paper settlement ownership, and shadow-only research.
+
+The north star is a Solana-first backtesting and paper-trading platform that
+can classify market direction and regimes, compare strategies under explicit
+policy/risk/settlement governance, and widen into Jupiter perps and Coinbase
+futures only through governed capability stages.
 
 The current repo truth is a paper-first evidence engine with bounded downstream layers:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, normalizers, the generic `d5` CLI, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), and one bounded shadow lane (`intraday_meta_stack_v1`)
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), and one bounded shadow lane (`intraday_meta_stack_v1`)
 - active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, Coinbase market-data capture, and point-in-time-safe regime history for shadow evaluation
-- still deferred: runtime-owned execution-intent routing between risk and settlement, realized-feedback governance for `research_loop/`, governed model promotion, deep Helius decoding, and real Massive historical ingest
+- still deferred: runtime-owned execution-intent routing between risk and settlement, governed model promotion, deep Helius decoding, and real Massive historical ingest
 
 No live trading. No wallet signing. No perps.
 
@@ -23,7 +28,7 @@ DuckDB sync on demand + research artifacts
 - `data/db/d5_analytics.duckdb` is the research mirror
 - `data/db/coinbase_raw.db` is a separate raw provider store for Coinbase payloads
 
-See [docs/README.md](docs/README.md) for the full docs map, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded modeling contract, and [docs/runbooks/ralph_tmux_swarm.md](docs/runbooks/ralph_tmux_swarm.md) for the repo-local four-lane orchestration workflow.
+See [docs/README.md](docs/README.md) for the full docs map, [docs/prd/crypto_backtesting_mission.md](docs/prd/crypto_backtesting_mission.md) for the north-star product target, [docs/plans/strategy_descent_and_instrument_scope.md](docs/plans/strategy_descent_and_instrument_scope.md) for the widening ladder, [docs/math/market_regime_forecast_and_labeling_program.md](docs/math/market_regime_forecast_and_labeling_program.md) for the future math program, [docs/policy/runtime_authority_and_promotion_ladder.md](docs/policy/runtime_authority_and_promotion_ladder.md) for promotion doctrine, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded current modeling contract, and [docs/runbooks/ralph_tmux_swarm.md](docs/runbooks/ralph_tmux_swarm.md) for the repo-local four-lane orchestration workflow.
 
 ## Tracked Universe
 
@@ -77,7 +82,7 @@ d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapsho
   feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 \
   condition_scoring_run condition_global_regime_snapshot_v1 policy_global_regime_trace_v1 \
   risk_global_regime_gate_v1 paper_session paper_fill paper_position paper_session_report \
-  experiment_run experiment_metric
+  experiment_run experiment_metric experiment_realized_feedback_v1
 ```
 
 ## Current CLI Surface
@@ -89,7 +94,7 @@ d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapsho
 | `d5 materialize-features <feature-set>` | Materialize a bounded deterministic feature set from canonical truth |
 | `d5 score-conditions <condition-set>` | Score a bounded condition set from deterministic feature inputs |
 | `d5 run-shadow <shadow-run>` | Run a bounded shadow-only ML evaluation lane |
-| `d5 status` | Show recent ingest runs, latest provider health events, and the latest condition run |
+| `d5 status` | Show recent ingest runs, latest provider health events, per-lane capture freshness, and the latest condition run |
 | `d5 sync-duckdb [tables...]` | Copy selected SQLite truth tables into DuckDB |
 
 Current `capture` provider values:
@@ -128,8 +133,10 @@ Current `capture` provider values:
   - bounded regime scorer with a four-state Gaussian HMM when `hmmlearn` is installed and a Gaussian-mixture fallback when it is not
 - `intraday_meta_stack_v1`
   - shadow-only evaluation lane with walk-forward regime history, ATR-style triple-barrier labels, `IsolationForest`, `RandomForest`, `XGBoost`, optional Chronos-2 summaries, Monte Carlo summaries, and Fibonacci annotations as research-only evidence
+- `experiment_realized_feedback_v1`
+  - advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots without promoting research outputs into runtime authority
 
-These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one quote-backed paper settlement owner, and a shadow evaluation lane; it does not yet have runtime-owned instrument selection, automatic execution intent routing, or governed realized-feedback comparison.
+These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one quote-backed paper settlement owner, one bounded shadow evaluation lane, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have runtime-owned instrument selection, automatic execution intent routing, or governed model promotion.
 
 ## Time Handling
 

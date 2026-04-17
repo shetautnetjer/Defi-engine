@@ -64,22 +64,28 @@ def _seed_global_regime_inputs(
             )
         session.flush()
 
-        session.add(
-            SourceHealthEvent(
-                provider="coinbase",
-                endpoint="https://api.exchange.coinbase.com/products",
-                status_code=200,
-                latency_ms=120.0,
-                is_healthy=1,
-                error_message=None,
-                checked_at=now,
+        for endpoint in (
+            "/market/products",
+            "/market/products/*/candles",
+            "/market/products/*/ticker",
+            "/market/product_book",
+        ):
+            session.add(
+                SourceHealthEvent(
+                    provider="coinbase",
+                    endpoint=endpoint,
+                    status_code=200,
+                    latency_ms=120.0,
+                    is_healthy=1,
+                    error_message=None,
+                    checked_at=now,
+                )
             )
-        )
         if include_macro_health:
             session.add(
                 SourceHealthEvent(
                     provider="fred",
-                    endpoint="https://api.stlouisfed.org/fred/series/observations",
+                    endpoint="observations",
                     status_code=200,
                     latency_ms=210.0,
                     is_healthy=1,

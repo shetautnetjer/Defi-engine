@@ -2,14 +2,29 @@
 
 ## Purpose
 
-Define the missing bridge between the current source-ingest bootstrap and the target paper-first runtime so future task docs can descend in a stable order without inventing hidden authority.
+Define the historical bridge between the original source-ingest bootstrap and
+the target paper-first runtime so future task docs can see the old sequencing
+without mistaking it for current repo truth.
 
 This note synthesizes current repo docs, the local planning lane in `~/.openclaw/workspace-aya/defi-plans/`, and the workspace Notion page `Defi-engine`.
 
-## Current Truth
+## Status
+
+This note is historical context, not the current truth packet.
+
+Use these surfaces for current planning truth instead:
+
+- `docs/project/current_runtime_truth.md`
+- `docs/prd/crypto_backtesting_mission.md`
+- `docs/issues/governed_product_descent_capability_ladder.md`
+- `docs/gaps/`
+
+## Historical Truth
 
 - the repo currently has real source capture, normalization, raw landing, canonical SQLite truth, DuckDB mirror sync, and operator CLI surfaces
-- the repo does not yet have a runnable paper-trading engine, even though bounded `features/`, `condition/`, and shadow `research_loop/` lanes now exist while `trajectory/`, `policy/`, `risk/`, and `settlement/` still remain placeholder surfaces
+- the repo did not yet have a runnable paper-trading engine when this note was
+  authored, and `trajectory/`, `policy/`, `risk/`, and `settlement/` still
+  remained placeholder surfaces at that time
 - current docs already treat this honestly: the implemented surface is still foundation-stage ingest plus truth-building
 - the missing planning gap is not "more explanation of ingest"; it is the build sequence that connects source truth to safe paper-session behavior
 
@@ -70,9 +85,9 @@ The recommended implementation order should stay conservative:
 | `features/` | partial | `condition/` handoff and policy-owned threshold governance | must not read providers directly |
 | `condition/` | partial | bounded global regime scorer and condition receipts | should keep consuming features, not raw capture |
 | `trajectory/` | scaffolded | advisory-only forecast contract | no runtime authority widening |
-| `policy/` | scaffolded | strategy eligibility and decision-trace schema | governance-sensitive |
-| `risk/` | scaffolded | veto matrix, halts, and safe defaults | final gate before paper action |
-| `settlement/` | scaffolded | paper session ledger, fills, and reports | required before "trading" claims |
+| `policy/` | accepted since superseded | strategy eligibility and decision-trace schema | see current runtime truth packet |
+| `risk/` | accepted since superseded | veto matrix, halts, and safe defaults | see current runtime truth packet |
+| `settlement/` | accepted since superseded | paper session ledger, fills, and reports | see current runtime truth packet |
 | `research_loop/` | partial | shadow experiment ledger and artifact workflow | support only, never live authority |
 
 ## Documentation Descent
@@ -100,10 +115,12 @@ The first durable blocker set now lives in `docs/issues/paper_runtime_blockers.m
 
 ## Not Yet Safe To Claim
 
-The repo should still not be described as:
+The repo described by this historical note should not be described as:
 
 - a finished paper-trading engine
 - a live-trading system
 - an engine with implemented strategy selection, risk gating, settlement, or autoresearch governance
 
-The truthful description remains: this repo is a paper-first DeFi trading and research foundation with real ingest and truth-building surfaces, two bounded freshness-qualified feature lanes, one bounded global-regime condition scorer, one shadow-only meta-stack experiment lane, and explicit placeholders for the downstream policy, risk, and settlement runtime that still needs to be built.
+The current repo has moved beyond this historical state. Use the current
+runtime-truth packet and the governed product-descent issue guide for active
+planning.

@@ -39,6 +39,8 @@ This note documents the HMM-style regime scorer, the bounded fallback behavior w
   - tracks the bounded shadow evaluation run
 - `experiment_metric`
   - stores metric rows for anomaly rate, dataset size, and model-family outcomes
+- `experiment_realized_feedback_v1`
+  - stores advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots
 - `data/research/shadow_runs/<run_id>/`
   - stores JSON artifacts and a QMD report without promoting them into runtime authority
 
@@ -125,14 +127,25 @@ The accepted `SETTLE-001` slice turns the existing settlement scaffold into the 
 - fails closed on stale, missing, or unsupported quote / policy / risk inputs
 - leaves short-open behavior explicitly unsupported instead of inventing borrow or perp semantics
 
+## Research Feedback Owner
+
+The accepted `RESEARCH-001` slice turns the bounded shadow lane into the first settlement-aware research comparison seam. It now:
+
+- keeps comparison ownership inside `research_loop/`
+- replays deterministic experiment inputs from `experiment_run.config_json`
+- matches paper fills back to replayed shadow rows with feature-run + regime-bucket + mint + backward-ASOF alignment
+- persists advisory receipts in `experiment_realized_feedback_v1`
+- records rollup realized-feedback metrics back into `experiment_metric`
+- leaves settlement read-only, paper truth authoritative, and runtime promotion unchanged
+
 ## Not Yet Safe To Claim
 
 This slice does **not** mean the repo has:
 
 - automatic execution intent routing from `allowed` risk verdicts into mint or size selection
-- governed realized-feedback comparison inside `research_loop/`
 - governed model promotion
 - spot-short settlement semantics
+- full exit-lifecycle or closed-session realized-PnL governance
 
 The truthful claim is narrower:
 
@@ -140,11 +153,11 @@ The truthful claim is narrower:
 - `policy/` now has one explicit consumer that turns persisted condition truth into traceable `eligible_long`, `eligible_short`, or `no_trade` receipts
 - `risk/` now has one explicit hard gate that turns persisted policy truth into traceable `allowed`, `no_trade`, or `halted` receipts while keeping anomaly out of runtime authority
 - `settlement/` now has one explicit quote-backed paper ledger that turns persisted risk truth plus explicit quote intent into traceable paper sessions, fills, positions, and reports
-- `research_loop/` now has one bounded shadow experiment lane with non-promoting receipts
-- shadow remains research-only, and realized-feedback governance still remains unimplemented
+- `research_loop/` now has one bounded shadow experiment lane plus advisory realized-feedback comparison receipts grounded in settlement truth
+- shadow remains research-only, and realized-feedback receipts remain advisory rather than promotional
 
 ## Next Actions
 
 1. Define the first runtime-owned execution-intent surface between `risk/` and `settlement/` if the repo wants automatic paper action.
 2. Keep operator wording and docs aligned so `allowed` risk verdicts do not imply automatic paper action without explicit quote-backed intent.
-3. Connect `experiment_run` comparison to realized paper outcomes now that settlement receipts exist.
+3. Extend realized-feedback comparison only after settlement owns richer exit-lifecycle or closed-session outcome truth.

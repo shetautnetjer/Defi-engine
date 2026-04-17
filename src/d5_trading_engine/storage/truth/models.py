@@ -931,3 +931,55 @@ class ExperimentMetric(Base):
     __table_args__ = (
         Index("ix_exp_metric_run_name", "experiment_run_id", "metric_name"),
     )
+
+
+class ExperimentRealizedFeedbackV1(Base):
+    """Research-owned advisory comparison between shadow context and paper outcomes."""
+
+    __tablename__ = "experiment_realized_feedback_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    experiment_run_id = Column(
+        String(64),
+        ForeignKey("experiment_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    paper_fill_id = Column(Integer, ForeignKey("paper_fill.id"), nullable=False, index=True)
+    paper_session_id = Column(Integer, ForeignKey("paper_session.id"), nullable=False, index=True)
+    paper_position_id = Column(Integer, ForeignKey("paper_position.id"), nullable=True, index=True)
+    paper_session_report_id = Column(
+        Integer,
+        ForeignKey("paper_session_report.id"),
+        nullable=True,
+        index=True,
+    )
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=False,
+        index=True,
+    )
+    matched_mint = Column(String(64), nullable=False, index=True)
+    matched_bucket_15m_utc = Column(DateTime, nullable=True, index=True)
+    matched_bucket_5m_utc = Column(DateTime, nullable=True, index=True)
+    comparison_state = Column(String(16), nullable=False, index=True)
+    match_method = Column(String(128), nullable=False)
+    match_tolerance_seconds = Column(Integer, nullable=False)
+    shadow_context_json = Column(Text, nullable=False)
+    realized_outcome_json = Column(Text, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "experiment_run_id",
+            "paper_fill_id",
+            name="uq_experiment_realized_feedback_run_fill",
+        ),
+        Index(
+            "ix_experiment_realized_feedback_run_state",
+            "experiment_run_id",
+            "comparison_state",
+        ),
+    )

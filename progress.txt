@@ -500,3 +500,85 @@ Started: 2026-04-15T11:00:00Z
 - Learnings for future iterations
 - A policy-only swarm packet is a good first step because it stabilizes packet reads and lane authority without creating a second live control plane.
 - `prd.json` still carries a separate truth repair follow-on because it currently says `swarmState=terminal_complete` while `activeStoryId=RESEARCH-001`; the YAML packet should document that contradiction, not silently normalize it.
+---
+## 2026-04-17T01:00:00Z - completion audit gap promotion
+- Previous state -> new state
+- claimed terminal completion -> receipt-backed control-plane follow-on promoted
+- What was observed
+- Consumed the completion-scope finder packets from `.ai/dropbox/architecture/completion_audit__*` and `.ai/dropbox/research/completion_audit__*` before making the writer decision.
+- `./scripts/agents/status_swarm.sh --repo . --session defi-engine-swarm` reported `active story:` blank, `pending_trigger_scope=completion_audit`, `swarmState=audit_followons_present`, and `completionAuditState=pending` while `prd.json` still exposed `activeStoryId=RESEARCH-001`, `swarmState=terminal_complete`, and `completionAuditState=clean`.
+- `ps -p 2089829,2136129 -o pid=,stat=,cmd=` still showed a live completion-scope `research_finder` process, and runtime markers remained scope-less enough that finder work could not be reconciled from one canonical state surface.
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` failed before promotion because `test_prd_has_active_story_and_runtime_owner_backlog` observed the blank-active-story plus `audit_followons_present` shape.
+- Story progression
+- Promoted `ORCH-006` because completion-audit finder scope, runtime markers, and canonical state surfaces still drift out of sync under live audit work.
+- Kept `EXEC-001` deferred because it remains a real runtime seam already governed in `prd.json`; reopening it as a new promoted gap would duplicate backlog truth.
+- Recorded `ORCH-007` and `ORCH-008` as audit-known-only cleanup candidates for duplicate acceptance ledgers and noisy debug surfaces rather than reopening the backlog for them in this pass.
+- Files changed
+- `prd.json`
+- `progress.txt`
+- `.ai/dropbox/state/completion_audit_writer.json`
+- Checks run and their results
+- `./scripts/agents/promote_gap_story.sh --repo . --source-story RESEARCH-001 --receipt-id completion_audit_writer::2026-04-16T18:00:00-07:00 ... --family ORCH --make-active` -> promoted `ORCH-006`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` -> failed before promotion with `test_prd_has_active_story_and_runtime_owner_backlog` because live control-plane state exposed `audit_followons_present` while `prd.json` still claimed terminal completion
+- Learnings for future iterations
+- A clean completion audit is not trustworthy while finder-triggered control-plane state can race between `finder_state.json`, runtime markers, `prd.json`, and `lane_health.*`.
+- The next orchestration slice should land the smallest subtraction-first fix first: scope-lock finder outputs, carry finder scope in runtime markers, and make one sync path win.
+---
+## 2026-04-17T02:59:00Z - stage 1 truth packet and writer-owned docs sync
+- Previous state -> new state
+- planning guidance lived mostly in chat + partial packet docs -> durable `docs/issues/` guide, decomposed `docs/gaps/`, and repo-wide writer-owned docs-truth enforcement now exist in repo truth
+- What changed
+- Added `docs/issues/governed_product_descent_capability_ladder.md` as the durable north-star and capability-ladder guide for future assistants.
+- Added `docs/gaps/backtest_truth_model_gap.md`, `docs/gaps/label_program_and_regime_taxonomy_gap.md`, `docs/gaps/strategy_registry_and_challenger_framework_gap.md`, `docs/gaps/execution_intent_gap.md`, `docs/gaps/instrument_expansion_readiness_gap.md`, and `docs/gaps/tmux_machine_law_and_packet_gap.md`.
+- Updated `docs/gaps/bootstrap_gap_register.md` to index the new gap docs and stop restating already-landed owners as missing.
+- Synced `docs/prd/crypto_backtesting_mission.md`, `docs/runbooks/feature_condition_shadow_cycle.md`, `docs/math/regime_shadow_modeling_contracts.md`, `docs/plans/build_sequence_and_runtime_ownership.md`, `docs/project/current_runtime_truth.md`, `docs/project/bootstrap_inventory.md`, `docs/README.md`, `.ai/README.md`, `.ai/index/current_repo_map.md`, `.ai/agents/common.md`, `.ai/agents/writer_integrator.md`, and `.ai/templates/writer_integrator.md` so Stage 1 current-truth consolidation and whole-docs-tree sync are explicit.
+- Added `.ai/swarm/doc_owners.yaml` plus `scripts/agents/check_doc_truth.py`, and bootstrapped `.ai/dropbox/state/docs_truth_receipt.json` + `.ai/dropbox/state/docs_sync_status.json`.
+- Updated `scripts/agents/common.sh`, `scripts/agents/health_swarm.sh`, `scripts/agents/status_swarm.sh`, `scripts/agents/relaunch_stale_lanes.sh`, and `scripts/agents/commit_accepted_story.sh` so docs-truth receipts are first-class state and writer is preferred after builder completion.
+- Extended `tests/test_docs_contract.py`, `tests/test_orchestration_contract.py`, and `tests/test_supervisor_monitoring_contract.py` to cover the new guide/gap packet, docs-truth enforcement, and writer-first relaunch behavior.
+- Files changed
+- `docs/issues/governed_product_descent_capability_ladder.md`
+- `docs/gaps/backtest_truth_model_gap.md`
+- `docs/gaps/bootstrap_gap_register.md`
+- `docs/gaps/execution_intent_gap.md`
+- `docs/gaps/instrument_expansion_readiness_gap.md`
+- `docs/gaps/label_program_and_regime_taxonomy_gap.md`
+- `docs/gaps/strategy_registry_and_challenger_framework_gap.md`
+- `docs/gaps/tmux_machine_law_and_packet_gap.md`
+- `docs/prd/crypto_backtesting_mission.md`
+- `docs/runbooks/feature_condition_shadow_cycle.md`
+- `docs/math/regime_shadow_modeling_contracts.md`
+- `docs/plans/build_sequence_and_runtime_ownership.md`
+- `docs/project/current_runtime_truth.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/README.md`
+- `.ai/README.md`
+- `.ai/index/current_repo_map.md`
+- `.ai/agents/common.md`
+- `.ai/agents/writer_integrator.md`
+- `.ai/templates/writer_integrator.md`
+- `.ai/swarm/doc_owners.yaml`
+- `scripts/agents/check_doc_truth.py`
+- `scripts/agents/common.sh`
+- `scripts/agents/health_swarm.sh`
+- `scripts/agents/status_swarm.sh`
+- `scripts/agents/relaunch_stale_lanes.sh`
+- `scripts/agents/commit_accepted_story.sh`
+- `tests/test_docs_contract.py`
+- `tests/test_orchestration_contract.py`
+- `tests/test_supervisor_monitoring_contract.py`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `chmod +x scripts/agents/cleanup_lane_processes.sh scripts/agents/check_doc_truth.py` -> applied
+- `bash -n scripts/agents/common.sh scripts/agents/health_swarm.sh scripts/agents/relaunch_stale_lanes.sh scripts/agents/status_swarm.sh scripts/agents/commit_accepted_story.sh scripts/agents/cleanup_lane_processes.sh` -> passed
+- `python -m py_compile scripts/agents/check_doc_truth.py` -> passed
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `python scripts/agents/check_doc_truth.py --repo . --story-id ORCH-006` -> clean receipt `docs_truth::ORCH-006::2026-04-17T02:57:10Z`
+- `pytest tests/test_docs_contract.py tests/test_orchestration_contract.py tests/test_supervisor_monitoring_contract.py -q` -> `22 passed in 0.40s`
+- `git diff --check` -> clean
+- `./scripts/agents/start_supervisor.sh --repo .` -> restarted detached supervisor as pid `2430924`
+- `./scripts/agents/status_swarm.sh --repo .` -> supervisor running again, docs sync state visible as `clean`, and writer-integrator became the next stale/eligible lane for `ORCH-006`
+- Current truthful state
+- `ORCH-006` remains active; this entry records Stage 1 truth-consolidation infrastructure and packet sync, not a completed writer acceptance for the story itself.
+- The supervisor is running again after restart, but the active story still needs writer-integrator to emit the bounded acceptance receipt before the story can close honestly.

@@ -1,6 +1,20 @@
 # Bootstrap Gap Register
 
-This file tracks deferred or missing capabilities that should not be mistaken for shipped behavior.
+This file is the compact gap index for the bootstrap and current-truth
+consolidation stage.
+
+Use the dedicated gap docs in this directory for the detailed capability
+surfaces that still need to be closed:
+
+- `backtest_truth_model_gap.md`
+- `label_program_and_regime_taxonomy_gap.md`
+- `strategy_registry_and_challenger_framework_gap.md`
+- `execution_intent_gap.md`
+- `instrument_expansion_readiness_gap.md`
+- `tmux_machine_law_and_packet_gap.md`
+
+This register should not restate already-landed owners as if they are still
+missing.
 
 ## Public Surface Gaps
 
@@ -38,10 +52,12 @@ This file tracks deferred or missing capabilities that should not be mistaken fo
   - Current state: `global_regime_v1` exists as one bounded regime scorer with latest-snapshot persistence, but broader condition coverage and policy consumption are still missing.
 
 - `research_loop/` is only partially implemented.
-  - Current state: `intraday_meta_stack_v1` exists as one bounded, point-in-time-safe shadow lane, but it remains research-only and does not compare against paper-session outcomes yet.
+  - Current state: `intraday_meta_stack_v1` exists as one bounded, point-in-time-safe shadow lane, and advisory realized-feedback comparison against settlement truth now exists, but the surface remains research-only and non-promoting.
 
-- `policy/`, `risk/`, `settlement/`, `models/`, and `trajectory/` are mostly placeholders.
-  - Current state: package boundaries exist, but they do not yet implement policy eligibility, hard vetoes, paper fills, governed model promotion, or promoted forecast ownership.
+- `trajectory/` remains scaffold-only and non-promoting.
+  - Current state: policy, risk, settlement, and advisory realized-feedback are
+    already real repo truth; `trajectory/` still does not own promoted forecast
+    authority, and execution intent remains the main missing runtime owner.
 
 ## Validation Gaps
 
@@ -53,7 +69,9 @@ This file tracks deferred or missing capabilities that should not be mistaken fo
   - Current state: Helius and Jupiter have live-gated integration harnesses, but Coinbase market-data capture is still only covered by offline-safe tests and manual smoke receipts.
 
 - Shadow-model evidence remains non-promoting.
-  - Current state: point-in-time safety for the current regime/shadow lane is repaired, but policy, risk, settlement, and governed promotion still do not consume those outputs.
+  - Current state: point-in-time safety for the current regime/shadow lane is
+    repaired, and advisory realized-feedback comparison now exists, but shadow
+    outputs still do not self-promote into runtime authority.
 
 ## Documentation Gaps
 

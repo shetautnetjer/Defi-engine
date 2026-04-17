@@ -10,9 +10,19 @@ This page is intentionally stricter than `docs/gaps/bootstrap_gap_register.md`. 
 
 | Blocker | Why it blocks paper runtime | Current state | Close condition | Next action |
 |------|-------|-------|-------|-------|
-| Continuous capture ownership is not explicit | downstream layers cannot rely on freshness, completeness, or run cadence without a true runtime owner for ingest continuity | `capture/runner.py` is strong, but it is still described as bootstrap ingest rather than a continuous runtime authority | one repo-owned note or task defines cadence, source freshness expectations, failure states, and operator response rules | descend and execute `docs/task/continuous_capture_ownership.md` |
-| Execution intent between `risk/` and `settlement/` is still manual-explicit | the repo now has a paper ledger, but `PaperSettlement` still requires explicit `risk_verdict_id` plus `quote_snapshot_id`, so a market-wide `allowed` risk verdict does not yet become runtime-owned trade intent on its own | `risk_global_regime_gate_v1` exists and `PaperSettlement` exists, but the selector for mint / size / entry-exit intent is not owned | a repo-owned contract persists or selects explicit quote-backed execution intent without inventing hidden strategy authority | define the first bounded execution-intent owner downstream of risk and upstream of settlement |
-| `research_loop/` is only partially governed | the repo can now run bounded shadow experiments, explicit policy traces, explicit risk verdicts, and explicit paper settlement receipts, but it still cannot compare research outputs against realized paper outcomes | `intraday_meta_stack_v1`, `experiment_run`, `experiment_metric`, `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report` now exist, but the comparison path is still missing | experiment comparison consumes realized paper-session receipts without promoting shadow models directly | descend the realized-feedback comparison path now that settlement truth exists |
+| Execution intent between `risk/` and `settlement/` is still manual-explicit | the repo now has a paper ledger, but `PaperSettlement` still requires explicit `risk_verdict_id` plus `quote_snapshot_id`, so a market-wide `allowed` risk verdict does not yet become runtime-owned trade intent on its own | `risk_global_regime_gate_v1` exists and `PaperSettlement` exists, but the selector for mint / size / entry-exit intent is not owned | a repo-owned contract persists or selects explicit quote-backed spot-only mint, size, and entry-exit intent downstream of risk and upstream of settlement | descend into `EXEC-001` once higher-priority follow-ons are clear |
+
+## Recently Cleared
+
+- `RESEARCH-001` is now accepted repo truth:
+  - `research_loop/realized_feedback.py` replays experiment config, reads settlement-owned paper truth, and persists advisory comparison receipts in `experiment_realized_feedback_v1`.
+  - `ShadowRunner` now invokes the comparator after run-level experiment metrics land, keeping settlement read-only and leaving policy/risk/runtime authority unchanged.
+  - The comparison stays bounded to mint + regime-bucket + backward-ASOF matching and the latest available session snapshot instead of claiming full exit-lifecycle governance.
+- `SOURCE-001` is now accepted repo truth:
+  - `capture/lane_status.py` owns the governed capture-lane manifest and freshness doctrine.
+  - `FeatureMaterializer` consumes that shared source-owner snapshot instead of a private freshness copy.
+  - `d5 status` now exposes per-lane freshness states, eligibility, and blockers directly.
+- `capture_cursor` remains explicitly deferred in v1 and is not treated as runtime-authoritative completeness yet.
 
 ## Non-Blocking But Important
 

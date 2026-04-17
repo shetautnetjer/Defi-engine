@@ -86,6 +86,11 @@ This design keeps write authority narrow and explicit:
 - invokes normalizers
 - records provider health
 
+`src/d5_trading_engine/capture/lane_status.py`
+- owns the governed capture-lane manifest
+- derives lane freshness, readiness-only treatment, and required blockers from repo truth
+- serializes the operator-facing capture-lane status surface reused by downstream consumers
+
 `src/d5_trading_engine/normalize/`
 - owns source-specific projection into canonical truth
 
@@ -93,7 +98,7 @@ This design keeps write authority narrow and explicit:
 
 `src/d5_trading_engine/features/materializer.py`
 - owns deterministic feature materialization from canonical truth
-- enforces freshness authorization through `ingest_run` and `source_health_event`
+- consumes shared freshness authorization from `capture/lane_status.py`
 - writes `feature_materialization_run`
 - currently implements:
   - `spot_chain_macro_v1`
@@ -114,13 +119,20 @@ This design keeps write authority narrow and explicit:
 ### Shadow Research Layer
 
 `src/d5_trading_engine/research_loop/shadow_runner.py`
-- owns bounded experiment comparison and shadow receipts
+- owns bounded shadow evaluation and invokes the research-owned realized-feedback comparator
 - currently implements:
   - `intraday_meta_stack_v1`
 - writes:
   - `experiment_run`
   - `experiment_metric`
   - artifact files under `data/research/shadow_runs/<run_id>/`
+
+`src/d5_trading_engine/research_loop/realized_feedback.py`
+- owns advisory comparison between replayed shadow context and settlement-owned paper outcomes
+- currently implements:
+  - `experiment_realized_feedback_v1`
+- writes:
+  - `experiment_realized_feedback_v1`
 
 ### Policy, Risk, Settlement, Trajectory
 
@@ -192,6 +204,7 @@ These package boundaries exist, and `policy/` now owns one explicit condition-to
 
 - `experiment_run`
 - `experiment_metric`
+- `experiment_realized_feedback_v1`
 
 ## Provider Design
 
@@ -387,7 +400,7 @@ The shadow lane is bounded, research-only, and non-promoting. It is not policy a
 - `d5 status`
 - `d5 sync-duckdb [tables...]`
 
-`d5 status` now exposes the latest condition run directly, including failed-run visibility instead of silently falling back to an older success.
+`d5 status` now exposes a per-lane capture-freshness section plus the latest condition run directly, including failed-run visibility instead of silently falling back to an older success.
 
 ## Deferred Layers
 

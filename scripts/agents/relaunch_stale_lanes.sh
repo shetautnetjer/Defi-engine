@@ -50,8 +50,18 @@ session_name="${session_name:-$(defi_swarm_session_name)}"
 defi_swarm_bootstrap_runtime_dirs "$repo_root"
 "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --quiet
 
-lane_health_json="$(defi_swarm_lane_health_json_path "$repo_root")"
 active_story="$(defi_swarm_active_story "$repo_root")"
+if [[ -n "$active_story" && "$active_story" != "null" ]]; then
+  "$script_dir/cleanup_lane_processes.sh" \
+    --repo "$repo_root" \
+    --session "$session_name" \
+    --lane all \
+    --story-id "$active_story" \
+    --default-prompt >/dev/null || true
+  "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --quiet
+fi
+
+lane_health_json="$(defi_swarm_lane_health_json_path "$repo_root")"
 story_state="$(jq -r '.story.state // "missing"' "$lane_health_json")"
 story_eligible="$(jq -r '.story.eligible // false' "$lane_health_json")"
 next_eligible_story="$(jq -r '.story.nextEligibleStoryId // empty' "$lane_health_json")"
@@ -98,25 +108,37 @@ elif [[ "$path_exhausted" == "true" ]]; then
     exit 0
   fi
 else
-  status="$(lane_should_restart research)"
-  if [[ -n "$status" ]]; then
-    restart_lane="research"
-    restart_status="$status"
-  elif [[ "$research_status" != "running" ]]; then
-    status="$(lane_should_restart architecture)"
+  if [[ "$builder_status" == "completed" ]]; then
+    status="$(lane_should_restart writer-integrator)"
     if [[ -n "$status" ]]; then
-      restart_lane="architecture"
+      restart_lane="writer-integrator"
       restart_status="$status"
-    elif [[ "$architecture_status" != "running" ]]; then
-      status="$(lane_should_restart builder)"
+    elif [[ "$writer_status" != "running" ]]; then
+      restart_lane="writer-integrator"
+      restart_status="${writer_status:-stale}"
+    fi
+  fi
+  if [[ -z "$restart_lane" ]]; then
+    status="$(lane_should_restart research)"
+    if [[ -n "$status" ]]; then
+      restart_lane="research"
+      restart_status="$status"
+    elif [[ "$research_status" != "running" ]]; then
+      status="$(lane_should_restart architecture)"
       if [[ -n "$status" ]]; then
-        restart_lane="builder"
+        restart_lane="architecture"
         restart_status="$status"
-      elif [[ "$builder_status" != "running" ]]; then
-        status="$(lane_should_restart writer-integrator)"
+      elif [[ "$architecture_status" != "running" ]]; then
+        status="$(lane_should_restart builder)"
         if [[ -n "$status" ]]; then
-          restart_lane="writer-integrator"
+          restart_lane="builder"
           restart_status="$status"
+        elif [[ "$builder_status" != "running" ]]; then
+          status="$(lane_should_restart writer-integrator)"
+          if [[ -n "$status" ]]; then
+            restart_lane="writer-integrator"
+            restart_status="$status"
+          fi
         fi
       fi
     fi

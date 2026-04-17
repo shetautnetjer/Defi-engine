@@ -230,14 +230,16 @@ Likely fix:
 
 This runbook does not imply:
 
-- policy eligibility
-- a hard risk gate
-- paper-session ownership
-- paper fills
 - governed model promotion
 - live trading
 
-The truthful current claim is narrower:
+The truthful current claim is:
+
+- policy eligibility now exists through explicit policy traces
+- a hard risk gate now exists through explicit risk verdicts
+- paper sessions and paper fills now exist through settlement-owned paper
+  receipts
+- shadow outputs and realized-feedback remain advisory rather than promotional
 
 - source truth exists
 - deterministic feature lanes exist

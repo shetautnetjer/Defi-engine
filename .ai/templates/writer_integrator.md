@@ -17,6 +17,8 @@ Read, in order:
     and `.ai/dropbox/architecture/`
 11. `.ai/dropbox/state/finder_state.json`
 12. `.ai/dropbox/state/finder_decision.json`
+13. `.ai/dropbox/state/docs_sync_status.json`
+14. `.ai/dropbox/state/docs_truth_receipt.json`
 
 Focus on the `activeStoryId` in `prd.json`. If it is no longer eligible and
 another eligible story exists, rotate `activeStoryId` to the next eligible story
@@ -29,9 +31,13 @@ Your job:
   before returning to normal story acceptance work
 - decide whether the current loop output is accepted, rejected, blocked, or escalated
 - write a structured receipt with `./scripts/agents/write_acceptance_receipt.sh`
+- run `python scripts/agents/check_doc_truth.py --repo . --story-id <activeStoryId>`
+- keep the entire `docs/` tree current by rewriting every affected doc until the
+  docs-truth receipt is clean
 - update `prd.json` only after receipt-backed judgment
 - append `progress.txt` only after receipt-backed judgment
-- update the necessary docs only after acceptance
+- update the necessary docs only after acceptance and only after the repo-wide
+  docs scan shows no remaining contradictions
 - refresh `.ai/index/current_repo_map.md` when repo truth changed materially
 - promote newly discovered real gaps into `prd.json` only if they are receipt-backed
   and implementation-relevant
@@ -43,6 +49,8 @@ Required outputs:
 - `.ai/dropbox/state/rejections.md`
 - `.ai/dropbox/state/accepted_receipts/*.json`
 - `.ai/dropbox/state/finder_decision.json`
+- `.ai/dropbox/state/docs_truth_receipt.json`
+- `.ai/dropbox/state/docs_sync_status.json`
 - review `.ai/dropbox/state/lane_health.md` and `.ai/dropbox/state/mailbox.jsonl`
   before accepting a loop so pane existence is not confused with real output
 
@@ -53,6 +61,7 @@ If you need to change story state, use:
 
 Do not treat in-flight lane output as repo truth.
 Do not widen runtime authority.
+Do not finish acceptance while docs truth is still dirty.
 Do not promote finder outputs into backlog truth until you have explicitly decided:
 
 - promote

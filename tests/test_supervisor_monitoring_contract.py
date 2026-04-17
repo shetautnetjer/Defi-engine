@@ -15,6 +15,7 @@ def test_run_persistent_cycle_keeps_terminal_monitoring_and_receipt_backed_hooks
     assert "sync_performance_receipts.sh" in script
     assert "queue_performance_trigger" in script
     assert "queue_periodic_terminal_audit" in script
+    assert "clear_stale_completion_trigger" in script
     assert "commit_accepted_story.sh" in script
     assert "performance_receipt" in script
     assert "periodic_completion_audit" in script
@@ -26,6 +27,19 @@ def test_supervisor_status_surfaces_monitoring_and_performance_fields() -> None:
     assert "last_terminal_audit=" in script
     assert "last_performance_receipt=" in script
     assert "last_auto_commit_receipt=" in script
+
+
+def test_docs_sync_fields_are_exposed_in_health_and_status_surfaces() -> None:
+    health_script = (REPO_ROOT / "scripts" / "agents" / "health_swarm.sh").read_text()
+    status_script = (REPO_ROOT / "scripts" / "agents" / "status_swarm.sh").read_text()
+    relaunch_script = (REPO_ROOT / "scripts" / "agents" / "relaunch_stale_lanes.sh").read_text()
+
+    assert "docsSyncState" in health_script
+    assert "docsTruthReceiptId" in health_script
+    assert "docs_truth_receipt" in health_script
+    assert "docs_sync_state=" in status_script
+    assert "docs_truth_receipt=" in status_script
+    assert 'if [[ "$builder_status" == "completed" ]]; then' in relaunch_script
 
 
 def test_sync_swarm_state_clears_active_story_when_terminal_complete(tmp_path: Path) -> None:

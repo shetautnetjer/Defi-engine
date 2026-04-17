@@ -18,6 +18,12 @@ and paper-trading platform that classifies direction and regimes, compares
 strategies under explicit policy/risk/settlement governance, and widens into
 Jupiter perps and Coinbase futures only through governed capability stages.
 
+The active repo discipline is Stage 1 current-truth consolidation:
+
+- keep the entire `docs/` tree current as accepted work lands
+- keep `prd.json`, `progress.txt`, and docs truth aligned
+- prefer rich status and clean terminal state over fake liveness
+
 ## Required packet
 
 Before a lane widens backlog truth, it should read this packet:
@@ -30,6 +36,7 @@ Before a lane widens backlog truth, it should read this packet:
 - `docs/project/current_runtime_truth.md`
 - `docs/prd/crypto_backtesting_mission.md`
 - `docs/prd/backtesting_completion_definition.md`
+- `docs/issues/governed_product_descent_capability_ladder.md`
 - `docs/project/bootstrap_inventory.md`
 - `docs/issues/paper_runtime_blockers.md`
 - `docs/sdd/d5_trading_engine_sdd.md`
@@ -77,6 +84,7 @@ The writer-integrator lane is the only lane that may:
 - advance `prd.json`
 - append `progress.txt`
 - treat docs changes as accepted repo truth
+- complete the repo-wide docs-truth reconciliation for an accepted story
 
 ## Lane roles
 
@@ -123,6 +131,8 @@ Runtime supervision receipts are created under `.ai/dropbox/state/`:
 - `mailbox_current.json`
 - `finder_state.json`
 - `finder_decision.json`
+- `docs_truth_receipt.json`
+- `docs_sync_status.json`
 - `accepted_receipts/*.json`
 - `runtime/*` launch, active, and completion markers
 - `completion_audit_*.json`
@@ -255,9 +265,9 @@ Every story loop should follow this order:
 7. only after receipt-backed acceptance or escalation:
    - update `prd.json`
    - append `progress.txt`
-   - update affected docs
+   - update affected docs after a repo-wide docs-truth scan across `docs/`
    - optionally create a commit if the slice is accepted, validated, and the
-     writer-integrator can tie the commit to the story id and receipt id
+      writer-integrator can tie the commit to the story id and receipt id
 
 Blocked stories enter recovery rather than stopping the swarm immediately:
 

@@ -19,6 +19,7 @@ from d5_trading_engine.condition.scorer import (
     _REFIT_CADENCE_BUCKETS,
     _TRAINING_WINDOW,
     ConditionScorer,
+    RegimeHistoryResult,
 )
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.features.materializer import _FEATURE_SET_NAME
@@ -139,6 +140,13 @@ class ShadowRunner:
                 dataset=dataset,
             )
             self._record_experiment_metrics(run_id, chronos_summary, model_metrics, dataset)
+            from d5_trading_engine.research_loop.realized_feedback import (
+                RealizedFeedbackComparator,
+            )
+
+            RealizedFeedbackComparator(self.settings).compare_intraday_meta_stack_v1(
+                experiment_run_id=run_id
+            )
 
             conclusion = (
                 f"Shadow run complete. "
@@ -214,7 +222,13 @@ class ShadowRunner:
         )
         return frame
 
-    def _load_market_bars(self, product_ids: list[str], *, bucket_minutes: int) -> pd.DataFrame:
+    def _load_market_bars(
+        self,
+        product_ids: list[str],
+        *,
+        bucket_minutes: int,
+        atr_window: int = _ATR_WINDOW,
+    ) -> pd.DataFrame:
         if not product_ids:
             return pd.DataFrame()
 
@@ -271,14 +285,20 @@ class ShadowRunner:
             axis=1,
         )
         grouped["atr_14"] = grouped.groupby("product_id")["true_range"].transform(
-            lambda series: series.rolling(_ATR_WINDOW, min_periods=5).mean()
+            lambda series: series.rolling(atr_window, min_periods=min(5, atr_window)).mean()
         )
         grouped.rename(columns={bucket_label: "bucket_start_utc"}, inplace=True)
         return grouped
 
-    def _attach_triple_barrier_labels(self, bars: pd.DataFrame) -> pd.DataFrame:
+    def _attach_triple_barrier_labels(
+        self,
+        bars: pd.DataFrame,
+        *,
+        label_specs: dict[str, int] | None = None,
+    ) -> pd.DataFrame:
+        resolved_label_specs = label_specs or _LABEL_SPECS
         labeled = bars.copy()
-        for label_name, horizon_bars in _LABEL_SPECS.items():
+        for label_name, horizon_bars in resolved_label_specs.items():
             labeled[label_name] = np.nan
             for _product_id, group in labeled.groupby("product_id", sort=False):
                 product_group = group.reset_index()
@@ -306,6 +326,112 @@ class ShadowRunner:
                 labeled.loc[group.index, label_name] = label_values
 
         return labeled
+
+    def _rebuild_dataset_from_config(self, config_payload: dict[str, object]) -> pd.DataFrame:
+        spot_feature_run_id = self._config_string(config_payload, "spot_feature_run_id")
+        regime_feature_run_id = self._config_string(config_payload, "regime_feature_run_id")
+        label_specs = self._resolve_label_specs(config_payload)
+        atr_window = self._resolve_positive_int(
+            config_payload.get("atr_window"),
+            default=_ATR_WINDOW,
+        )
+
+        spot_frame = self._load_spot_feature_frame(spot_feature_run_id)
+        if spot_frame.empty:
+            raise RuntimeError(
+                "No spot-chain feature rows exist for replayed "
+                f"spot_feature_run_id={spot_feature_run_id}."
+            )
+
+        market_bars_5m = self._load_market_bars(
+            sorted(spot_frame["coinbase_product_id"].dropna().unique()),
+            bucket_minutes=5,
+            atr_window=atr_window,
+        )
+        if market_bars_5m.empty:
+            raise RuntimeError(
+                "No 5-minute market bars available while replaying shadow experiment inputs."
+            )
+
+        label_frame = self._attach_triple_barrier_labels(
+            market_bars_5m,
+            label_specs=label_specs,
+        )
+        regime_result = self._rebuild_walk_forward_regime_history(regime_feature_run_id)
+        return self._build_meta_dataset(spot_frame, regime_result.history, label_frame)
+
+    def _rebuild_walk_forward_regime_history(self, feature_run_id: str) -> RegimeHistoryResult:
+        condition_scorer = ConditionScorer(self.settings)
+        feature_run = self._feature_run_by_id(feature_run_id)
+        history = condition_scorer._load_feature_history(feature_run.run_id)
+        if history.empty:
+            raise RuntimeError(
+                f"No global regime feature rows exist for replayed feature_run_id={feature_run_id}."
+            )
+
+        macro_context_state = condition_scorer._macro_context_state(feature_run)
+        scored_history, state_semantics, model_family = (
+            condition_scorer._build_walk_forward_history_frame(
+                history,
+                macro_context_state=macro_context_state,
+            )
+        )
+        if scored_history.empty:
+            raise RuntimeError(
+                "Replay for feature_run_id="
+                f"{feature_run_id} produced no walk-forward regime history."
+            )
+
+        latest_row = scored_history.iloc[-1]
+        return RegimeHistoryResult(
+            feature_run_id=feature_run.run_id,
+            history=scored_history,
+            state_semantics=state_semantics,
+            model_family=model_family,
+            macro_context_state=macro_context_state,
+            training_window_start_utc=latest_row["training_window_start_utc"].to_pydatetime(),
+            training_window_end_utc=latest_row["training_window_end_utc"].to_pydatetime(),
+        )
+
+    def _feature_run_by_id(self, run_id: str) -> FeatureMaterializationRun:
+        session = get_session(self.settings)
+        try:
+            run = session.query(FeatureMaterializationRun).filter_by(run_id=run_id).first()
+            if run is None:
+                raise RuntimeError(f"Missing feature materialization run: {run_id}")
+            return run
+        finally:
+            session.close()
+
+    def _config_string(self, config_payload: dict[str, object], key: str) -> str:
+        value = config_payload.get(key)
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"Shadow replay config is missing a valid {key}.")
+        return value
+
+    def _resolve_label_specs(self, config_payload: dict[str, object]) -> dict[str, int]:
+        raw_specs = config_payload.get("label_specs")
+        if raw_specs is None:
+            return dict(_LABEL_SPECS)
+        if not isinstance(raw_specs, dict):
+            raise RuntimeError("Shadow replay config has an invalid label_specs payload.")
+
+        resolved: dict[str, int] = {}
+        for label_name, horizon in raw_specs.items():
+            if not isinstance(label_name, str):
+                raise RuntimeError("Shadow replay config has a non-string label name.")
+            resolved[label_name] = self._resolve_positive_int(horizon, default=1)
+        return resolved
+
+    def _resolve_positive_int(self, value: object, *, default: int) -> int:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            raise RuntimeError("Shadow replay config expected a positive integer, not a boolean.")
+        resolved = int(value)
+        if resolved <= 0:
+            raise RuntimeError("Shadow replay config expected a positive integer value.")
+        return resolved
 
     def _build_meta_dataset(
         self,

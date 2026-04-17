@@ -73,6 +73,7 @@ state_dir = repo_root / ".ai" / "dropbox" / "state"
 runtime_dir = state_dir / "runtime"
 receipts_dir = state_dir / "accepted_receipts"
 mailbox_path = state_dir / "mailbox.jsonl"
+mailbox_current_path = state_dir / "mailbox_current.json"
 lane_health_md = state_dir / "lane_health.md"
 lane_health_json = state_dir / "lane_health.json"
 prd = json.loads((repo_root / "prd.json").read_text())
@@ -82,6 +83,15 @@ last_completion_audit_receipt_id = str(prd.get("lastCompletionAuditReceiptId") o
 last_finder_audit_id = str(prd.get("lastFinderAuditId") or "")
 active_story = prd.get("activeStoryId") or ""
 shell_cmds = {"bash", "sh", "zsh", "fish"}
+
+
+def read_json(path: Path) -> dict[str, object] | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return None
 
 
 def story_state(story: dict[str, object]) -> str:
@@ -106,48 +116,113 @@ active_story_row = story_index.get(active_story)
 active_story_state = active_story_row["state_norm"] if active_story_row else ("none" if not active_story else "missing")
 active_story_recovery_round = int(active_story_row.get("recovery_round", 0) or 0) if active_story_row else 0
 active_story_eligible = active_story_state in eligible_states
+finder_state = read_json(state_dir / "finder_state.json") or {}
+docs_truth_receipt = read_json(state_dir / "docs_truth_receipt.json") or {}
+docs_sync_status = read_json(state_dir / "docs_sync_status.json") or {}
+pending_trigger = finder_state.get("pendingTrigger") or {}
+pending_trigger_type = str(pending_trigger.get("triggerType") or "")
+pending_scope = str(pending_trigger.get("scope") or "")
+pending_story_id = str(pending_trigger.get("storyId") or "")
+if pending_scope:
+    current_scope = pending_scope
+    current_mode = "completion_audit" if pending_scope == "completion_audit" else "finder"
+elif active_story:
+    current_scope = active_story
+    current_mode = "story"
+elif swarm_state == "terminal_complete" and completion_audit_state == "clean":
+    current_scope = ""
+    current_mode = "terminal_monitoring"
+else:
+    current_scope = ""
+    current_mode = "idle"
+
+
+def expected_artifacts_for_lane(lane_name: str) -> list[Path]:
+    if current_mode in {"finder", "completion_audit"} and current_scope:
+        if lane_name == "research":
+            return [
+                repo_root / ".ai" / "dropbox" / "research" / f"{current_scope}__research_gap_scan.md",
+                repo_root / ".ai" / "dropbox" / "research" / f"{current_scope}__unknowns_and_needed_evidence.json",
+                repo_root / ".ai" / "dropbox" / "research" / f"{current_scope}__followon_story_candidates.json",
+            ]
+        if lane_name == "architecture":
+            return [
+                repo_root / ".ai" / "dropbox" / "architecture" / f"{current_scope}__architecture_efficiency_audit.md",
+                repo_root / ".ai" / "dropbox" / "architecture" / f"{current_scope}__subtraction_candidates.json",
+                repo_root / ".ai" / "dropbox" / "architecture" / f"{current_scope}__followon_story_candidates.json",
+            ]
+        if lane_name == "writer-integrator":
+            if current_scope == "completion_audit":
+                return [state_dir / "completion_audit_writer.json"]
+            return [state_dir / "finder_decision.json"]
+        return []
+    if lane_name == "research":
+        return [
+            repo_root / ".ai" / "dropbox" / "research" / f"{active_story}__brief.md",
+            repo_root / ".ai" / "dropbox" / "research" / f"{active_story}__doc_refs.json",
+            repo_root / ".ai" / "dropbox" / "research" / f"{active_story}__qa.md",
+        ]
+    if lane_name == "architecture":
+        return [
+            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__review.md",
+            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__contract_notes.md",
+            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__refinement.md",
+            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__decision.json",
+        ]
+    if lane_name == "builder":
+        return [
+            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__delivery.md",
+            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__files.txt",
+            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__validation.txt",
+            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__result.json",
+        ]
+    if lane_name == "writer-integrator":
+        return [
+            repo_root / ".ai" / "dropbox" / "state" / "accepted_loops.md",
+            repo_root / ".ai" / "dropbox" / "state" / "rejections.md",
+            repo_root / ".ai" / "dropbox" / "state" / "open_questions.md",
+        ]
+    return []
+
+
+def lane_participates_in_current_mode(lane_name: str) -> bool:
+    if current_mode in {"finder", "completion_audit"}:
+        return lane_name in {"research", "architecture", "writer-integrator"}
+    return True
+
+
+def marker_matches(doc: dict[str, object]) -> bool:
+    marker_scope = str(doc.get("scope") or "")
+    marker_story_id = str(doc.get("storyId") or "")
+    if current_mode in {"finder", "completion_audit"} and current_scope:
+        if marker_scope:
+            return marker_scope == current_scope
+        if current_mode == "finder" and marker_story_id:
+            return marker_story_id == current_scope
+        return False
+    if current_mode == "story" and active_story:
+        return marker_story_id == active_story
+    return False
 
 lane_specs = [
     {
         "name": "research",
         "pane_index": 0,
-        "expected": [
-            repo_root / ".ai" / "dropbox" / "research" / f"{active_story}__brief.md",
-            repo_root / ".ai" / "dropbox" / "research" / f"{active_story}__doc_refs.json",
-            repo_root / ".ai" / "dropbox" / "research" / f"{active_story}__qa.md",
-        ],
         "upstream": [],
     },
     {
         "name": "architecture",
         "pane_index": 2,
-        "expected": [
-            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__review.md",
-            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__contract_notes.md",
-            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__refinement.md",
-            repo_root / ".ai" / "dropbox" / "architecture" / f"{active_story}__decision.json",
-        ],
         "upstream": ["research"],
     },
     {
         "name": "builder",
         "pane_index": 1,
-        "expected": [
-            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__delivery.md",
-            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__files.txt",
-            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__validation.txt",
-            repo_root / ".ai" / "dropbox" / "build" / f"{active_story}__result.json",
-        ],
         "upstream": ["research", "architecture"],
     },
     {
         "name": "writer-integrator",
         "pane_index": 3,
-        "expected": [
-            repo_root / ".ai" / "dropbox" / "state" / "accepted_loops.md",
-            repo_root / ".ai" / "dropbox" / "state" / "rejections.md",
-            repo_root / ".ai" / "dropbox" / "state" / "open_questions.md",
-        ],
         "upstream": ["research", "builder", "architecture"],
     },
 ]
@@ -203,16 +278,6 @@ def latest_story_receipt(story_id: str) -> dict[str, object] | None:
     doc["_epoch"] = int(path.stat().st_mtime)
     return doc
 
-
-def read_json(path: Path) -> dict[str, object] | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text())
-    except json.JSONDecodeError:
-        return None
-
-
 previous = {}
 if lane_health_json.exists():
     try:
@@ -239,6 +304,13 @@ latest_receipt_contradictions = list(latest_receipt.get("contradictions_found") 
 latest_receipt_risks = list(latest_receipt.get("unresolved_risks") or []) if latest_receipt else []
 latest_receipt_promotion_targets = list(latest_receipt.get("promotion_targets") or []) if latest_receipt else []
 latest_receipt_next_action = str(latest_receipt.get("next_action") or "") if latest_receipt else ""
+docs_sync_state = str(docs_sync_status.get("status") or "pending")
+docs_sync_story_id = str(docs_sync_status.get("storyId") or "")
+docs_truth_receipt_id = str(docs_truth_receipt.get("receipt_id") or "")
+docs_truth_contradictions = list(docs_truth_receipt.get("contradictions") or [])
+docs_truth_contradiction_count = int(
+    docs_truth_receipt.get("contradiction_count") or len(docs_truth_contradictions)
+)
 accepted_state = "none"
 if active_story_state == "done" or (last_receipt_decision == "accept" and last_promotion_status == "complete"):
     accepted_state = "complete"
@@ -257,10 +329,12 @@ architecture_recommended_action = (
 )
 
 for spec in lane_specs:
+    expected_artifacts = expected_artifacts_for_lane(spec["name"])
+    lane_participates = lane_participates_in_current_mode(spec["name"])
     latest_expected_epoch = 0
     latest_expected_path = None
     missing = []
-    for artifact in spec["expected"]:
+    for artifact in expected_artifacts:
         artifact_epoch = path_epoch(artifact)
         if artifact_epoch:
             if artifact_epoch >= latest_expected_epoch:
@@ -273,52 +347,88 @@ for spec in lane_specs:
     story_output_path = latest_expected_path
     story_output_ts = iso_from_epoch(latest_expected_epoch)
     story_output_kind = "artifact" if latest_expected_epoch else None
-    if spec["name"] == "writer-integrator":
-        story_output_epoch = latest_receipt_epoch
+    if current_mode == "story" and spec["name"] == "writer-integrator":
+        docs_clean_for_active_story = (
+            docs_sync_state == "clean"
+            and active_story
+            and docs_sync_story_id == active_story
+        )
+        story_output_epoch = latest_receipt_epoch if docs_clean_for_active_story else 0
         story_output_path = str(latest_receipt.get("_path")) if latest_receipt else None
         story_output_ts = latest_receipt_ts or iso_from_epoch(latest_receipt_epoch)
         story_output_kind = "receipt" if latest_receipt_epoch else None
         if latest_receipt_epoch == 0 and "acceptance receipt" not in missing:
             missing.append("acceptance receipt")
+        if not docs_clean_for_active_story and "docs truth receipt" not in missing:
+            missing.append("docs truth receipt")
 
     marker_path = runtime_dir / f"{spec['name'].replace('-', '_')}__last_launch.json"
     completion_path = runtime_dir / f"{spec['name'].replace('-', '_')}__last_completion.json"
     active_path = runtime_dir / f"{spec['name'].replace('-', '_')}__active.json"
+    heartbeat_path = runtime_dir / f"{spec['name'].replace('-', '_')}__heartbeat.json"
     last_launch_epoch = 0
     last_launch_ts = None
+    last_launch_scope = ""
+    last_launch_mode = ""
     if marker_path.exists():
         try:
             marker = json.loads(marker_path.read_text())
-            if marker.get("storyId") == active_story:
+            if marker_matches(marker):
                 last_launch_epoch = int(marker.get("epoch", 0) or 0)
                 last_launch_ts = marker.get("ts")
+                last_launch_scope = str(marker.get("scope") or "")
+                last_launch_mode = str(marker.get("mode") or "")
         except json.JSONDecodeError:
             pass
 
     last_completion_epoch = 0
     last_completion_ts = None
     last_completion_exit_code = None
+    last_completion_scope = ""
+    last_completion_mode = ""
     if completion_path.exists():
         try:
             completion = json.loads(completion_path.read_text())
-            if completion.get("storyId") == active_story:
+            if marker_matches(completion):
                 last_completion_epoch = int(completion.get("epoch", 0) or 0)
                 last_completion_ts = completion.get("ts")
                 exit_code = completion.get("exitCode")
                 last_completion_exit_code = int(exit_code) if exit_code is not None else None
+                last_completion_scope = str(completion.get("scope") or "")
+                last_completion_mode = str(completion.get("mode") or "")
         except json.JSONDecodeError:
             pass
 
     active_pid = None
     active_ts = None
     active_epoch = 0
+    active_story_id = None
+    active_scope = ""
+    active_mode = ""
+    active_prompt_file = None
+    active_prompt_type = None
+    active_started_at = None
     if active_path.exists():
         try:
             active = json.loads(active_path.read_text())
-            if active.get("storyId") == active_story:
-                active_pid = int(active.get("pid", 0) or 0) or None
-                active_ts = active.get("ts")
-                active_epoch = int(active.get("epoch", 0) or 0)
+            active_story_id = str(active.get("storyId") or "")
+            active_scope = str(active.get("scope") or "")
+            active_mode = str(active.get("mode") or "")
+            active_prompt_file = str(active.get("promptFile") or "")
+            active_prompt_type = str(active.get("promptType") or "")
+            active_started_at = active.get("startedAt") or active.get("ts")
+            active_pid = int(active.get("pid", 0) or 0) or None
+            active_ts = active.get("ts")
+            active_epoch = int(active.get("epoch", 0) or 0)
+        except json.JSONDecodeError:
+            pass
+    active_heartbeat_ts = None
+    active_heartbeat_epoch = 0
+    if heartbeat_path.exists():
+        try:
+            heartbeat = json.loads(heartbeat_path.read_text())
+            active_heartbeat_ts = heartbeat.get("ts")
+            active_heartbeat_epoch = int(heartbeat.get("epoch", 0) or 0)
         except json.JSONDecodeError:
             pass
     active_pid_alive = False
@@ -359,32 +469,59 @@ for spec in lane_specs:
     if not running:
         status = "stopped"
         reason = "tmux session is not running"
-    elif not active_story:
+    elif not active_story and current_mode not in {"finder", "completion_audit"}:
         if swarm_state == "terminal_complete" and completion_audit_state == "clean":
             status = "idle"
             reason = "no active story is set because the swarm is in terminal-complete monitoring"
         else:
             status = "idle"
             reason = "no active story is set in prd.json"
-    elif spec["name"] == "writer-integrator" and not active_story_eligible and next_eligible_story and next_eligible_story != active_story:
+    elif current_mode in {"finder", "completion_audit"} and not lane_participates:
+        status = "idle"
+        recommendation = "no"
+        reason = f"{spec['name']} is parked while {current_scope or current_mode} scoped work is active"
+    elif current_mode == "story" and spec["name"] == "writer-integrator" and not active_story_eligible and next_eligible_story and next_eligible_story != active_story:
         status = "stale"
         recommendation = "yes"
         reason = f"active story is {active_story_state}; writer-integrator should rotate to next eligible story {next_eligible_story}"
-    elif not active_story_eligible and not next_eligible_story:
+    elif current_mode == "story" and not active_story_eligible and not next_eligible_story:
         status = "completed"
         reason = f"active story is {active_story_state} and no eligible stories remain"
-    elif path_exhausted and spec["name"] == "builder":
+    elif current_mode == "story" and path_exhausted and spec["name"] == "builder":
         status = "blocked"
         recommendation = "no"
         reason = "architecture marked the current recovery path as exhausted; builder should not relaunch"
-    elif active_story_state == "done":
+    elif current_mode == "story" and active_story_state == "done":
         status = "completed"
         recommendation = "no"
         reason = "story is done and promoted"
+    elif active_pid_alive and current_mode in {"finder", "completion_audit"} and not active_scope:
+        status = "failed"
+        recommendation = "yes"
+        reason = "lane process is still alive without a scope-scoped active marker contract"
+    elif active_pid_alive and current_mode in {"finder", "completion_audit"} and active_scope != current_scope:
+        status = "failed"
+        recommendation = "yes"
+        reason = f"lane process is still alive for scope {active_scope or 'none'} instead of {current_scope}"
+    elif active_pid_alive and current_mode in {"finder", "completion_audit"} and active_mode and active_mode != current_mode:
+        status = "failed"
+        recommendation = "yes"
+        reason = f"lane process is still alive in mode {active_mode} instead of {current_mode}"
+    elif active_pid_alive and current_mode == "story" and not active_story_id:
+        status = "failed"
+        recommendation = "yes"
+        reason = "lane process is still alive without a story-scoped active marker contract"
+    elif active_pid_alive and current_mode == "story" and active_story_id != active_story:
+        status = "failed"
+        recommendation = "yes"
+        reason = f"lane process is still alive for story {active_story_id} instead of {active_story}"
     elif active_pid_alive and last_launch_epoch > (effective_output_epoch or 0):
         status = "running"
         recommendation = "no"
-        reason = "lane process is still alive for the current story"
+        if current_mode in {"finder", "completion_audit"}:
+            reason = "lane process is still alive for the current scope"
+        else:
+            reason = "lane process is still alive for the current story"
     elif effective_output_epoch == 0:
         if (
             last_launch_epoch > 0
@@ -405,11 +542,17 @@ for spec in lane_specs:
         elif not spec["upstream"]:
             status = "stale"
             recommendation = "yes"
-            reason = "lane has not been launched yet and is the first eligible step for the current story"
+            if current_mode in {"finder", "completion_audit"}:
+                reason = "lane has not been launched yet and is the first eligible step for the current scope"
+            else:
+                reason = "lane has not been launched yet and is the first eligible step for the current story"
         else:
             status = "idle"
             recommendation = "no"
-            reason = "lane has not been launched for current story"
+            if current_mode in {"finder", "completion_audit"}:
+                reason = "lane has not been launched for the current scope"
+            else:
+                reason = "lane has not been launched for current story"
     elif last_completion_exit_code not in (None, 0) and last_completion_epoch >= last_launch_epoch:
         status = "failed"
         recommendation = "yes"
@@ -445,11 +588,13 @@ for spec in lane_specs:
             "alive": alive,
             "producingState": status,
             "acceptedState": accepted_state,
-            "activeStoryId": active_story,
+            "currentStoryId": active_story,
+            "currentScope": current_scope or None,
+            "currentMode": current_mode,
             "status": status,
             "restartRecommendation": recommendation,
             "reason": reason,
-            "expectedArtifacts": [str(path) for path in spec["expected"]],
+            "expectedArtifacts": [str(path) for path in expected_artifacts],
             "missingArtifacts": missing,
             "latestExpectedArtifact": latest_expected_path,
             "latestExpectedArtifactEpoch": latest_expected_epoch or None,
@@ -461,9 +606,19 @@ for spec in lane_specs:
             "lastCompletionEpoch": last_completion_epoch or None,
             "lastCompletionTs": last_completion_ts,
             "lastCompletionExitCode": last_completion_exit_code,
+            "lastCompletionScope": last_completion_scope or None,
+            "lastCompletionMode": last_completion_mode or None,
             "activePid": active_pid,
             "activeTs": active_ts,
             "activeEpoch": active_epoch or None,
+            "activeStoryId": active_story_id,
+            "activeScope": active_scope or None,
+            "activeMode": active_mode or None,
+            "activePromptFile": active_prompt_file,
+            "activePromptType": active_prompt_type,
+            "activeStartedAt": active_started_at,
+            "activeHeartbeatTs": active_heartbeat_ts,
+            "activeHeartbeatEpoch": active_heartbeat_epoch or None,
             "effectiveOutputEpoch": effective_output_epoch or None,
             "effectiveOutputTs": effective_output_ts,
             "effectiveOutputKind": effective_output_kind,
@@ -471,6 +626,8 @@ for spec in lane_specs:
             "upstreamLatestArtifactTs": iso_from_epoch(upstream_latest_epoch),
             "lastLaunchEpoch": last_launch_epoch or None,
             "lastLaunchTs": last_launch_ts,
+            "lastLaunchScope": last_launch_scope or None,
+            "lastLaunchMode": last_launch_mode or None,
             "lastSuccessTs": effective_output_ts,
             "lastFailureTs": last_launch_ts if status == "failed" else None,
         }
@@ -489,6 +646,11 @@ doc = {
         "acceptedState": accepted_state,
         "swarmState": swarm_state,
         "completionAuditState": completion_audit_state,
+        "currentScope": current_scope or None,
+        "currentMode": current_mode,
+        "pendingTriggerType": pending_trigger_type or None,
+        "pendingTriggerScope": pending_scope or None,
+        "pendingTriggerStoryId": pending_story_id or None,
         "lastCompletionAuditReceiptId": last_completion_audit_receipt_id or None,
         "lastFinderAuditId": last_finder_audit_id or None,
         "lastReceiptId": last_receipt_id,
@@ -498,6 +660,10 @@ doc = {
         "lastReceiptUnresolvedRisks": latest_receipt_risks,
         "lastReceiptPromotionTargets": latest_receipt_promotion_targets,
         "lastReceiptNextAction": latest_receipt_next_action or None,
+        "docsSyncState": docs_sync_state,
+        "docsSyncStoryId": docs_sync_story_id or None,
+        "docsTruthReceiptId": docs_truth_receipt_id or None,
+        "docsTruthContradictionCount": docs_truth_contradiction_count,
         "pathExhausted": path_exhausted,
         "architectureRecommendedAction": architecture_recommended_action or None,
         "builderResult": builder_result.get("result") if builder_result else None,
@@ -518,11 +684,20 @@ md_lines = [
     f"- Accepted state: `{accepted_state}`",
     f"- Swarm state: `{swarm_state}`",
     f"- Completion audit state: `{completion_audit_state}`",
+    f"- Current scope: `{current_scope or 'none'}`",
+    f"- Current mode: `{current_mode}`",
+    f"- Pending trigger type: `{pending_trigger_type or 'none'}`",
+    f"- Pending trigger scope: `{pending_scope or 'none'}`",
+    f"- Pending trigger story: `{pending_story_id or 'none'}`",
     f"- Last completion audit receipt: `{last_completion_audit_receipt_id or 'none'}`",
     f"- Last finder audit id: `{last_finder_audit_id or 'none'}`",
     f"- Last receipt: `{last_receipt_id or 'none'}`",
     f"- Last receipt decision: `{last_receipt_decision or 'none'}`",
     f"- Promotion status: `{last_promotion_status or 'none'}`",
+    f"- Docs sync state: `{docs_sync_state}`",
+    f"- Docs sync story: `{docs_sync_story_id or 'none'}`",
+    f"- Docs truth receipt: `{docs_truth_receipt_id or 'none'}`",
+    f"- Docs truth contradictions: `{docs_truth_contradiction_count}`",
     f"- Next eligible story: `{next_eligible_story or 'none'}`",
     f"- Architecture path exhausted: `{str(path_exhausted).lower()}`",
     "",
@@ -557,6 +732,13 @@ for row in lane_rows:
             f"- restart recommendation: `{row['restartRecommendation']}`",
             f"- last launch: `{row['lastLaunchTs'] or 'none'}`",
             f"- active pid: `{row['activePid'] or 'none'}`",
+            f"- active story id: `{row['activeStoryId'] or 'none'}`",
+            f"- active scope: `{row['activeScope'] or 'none'}`",
+            f"- active mode: `{row['activeMode'] or 'none'}`",
+            f"- active prompt type: `{row['activePromptType'] or 'none'}`",
+            f"- active prompt file: `{row['activePromptFile'] or 'none'}`",
+            f"- active started at: `{row['activeStartedAt'] or 'none'}`",
+            f"- active heartbeat: `{row['activeHeartbeatTs'] or 'none'}`",
             f"- last completion: `{row['lastCompletionTs'] or 'none'}`",
             f"- last success: `{row['lastSuccessTs'] or 'none'}`",
             f"- latest artifact: `{row['latestExpectedArtifact'] or 'none'}`",
@@ -568,6 +750,7 @@ for row in lane_rows:
 lane_health_md.write_text("\n".join(md_lines))
 
 if emit_mail:
+    changed_events = []
     with mailbox_path.open("a", encoding="utf-8") as mailbox:
         for row in lane_rows:
             prev = previous.get(row["name"], {})
@@ -585,8 +768,38 @@ if emit_mail:
                 "previousStatus": previous_status,
                 "recommendation": row["restartRecommendation"],
                 "reason": row["reason"],
+                "scope": current_scope or None,
+                "mode": current_mode or None,
             }
             mailbox.write(json.dumps(event) + "\n")
+            changed_events.append(event)
+    if changed_events:
+        latest: dict[tuple[str, str, str, str], dict[str, object]] = {}
+        for raw in mailbox_path.read_text(encoding="utf-8").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                doc = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            key = (
+                str(doc.get("storyId") or ""),
+                str(doc.get("scope") or ""),
+                str(doc.get("lane") or ""),
+                str(doc.get("type") or ""),
+            )
+            latest[key] = doc
+        compacted = sorted(
+            latest.values(),
+            key=lambda item: (
+                str(item.get("storyId") or ""),
+                str(item.get("scope") or ""),
+                str(item.get("lane") or ""),
+                str(item.get("type") or ""),
+            ),
+        )
+        mailbox_current_path.write_text(json.dumps(compacted, indent=2) + "\n", encoding="utf-8")
 PY
 
 if [[ "$quiet" != "true" ]]; then

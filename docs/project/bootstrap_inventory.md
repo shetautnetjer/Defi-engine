@@ -12,6 +12,11 @@ The repo also now carries a policy-only machine-readable swarm packet under
 `.ai/swarm/` so packet rules, lane authority, and promotion doctrine do not
 live only in prose.
 
+Stage 1 of the governed product-descent ladder is now **current truth
+consolidation**. That means accepted work is not finished until code truth,
+docs truth, `prd.json`, and `progress.txt` all agree, with `writer-integrator`
+owning the continuous docs-sync closeout.
+
 ## Public Surface
 
 - Python distribution metadata: `d5engine`
@@ -61,6 +66,10 @@ live only in prose.
 - `.ai/index/current_repo_map.md` is the fast current-truth index for the swarm
 - `.ai/swarm/` holds policy-only machine-readable swarm law for packet reads,
   lane authority, and promotion doctrine
+- `docs/issues/governed_product_descent_capability_ladder.md` is the durable
+  long-horizon issue guide for future assistants and backlog promotion
+- `docs/gaps/` now decomposes the next missing capability layers into explicit
+  gap surfaces rather than leaving them only in chat or one broad blocker file
 - `.ai/dropbox/` is working exchange only, not canonical repo truth
 - `.ai/dropbox/state/` now produces runtime lane-health, compacted mailbox, finder, runtime, acceptance, and detached-supervisor receipts for continuous supervision
 - `prd.json` and `progress.txt` are the canonical story ledger for long-horizon Ralph loops and now carry explicit story states plus top-level swarm completion truth (`swarmState`, `completionAuditState`)

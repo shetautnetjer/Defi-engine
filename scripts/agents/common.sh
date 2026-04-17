@@ -37,6 +37,25 @@ defi_swarm_lane_number() {
   esac
 }
 
+defi_swarm_lane_pane_index() {
+  case "${1:?lane name required}" in
+    research) printf '0\n' ;;
+    builder) printf '1\n' ;;
+    architecture) printf '2\n' ;;
+    writer|writer-integrator|writer_integrator) printf '3\n' ;;
+    *)
+      printf 'unknown lane pane index: %s\n' "$1" >&2
+      return 1
+      ;;
+  esac
+}
+
+defi_swarm_lane_tmux_target() {
+  local session_name="${1:?session name required}"
+  local lane="${2:?lane required}"
+  printf '%s\n' "${session_name}:1.$(defi_swarm_lane_pane_index "$lane")"
+}
+
 defi_swarm_lane_name() {
   case "${1:?lane number required}" in
     1) printf 'research\n' ;;
@@ -63,6 +82,18 @@ defi_swarm_prompt_file() {
       return 1
       ;;
   esac
+}
+
+defi_swarm_prompt_type_from_file() {
+  local prompt_file="${1:-}"
+  [[ -n "$prompt_file" ]] || {
+    printf '\n'
+    return 0
+  }
+  local prompt_name
+  prompt_name="$(basename -- "$prompt_file")"
+  prompt_name="${prompt_name%.md}"
+  printf '%s\n' "$prompt_name"
 }
 
 defi_swarm_require_repo_files() {
@@ -144,7 +175,7 @@ defi_swarm_bootstrap_runtime_dirs() {
 
   local mailbox lane_health_md lane_health_json accepted_loops rejections open_questions
   local mailbox_current finder_state finder_decision completion_audit_writer
-  local auto_commit_state
+  local auto_commit_state docs_truth_receipt docs_sync_status
   mailbox="$(defi_swarm_mailbox_path "$repo_root")"
   mailbox_current="$(defi_swarm_mailbox_current_path "$repo_root")"
   lane_health_md="$(defi_swarm_lane_health_md_path "$repo_root")"
@@ -156,6 +187,8 @@ defi_swarm_bootstrap_runtime_dirs() {
   finder_decision="$(defi_swarm_finder_decision_path "$repo_root")"
   completion_audit_writer="$repo_root/.ai/dropbox/state/completion_audit_writer.json"
   auto_commit_state="$(defi_swarm_auto_commit_state_path "$repo_root")"
+  docs_truth_receipt="$(defi_swarm_docs_truth_receipt_path "$repo_root")"
+  docs_sync_status="$(defi_swarm_docs_sync_status_path "$repo_root")"
   [[ -f "$mailbox" ]] || : > "$mailbox"
   [[ -f "$mailbox_current" ]] || printf '%s\n' '[]' > "$mailbox_current"
   [[ -f "$lane_health_md" ]] || cat <<'EOF' > "$lane_health_md"
@@ -181,6 +214,28 @@ EOF
 }
 EOF
   [[ -f "$finder_decision" ]] || printf '%s\n' '{"decision_id":"","scope":"","status":"none","promoted_story_ids":[],"deferred_story_ids":[],"rationale":"","decided_at":""}' > "$finder_decision"
+  [[ -f "$docs_truth_receipt" ]] || cat <<'EOF' > "$docs_truth_receipt"
+{
+  "receipt_id": "",
+  "story_id": "",
+  "status": "pending",
+  "generated_at": "",
+  "docs_scanned": 0,
+  "contradiction_count": 0,
+  "contradictions": [],
+  "changed_docs_expected": []
+}
+EOF
+  [[ -f "$docs_sync_status" ]] || cat <<'EOF' > "$docs_sync_status"
+{
+  "storyId": "",
+  "status": "pending",
+  "receiptId": "",
+  "updatedAt": "",
+  "contradictionCount": 0,
+  "changedDocs": []
+}
+EOF
   defi_swarm_normalize_completion_audit_writer "$completion_audit_writer"
   if [[ ! -f "$auto_commit_state" ]]; then
     local latest_receipt_id=""
@@ -237,6 +292,16 @@ defi_swarm_accepted_receipts_dir() {
 defi_swarm_performance_receipts_dir() {
   local repo_root="${1:?repo root required}"
   printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/performance_receipts"
+}
+
+defi_swarm_docs_truth_receipt_path() {
+  local repo_root="${1:?repo root required}"
+  printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/docs_truth_receipt.json"
+}
+
+defi_swarm_docs_sync_status_path() {
+  local repo_root="${1:?repo root required}"
+  printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/docs_sync_status.json"
 }
 
 defi_swarm_runtime_state_dir() {
@@ -433,6 +498,20 @@ defi_swarm_lane_active_marker_path() {
   printf '%s\n' "$(defi_swarm_runtime_state_dir "$repo_root")/$(defi_swarm_lane_slug "$lane")__active.json"
 }
 
+defi_swarm_lane_heartbeat_path() {
+  local repo_root="${1:?repo root required}"
+  local lane="${2:?lane required}"
+  printf '%s\n' "$(defi_swarm_runtime_state_dir "$repo_root")/$(defi_swarm_lane_slug "$lane")__heartbeat.json"
+}
+
+defi_swarm_clear_lane_runtime_markers() {
+  local repo_root="${1:?repo root required}"
+  local lane="${2:?lane required}"
+  rm -f \
+    "$(defi_swarm_lane_active_marker_path "$repo_root" "$lane")" \
+    "$(defi_swarm_lane_heartbeat_path "$repo_root" "$lane")"
+}
+
 defi_swarm_lane_expected_artifacts() {
   local repo_root="${1:?repo root required}"
   local lane="${2:?lane required}"
@@ -481,6 +560,8 @@ defi_swarm_append_mailbox_event() {
   local previous_status="${7:-}"
   local recommendation="${8:-}"
   local reason="${9:-}"
+  local scope="${10:-}"
+  local mode="${11:-}"
   local mailbox
   local mailbox_current
   mailbox="$(defi_swarm_mailbox_path "$repo_root")"
@@ -494,12 +575,16 @@ defi_swarm_append_mailbox_event() {
     --arg status "$status" \
     --arg previousStatus "$previous_status" \
     --arg recommendation "$recommendation" \
+    --arg scope "$scope" \
+    --arg mode "$mode" \
     --arg reason "$reason" \
     '{
       ts: $ts,
       type: $type,
       lane: $lane,
       storyId: ($storyId | select(length > 0)),
+      scope: ($scope | select(length > 0)),
+      mode: ($mode | select(length > 0)),
       session: ($session | select(length > 0)),
       status: ($status | select(length > 0)),
       previousStatus: ($previousStatus | select(length > 0)),
@@ -527,6 +612,7 @@ for raw in mailbox.read_text().splitlines():
         continue
     key = (
         str(doc.get("storyId") or ""),
+        str(doc.get("scope") or ""),
         str(doc.get("lane") or ""),
         str(doc.get("type") or ""),
     )
@@ -536,10 +622,11 @@ current = sorted(
     latest.values(),
     key=lambda item: (
         str(item.get("storyId") or ""),
+        str(item.get("scope") or ""),
         str(item.get("lane") or ""),
         str(item.get("type") or ""),
     ),
-)
+  )
 current_path.write_text(json.dumps(current, indent=2) + "\n")
 PY
 }

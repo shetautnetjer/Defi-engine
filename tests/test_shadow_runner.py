@@ -51,8 +51,9 @@ def _seed_shadow_feature_inputs(settings) -> None:
             )
 
         for provider, endpoint in (
-            ("jupiter", "https://api.jup.ag/price/v2"),
-            ("helius", "https://api.helius.xyz/v0/addresses"),
+            ("jupiter", "/price/v3"),
+            ("jupiter", "/swap/v1/quote"),
+            ("helius", "/v0/addresses/*/transactions"),
         ):
             session.add(
                 SourceHealthEvent(

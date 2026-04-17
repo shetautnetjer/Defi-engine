@@ -111,9 +111,18 @@ if [[ -f "$lane_health_json" ]]; then
         "accepted=" + (.acceptedState // "none"),
         "swarm_state=" + (.swarmState // "unknown"),
         "completion_audit_state=" + (.completionAuditState // "unknown"),
+        "current_scope=" + (.currentScope // "none"),
+        "current_mode=" + (.currentMode // "unknown"),
+        "pending_trigger_type=" + (.pendingTriggerType // "none"),
+        "pending_trigger_scope=" + (.pendingTriggerScope // "none"),
+        "pending_trigger_story=" + (.pendingTriggerStoryId // "none"),
         "last_receipt=" + (.lastReceiptId // "none"),
         "decision=" + (.lastReceiptDecision // "none"),
         "promotion=" + (.promotionStatus // "none"),
+        "docs_sync_state=" + (.docsSyncState // "none"),
+        "docs_sync_story=" + (.docsSyncStoryId // "none"),
+        "docs_truth_receipt=" + (.docsTruthReceiptId // "none"),
+        "docs_truth_contradictions=" + ((.docsTruthContradictionCount // 0) | tostring),
         "path_exhausted=" + ((.pathExhausted // false) | tostring),
         "next_eligible=" + (.nextEligibleStoryId // "none"),
         "last_completion_audit_receipt=" + (.lastCompletionAuditReceiptId // "none"),
@@ -130,17 +139,32 @@ if [[ -f "$lane_health_json" ]]; then
   jq -r '.story.lastReceiptPromotionTargets[]? // empty' "$lane_health_json" | sed 's/^/  - /'
 fi
 if [[ -f "$mailbox_current_path" ]]; then
-  active_story="$(defi_swarm_active_story "$repo_root")"
-  printf '%s\n' 'current_mailbox_for_active_story:'
-  jq -r --arg story "$active_story" '
-    [.[] | select((.storyId // "") == $story)]
+  active_story="$(jq -r '.activeStoryId // ""' "$lane_health_json" 2>/dev/null || true)"
+  current_scope="$(jq -r '.story.currentScope // ""' "$lane_health_json" 2>/dev/null || true)"
+  current_mode="$(jq -r '.story.currentMode // "story"' "$lane_health_json" 2>/dev/null || true)"
+  if [[ -n "$current_scope" && "$current_mode" != "story" ]]; then
+    printf '%s\n' "current_mailbox_for_scope: $current_scope"
+    jq -r --arg scope "$current_scope" '
+    [.[] | select((.scope // "") == $scope)]
     | if length == 0 then
-        ["(no compacted mailbox events for active story)"]
+        ["(no compacted mailbox events for current scope)"]
       else
-        map("[\(.ts // "unknown")] story=\(.storyId // "none") lane=\(.lane // "none") type=\(.type // "none") status=\(.status // "none") reason=\(.reason // "none")")
+        map("[\(.ts // "unknown")] scope=\(.scope // "none") mode=\(.mode // "none") story=\(.storyId // "none") lane=\(.lane // "none") type=\(.type // "none") status=\(.status // "none") reason=\(.reason // "none")")
       end
     | .[]
   ' "$mailbox_current_path"
+  else
+    printf '%s\n' 'current_mailbox_for_active_story:'
+    jq -r --arg story "$active_story" '
+      [.[] | select((.storyId // "") == $story)]
+      | if length == 0 then
+          ["(no compacted mailbox events for active story)"]
+        else
+          map("[\(.ts // "unknown")] story=\(.storyId // "none") lane=\(.lane // "none") type=\(.type // "none") status=\(.status // "none") reason=\(.reason // "none")")
+        end
+      | .[]
+    ' "$mailbox_current_path"
+  fi
 fi
 if [[ -f "$mailbox_path" ]]; then
   printf '%s\n' 'recent_mailbox_raw:'

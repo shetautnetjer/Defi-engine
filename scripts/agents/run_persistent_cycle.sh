@@ -61,6 +61,7 @@ done
 repo_root="$(defi_swarm_repo_root "$repo")"
 session_name="${session_name:-$(defi_swarm_session_name)}"
 defi_swarm_bootstrap_runtime_dirs "$repo_root"
+swarm_state_helper="$script_dir/swarm_state.py"
 completion_architecture_prompt="$repo_root/.ai/templates/architecture_completion_audit.md"
 completion_writer_prompt="$repo_root/.ai/templates/writer_completion_audit.md"
 completion_architecture_json="$repo_root/.ai/dropbox/state/completion_audit_architecture.json"
@@ -236,242 +237,24 @@ completion_audit_mode() {
 }
 
 queue_receipt_followons() {
-  python - "$repo_root" <<'PY'
-from __future__ import annotations
-
-import json
-import sys
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
-receipts_dir = repo_root / ".ai" / "dropbox" / "state" / "accepted_receipts"
-
-state = json.loads(finder_state_path.read_text())
-matches = sorted(receipts_dir.glob("*.json"))
-if not matches:
-    raise SystemExit(0)
-
-latest_path = matches[-1]
-latest = json.loads(latest_path.read_text())
-receipt_id = str(latest.get("receipt_id") or "")
-if not receipt_id or state.get("lastProcessedReceiptId") == receipt_id:
-    raise SystemExit(0)
-
-queued = list(state.get("queuedReceiptFollowons") or [])
-needs_followon = any(
-    latest.get(key)
-    for key in ("contradictions_found", "unresolved_risks", "promotion_targets")
-)
-if needs_followon and all(item.get("receiptId") != receipt_id for item in queued):
-    queued.append(
-        {
-            "receiptId": receipt_id,
-            "storyId": str(latest.get("story_id") or ""),
-            "queuedAt": str(latest.get("timestamp") or ""),
-        }
-    )
-state["queuedReceiptFollowons"] = queued
-state["lastProcessedReceiptId"] = receipt_id
-finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-PY
+  python "$swarm_state_helper" --repo "$repo_root" queue-receipt-followons
 }
 
 queue_performance_trigger() {
-  python - "$repo_root" "$performance_receipts_dir" <<'PY'
-from __future__ import annotations
-
-import json
-import sys
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-receipts_dir = Path(sys.argv[2])
-finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
-state = json.loads(finder_state_path.read_text())
-if state.get("pendingTrigger"):
-    raise SystemExit(0)
-
-matches = sorted(receipts_dir.glob("*.json"))
-if not matches:
-    raise SystemExit(0)
-
-latest = json.loads(matches[-1].read_text())
-receipt_id = str(latest.get("receipt_id") or "")
-recommendation = str(latest.get("recommendation") or "")
-if not receipt_id or receipt_id == state.get("lastProcessedPerformanceReceiptId"):
-    raise SystemExit(0)
-
-state["lastProcessedPerformanceReceiptId"] = receipt_id
-if recommendation == "no_action":
-    finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-    raise SystemExit(0)
-
-scope = f"performance_{str(latest.get('experiment_run_id') or 'audit')}"
-scope = scope.replace("/", "_").replace(":", "_")
-state["pendingTrigger"] = {
-    "triggerId": f"performance::{receipt_id}",
-    "triggerType": "performance_receipt",
-    "scope": scope,
-    "storyId": "",
-    "performanceReceiptId": receipt_id,
-    "createdAt": str(latest.get("timestamp") or ""),
-}
-finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-PY
+  python "$swarm_state_helper" --repo "$repo_root" queue-performance-trigger
 }
 
 queue_repeated_failure_trigger() {
-  python - "$repo_root" "$mailbox_path" <<'PY'
-from __future__ import annotations
-
-import json
-import sys
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-mailbox_path = Path(sys.argv[2])
-finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
-state = json.loads(finder_state_path.read_text())
-if state.get("pendingTrigger"):
-    raise SystemExit(0)
-
-events = []
-for raw in mailbox_path.read_text().splitlines():
-    raw = raw.strip()
-    if not raw:
-        continue
-    try:
-        doc = json.loads(raw)
-    except json.JSONDecodeError:
-        continue
-    if doc.get("type") != "lane_status":
-        continue
-    if doc.get("status") not in {"failed", "stale", "blocked"}:
-        continue
-    events.append(doc)
-
-if len(events) < 2:
-    raise SystemExit(0)
-
-last = events[-1]
-prev = events[-2]
-signature = "|".join(
-    [
-        str(last.get("storyId") or ""),
-        str(last.get("lane") or ""),
-        str(last.get("status") or ""),
-        str(last.get("reason") or ""),
-    ]
-)
-prev_signature = "|".join(
-    [
-        str(prev.get("storyId") or ""),
-        str(prev.get("lane") or ""),
-        str(prev.get("status") or ""),
-        str(prev.get("reason") or ""),
-    ]
-)
-if not signature or signature != prev_signature:
-    raise SystemExit(0)
-if state.get("lastProcessedFailureSignature") == signature:
-    raise SystemExit(0)
-
-state["pendingTrigger"] = {
-    "triggerId": f"finder::{last.get('ts','')}::{last.get('storyId','')}",
-    "triggerType": "repeated_failure",
-    "scope": str(last.get("storyId") or ""),
-    "storyId": str(last.get("storyId") or ""),
-    "failureSignature": signature,
-    "createdAt": str(last.get("ts") or ""),
-}
-state["lastProcessedFailureSignature"] = signature
-finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-PY
+  python "$swarm_state_helper" --repo "$repo_root" queue-repeated-failure-trigger
 }
 
 queue_completion_trigger() {
-  python - "$repo_root" <<'PY'
-from __future__ import annotations
-
-import json
-import sys
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
-receipts_dir = repo_root / ".ai" / "dropbox" / "state" / "accepted_receipts"
-prd = json.loads((repo_root / "prd.json").read_text())
-eligible_states = {"ready", "active", "recovery"}
-if any(story.get("state") in eligible_states for story in prd.get("userStories", [])):
-    raise SystemExit(0)
-
-state = json.loads(finder_state_path.read_text())
-if state.get("pendingTrigger"):
-    raise SystemExit(0)
-
-latest_receipt = ""
-matches = sorted(receipts_dir.glob("*.json"))
-if matches:
-    latest = json.loads(matches[-1].read_text())
-    latest_receipt = str(latest.get("receipt_id") or "")
-
-scope_signature = f"completion_audit::{latest_receipt}"
-if state.get("lastProcessedCompletionScope") == scope_signature:
-    raise SystemExit(0)
-
-state["pendingTrigger"] = {
-    "triggerId": scope_signature,
-    "triggerType": "completion_audit",
-    "scope": "completion_audit",
-    "storyId": str(prd.get("activeStoryId") or ""),
-    "sourceReceiptId": latest_receipt,
-    "createdAt": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-}
-finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-PY
+  python "$swarm_state_helper" --repo "$repo_root" queue-completion-trigger
 }
 
 queue_periodic_terminal_audit() {
-  python - "$repo_root" <<'PY'
-from __future__ import annotations
-
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
-prd = json.loads((repo_root / "prd.json").read_text())
-if str(prd.get("swarmState") or "") != "terminal_complete":
-    raise SystemExit(0)
-
-state = json.loads(finder_state_path.read_text())
-if state.get("pendingTrigger"):
-    raise SystemExit(0)
-
-last_audit_at = str(state.get("lastTerminalAuditAt") or "")
-if last_audit_at:
-    try:
-        last_epoch = datetime.fromisoformat(last_audit_at.replace("Z", "+00:00")).timestamp()
-        now_epoch = datetime.now(timezone.utc).timestamp()
-        if (now_epoch - last_epoch) < 3600:
-            raise SystemExit(0)
-    except ValueError:
-        pass
-
-timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-state["pendingTrigger"] = {
-    "triggerId": f"periodic_completion_audit::{timestamp}",
-    "triggerType": "periodic_completion_audit",
-    "scope": "completion_audit",
-    "storyId": "",
-    "sourceReceiptId": str(prd.get("lastCompletionAuditReceiptId") or ""),
-    "createdAt": timestamp,
-}
-finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-PY
+  # Queue the periodic_completion_audit finder trigger once terminal monitoring ages out.
+  python "$swarm_state_helper" --repo "$repo_root" queue-periodic-terminal-audit
 }
 
 finder_phase() {
@@ -544,42 +327,12 @@ print("processed")
 PY
 }
 
+clear_stale_completion_trigger() {
+  python "$swarm_state_helper" --repo "$repo_root" clear-stale-completion-trigger
+}
+
 clear_processed_finder() {
-  python - "$repo_root" <<'PY'
-from __future__ import annotations
-
-import json
-import sys
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-state_dir = repo_root / ".ai" / "dropbox" / "state"
-finder_state_path = state_dir / "finder_state.json"
-finder_decision_path = state_dir / "finder_decision.json"
-completion_writer_path = state_dir / "completion_audit_writer.json"
-state = json.loads(finder_state_path.read_text())
-pending = state.get("pendingTrigger") or {}
-scope = str(pending.get("scope") or "")
-trigger_type = str(pending.get("triggerType") or "")
-
-decision_id = ""
-if scope == "completion_audit" and completion_writer_path.exists():
-    doc = json.loads(completion_writer_path.read_text())
-    decision_id = str(doc.get("audit_id") or "")
-elif finder_decision_path.exists():
-    doc = json.loads(finder_decision_path.read_text())
-    decision_id = str(doc.get("decision_id") or "")
-
-state["pendingTrigger"] = None
-if trigger_type in {"completion_audit", "periodic_completion_audit"}:
-    state["lastProcessedCompletionScope"] = f"completion_audit::{pending.get('sourceReceiptId') or ''}"
-    state["queuedReceiptFollowons"] = []
-    state["lastTerminalAuditAt"] = __import__("datetime").datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-if decision_id:
-    state["lastFinderAuditId"] = decision_id
-    state["lastWriterDecisionId"] = decision_id
-finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
-PY
+  python "$swarm_state_helper" --repo "$repo_root" clear-processed-finder
 }
 
 cleanup_terminal_runtime_markers() {
@@ -590,7 +343,7 @@ cleanup_terminal_runtime_markers() {
       local pid=""
       pid="$(jq -r '.pid // empty' "$marker" 2>/dev/null || true)"
       if ! defi_swarm_pid_is_running "$pid"; then
-        rm -f "$marker"
+        defi_swarm_clear_lane_runtime_markers "$repo_root" "$lane"
       fi
     fi
   done
@@ -621,6 +374,7 @@ while :; do
     queue_periodic_terminal_audit
   fi
   sync_swarm_state
+  clear_stale_completion_trigger
   "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --quiet >/dev/null
 
   printf 'persistent-cycle: cycle %s at %s\n' "$loop" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -631,17 +385,22 @@ while :; do
     printf 'persistent-cycle: finder=%s\n' "$finder_mode"
     case "$finder_mode" in
       launch_architecture)
-        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane architecture --run --prompt-file "$architecture_finder_prompt"
+        pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
+        pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
+        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane architecture --run --prompt-file "$architecture_finder_prompt" --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
         ;;
       launch_research)
-        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane research --run --prompt-file "$research_finder_prompt"
+        pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
+        pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
+        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane research --run --prompt-file "$research_finder_prompt" --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
         ;;
       launch_writer)
         pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
+        pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
         if [[ "$pending_scope" == "completion_audit" ]]; then
-          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt"
+          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt" --scope "$pending_scope" --mode completion_audit --story-id "$pending_story_id"
         else
-          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run
+          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
         fi
         ;;
       processed)
@@ -660,10 +419,10 @@ while :; do
     printf 'persistent-cycle: completion-audit=%s\n' "$audit_mode"
     case "$audit_mode" in
       launch_architecture)
-        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane architecture --run --prompt-file "$completion_architecture_prompt"
+        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane architecture --run --prompt-file "$completion_architecture_prompt" --scope completion_audit --mode completion_audit --story-id ""
         ;;
       launch_writer)
-        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt"
+        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt" --scope completion_audit --mode completion_audit --story-id ""
         ;;
       gaps_promoted)
         supervisor_mode="execution"

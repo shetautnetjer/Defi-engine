@@ -1,11 +1,11 @@
 {
   "project": "Defi-engine",
   "branchName": "main",
-  "description": "Use a Ralph-style 4-lane tmux swarm to keep repo execution grounded in source truth, bounded feature/condition/shadow surfaces, explicit policy/risk/settlement owners, and receipt-backed follow-on runtime hardening.",
-  "activeStoryId": "",
-  "swarmState": "audit_followons_present",
+  "description": "Use a Ralph-style 4-lane tmux swarm to keep Stage 1 current-truth consolidation grounded in source truth, bounded feature/condition/shadow surfaces, explicit policy/risk/settlement owners, continuous docs sync, and receipt-backed follow-on runtime hardening on the path to a governed Solana-first backtesting and paper-trading platform.",
+  "activeStoryId": "ORCH-006",
+  "swarmState": "active",
   "completionAuditState": "pending",
-  "lastCompletionAuditReceiptId": "completion_audit_writer::2026-04-16T09:01:50-07:00",
+  "lastCompletionAuditReceiptId": "completion_audit_writer::2026-04-16T18:49:59-07:00",
   "lastFinderAuditId": "",
   "userStories": [
     {
@@ -81,24 +81,6 @@
       "promoted_by": ""
     },
     {
-      "id": "ORCH-005",
-      "title": "Add the terminal completion contract and finder-governed follow-on flow",
-      "description": "As a repo operator, I want backlog exhaustion, audit-found follow-ons, and truly terminal completion to become explicit top-level swarm states so the four-lane loop can stay honest when seeded stories are done but governance still has receipt-backed next work to decide.",
-      "acceptanceCriteria": [
-        "prd.json carries explicit top-level swarm completion fields such as swarmState and completionAuditState, and the active follow-on orchestration story makes backlog exhaustion distinct from terminal completion.",
-        "The supervisor, health, and status surfaces distinguish active work, backlog exhaustion, audit-followons-present, and terminal-complete states without treating stale mailbox noise as canonical truth.",
-        "Architecture-finder and research-finder exist as mode switches inside the existing lanes, emit advisory audit artifacts, and never mutate backlog truth directly.",
-        "Writer-integrator remains the only promotion authority for finder outputs, and docs/tests describe the terminal-completion plus audit-followon contract clearly."
-      ],
-      "priority": 8,
-      "passes": true,
-      "notes": "Promoted from the 2026-04-16 architecture completion audit to make backlog exhaustion, audit-known follow-ons, and terminal completion governed states instead of implicit swarm behavior.\nlast_receipt=2026-04-16T140727Z__ORCH-005",
-      "state": "done",
-      "recovery_round": 0,
-      "origin": "promoted_gap",
-      "promoted_by": "completion_audit_architecture@2026-04-16T06:35:27-07:00"
-    },
-    {
       "id": "POL-001",
       "title": "Open the first explicit policy decision-trace owner",
       "description": "As a repo operator, I want policy to consume bounded condition truth explicitly so strategy eligibility and no-trade outcomes stop living as implication or future intent.",
@@ -153,6 +135,24 @@
       "promoted_by": ""
     },
     {
+      "id": "ORCH-005",
+      "title": "Add the terminal completion contract and finder-governed follow-on flow",
+      "description": "As a repo operator, I want backlog exhaustion, audit-found follow-ons, and truly terminal completion to become explicit top-level swarm states so the four-lane loop can stay honest when seeded stories are done but governance still has receipt-backed next work to decide.",
+      "acceptanceCriteria": [
+        "prd.json carries explicit top-level swarm completion fields such as swarmState and completionAuditState, and the active follow-on orchestration story makes backlog exhaustion distinct from terminal completion.",
+        "The supervisor, health, and status surfaces distinguish active work, backlog exhaustion, audit-followons-present, and terminal-complete states without treating stale mailbox noise as canonical truth.",
+        "Architecture-finder and research-finder exist as mode switches inside the existing lanes, emit advisory audit artifacts, and never mutate backlog truth directly.",
+        "Writer-integrator remains the only promotion authority for finder outputs, and docs/tests describe the terminal-completion plus audit-followon contract clearly."
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Promoted from the 2026-04-16 architecture completion audit to make backlog exhaustion, audit-known follow-ons, and terminal completion governed states instead of implicit swarm behavior.\nlast_receipt=2026-04-16T140727Z__ORCH-005",
+      "state": "done",
+      "recovery_round": 0,
+      "origin": "promoted_gap",
+      "promoted_by": "completion_audit_architecture@2026-04-16T06:35:27-07:00"
+    },
+    {
       "id": "SOURCE-001",
       "title": "Open explicit continuous capture runtime ownership",
       "description": "As a repo operator, I want continuous capture to become an explicit runtime owner with lane freshness states, cadence expectations, and operator-visible health so downstream feature, policy, risk, and settlement decisions depend on governed ingest continuity instead of ad hoc manual capture runs.",
@@ -169,6 +169,24 @@
       "recovery_round": 0,
       "origin": "promoted_gap",
       "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+    },
+    {
+      "id": "ORCH-006",
+      "title": "Scope-lock completion-audit finder runs and make state sync monotonic",
+      "description": "As a repo operator, I want completion-audit finder work to carry explicit scope and drive one canonical swarm state so terminal-complete claims cannot coexist with pending finder work, blank active-story fallbacks, or mismatched audit packets.",
+      "acceptanceCriteria": [
+        "With completion_audit finder scope pending, architecture and research finder runs emit only completion_audit__* outputs and out-of-scope finder artifacts are ignored or superseded.",
+        "Runtime launch, active, and completion markers carry finder scope so status and health surfaces can distinguish scoped finder work from story work.",
+        "prd.json, lane_health.*, and completion_audit_writer.json cannot present terminal_complete or clean while completion-audit finder work is pending or being decided.",
+        "A targeted orchestration validation proves one sync path is sufficient to make finder_state, prd.json, and lane_health.* agree on completion-audit state transitions."
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Stage 1 current-truth consolidation is active: the durable descent guide now lives in docs/issues/governed_product_descent_capability_ladder.md, the missing capability layers are decomposed in docs/gaps/, and writer-integrator must keep the entire docs tree aligned with accepted code, prd.json, and progress.txt as ORCH-006 closes.",
+      "state": "active",
+      "recovery_round": 0,
+      "origin": "promoted_gap",
+      "promoted_by": "completion_audit_writer::2026-04-16T18:00:00-07:00"
     },
     {
       "id": "RESEARCH-001",

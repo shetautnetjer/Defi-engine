@@ -25,7 +25,14 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "test" / "bootstrap_validation.md",
 ]
 REQUIRED_DOCS = ACTIVE_DOCS + [
+    REPO_ROOT / "docs" / "issues" / "governed_product_descent_capability_ladder.md",
     REPO_ROOT / "docs" / "gaps" / "bootstrap_gap_register.md",
+    REPO_ROOT / "docs" / "gaps" / "backtest_truth_model_gap.md",
+    REPO_ROOT / "docs" / "gaps" / "label_program_and_regime_taxonomy_gap.md",
+    REPO_ROOT / "docs" / "gaps" / "strategy_registry_and_challenger_framework_gap.md",
+    REPO_ROOT / "docs" / "gaps" / "execution_intent_gap.md",
+    REPO_ROOT / "docs" / "gaps" / "instrument_expansion_readiness_gap.md",
+    REPO_ROOT / "docs" / "gaps" / "tmux_machine_law_and_packet_gap.md",
     REPO_ROOT / "docs" / "handoff" / "2026-04-12_bootstrap_phase_1.md",
 ]
 
@@ -121,9 +128,44 @@ def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_la
     repo_map = (REPO_ROOT / ".ai" / "index" / "current_repo_map.md").read_text()
 
     assert "execution intent" in runtime_truth.lower()
+    assert "Stage 1" in runtime_truth
+    assert "current truth consolidation" in runtime_truth
     assert ".ai/swarm/" in ai_readme
     assert "policy-only" in ai_readme
     assert ".ai/swarm/swarm.yaml" in repo_map
+
+
+def test_stage_one_issue_and_gap_guides_exist_for_future_handoffs() -> None:
+    issue_guide = (
+        REPO_ROOT / "docs" / "issues" / "governed_product_descent_capability_ladder.md"
+    ).read_text()
+    gaps_index = (REPO_ROOT / "docs" / "gaps" / "bootstrap_gap_register.md").read_text()
+
+    assert "current truth consolidation" in issue_guide
+    assert "backtesting truth layer" in issue_guide
+    assert "governed promotion ladder" in issue_guide
+    assert "Solana-first" in issue_guide
+    assert "backtest_truth_model_gap.md" in gaps_index
+    assert "execution_intent_gap.md" in gaps_index
+
+
+def test_stale_underclaims_are_removed_from_current_truth_docs() -> None:
+    mission = (REPO_ROOT / "docs" / "prd" / "crypto_backtesting_mission.md").read_text()
+    runbook = (
+        REPO_ROOT / "docs" / "runbooks" / "feature_condition_shadow_cycle.md"
+    ).read_text()
+    math_contract = (
+        REPO_ROOT / "docs" / "math" / "regime_shadow_modeling_contracts.md"
+    ).read_text()
+    bootstrap_gaps = (REPO_ROOT / "docs" / "gaps" / "bootstrap_gap_register.md").read_text()
+
+    assert "continuous capture ownership across the required lanes" not in mission
+    assert "realized-feedback comparison between `research_loop/` and paper outcomes" not in mission
+    assert "policy-owned trade eligibility" not in runbook
+    assert "paper-session ownership" not in runbook
+    assert "The repo does not yet imply policy-owned trade eligibility" not in math_contract
+    assert "paper fills or settlement truth" not in math_contract
+    assert "policy, risk, and settlement placeholders" not in bootstrap_gaps
 
 
 def test_realized_feedback_docs_no_longer_treat_research_loop_as_missing() -> None:

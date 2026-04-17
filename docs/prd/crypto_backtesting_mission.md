@@ -31,9 +31,14 @@ Implemented now:
 
 Still missing as governed runtime owners:
 
-- continuous capture ownership across required lanes
 - runtime-owned execution intent between `risk/` and `settlement/`
-- realized-feedback comparison between `research_loop/` and paper outcomes
+
+Stage 1 current-truth consolidation is also still active:
+
+- the swarm and docs packet must keep the entire `docs/` tree aligned with
+  accepted repo truth
+- writer-integrator must keep `prd.json`, `progress.txt`, and docs truth in
+  sync continuously
 
 ## Product target
 

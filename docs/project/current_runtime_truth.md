@@ -5,6 +5,11 @@ This file is the compact runtime-truth packet for the Defi-engine swarm.
 Read it before widening backlog truth or claiming a runtime owner is still
 missing.
 
+Stage 1 of the governed product descent is current-truth consolidation. In
+plain terms, the current truth consolidation rule means the repo should prefer
+clean contracts, clean docs, and clean acceptance state over widening into new
+product surfaces too early.
+
 ## Real now
 
 The repo already owns these runtime-adjacent surfaces:
@@ -41,6 +46,13 @@ The remaining runtime owner gap is:
 
 That gap is about instrument, side, size, and entry-exit intent. It is not a
 reason to reopen policy, risk, or settlement as if those layers were absent.
+
+The active orchestration hardening work is therefore about:
+
+- keeping the swarm state monotonic and auditable
+- keeping the entire `docs/` tree aligned with accepted repo truth
+- letting writer-integrator finish acceptance cleanly instead of letting stale
+  lane liveness pretend to be progress
 
 ## Research-only by default
 

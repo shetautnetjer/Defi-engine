@@ -4,6 +4,10 @@ This directory is the repo-local routing map for documentation in `Defi-engine`.
 
 Code, config, schema, and checks remain the runtime authority. These docs explain the current repo state, the active execution slice, and the deferred gaps without claiming unimplemented behavior.
 
+The active repo discipline is Stage 1 current-truth consolidation: accepted
+work should keep the whole `docs/` tree aligned with code truth, `prd.json`,
+and `progress.txt`.
+
 ## Current Documents
 
 - `project/bootstrap_inventory.md`
@@ -42,6 +46,20 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - governed scope ladder from Solana spot into later Jupiter perps and Coinbase futures expansion
 - `gaps/bootstrap_gap_register.md`
   - deferred or missing capabilities that should not be treated as shipped
+- `issues/governed_product_descent_capability_ladder.md`
+  - durable issue guide for the governed product-descent target and staged capability ladder
+- `gaps/backtest_truth_model_gap.md`
+  - remaining backtesting-truth work before strategy expansion can be trusted
+- `gaps/label_program_and_regime_taxonomy_gap.md`
+  - canonical label and regime taxonomy work still missing
+- `gaps/strategy_registry_and_challenger_framework_gap.md`
+  - strategy-family, metrics, and challenger work still missing
+- `gaps/execution_intent_gap.md`
+  - the remaining runtime-owner gap between risk and settlement
+- `gaps/instrument_expansion_readiness_gap.md`
+  - the widening ladder and readiness work for perps/futures
+- `gaps/tmux_machine_law_and_packet_gap.md`
+  - remaining machine-readable swarm-law work
 - `issues/paper_runtime_blockers.md`
   - durable blockers that still prevent a truthful paper-runtime claim
 - `issues/regime_shadow_corrective_slice.md`
@@ -78,9 +96,9 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `docs/plans/`
   - planning synthesis, sequencing bridges, and roadmap surfaces
 - `docs/issues/`
-  - durable blockers, review findings, and next-action tracking
+  - durable blockers, review findings, next-action tracking, and issue guides
 - `docs/gaps/`
-  - unresolved missing capability or known holes
+  - unresolved missing capability or known holes decomposed into staged gap docs
 - `docs/architecture/`
   - current architecture and data-flow descriptions
 - `docs/runbooks/`

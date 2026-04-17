@@ -1,0 +1,114 @@
+version: 1
+
+story_classes:
+  doc_sync:
+    review_paths:
+      - docs/issues/
+      - docs/gaps/
+      - docs/project/
+      - docs/runbooks/
+      - docs/README.md
+  backtest_truth:
+    review_paths:
+      - docs/prd/
+      - docs/plans/
+      - docs/math/
+      - docs/policy/
+      - docs/gaps/backtest_truth_model_gap.md
+      - docs/project/
+      - docs/runbooks/
+  label_program:
+    review_paths:
+      - docs/math/
+      - docs/plans/
+      - docs/prd/
+      - docs/gaps/label_program_and_regime_taxonomy_gap.md
+      - docs/project/
+  strategy_research:
+    review_paths:
+      - docs/math/
+      - docs/plans/
+      - docs/issues/
+      - docs/gaps/strategy_registry_and_challenger_framework_gap.md
+      - docs/project/
+  execution_intent:
+    review_paths:
+      - docs/policy/
+      - docs/sdd/
+      - docs/prd/
+      - docs/gaps/execution_intent_gap.md
+      - docs/project/
+      - docs/runbooks/
+  instrument_expansion:
+    review_paths:
+      - docs/plans/
+      - docs/prd/
+      - docs/gaps/instrument_expansion_readiness_gap.md
+      - docs/project/
+      - docs/runbooks/
+  orchestration:
+    review_paths:
+      - docs/runbooks/
+      - docs/project/
+      - docs/issues/
+      - docs/gaps/tmux_machine_law_and_packet_gap.md
+      - docs/test/
+
+layers:
+  source:
+    review_paths:
+      - docs/project/
+      - docs/sdd/
+      - docs/runbooks/
+      - docs/issues/
+      - docs/gaps/
+  features:
+    review_paths:
+      - docs/project/
+      - docs/math/
+      - docs/sdd/
+      - docs/runbooks/
+      - docs/issues/
+  condition:
+    review_paths:
+      - docs/project/
+      - docs/math/
+      - docs/sdd/
+      - docs/runbooks/
+      - docs/issues/
+  policy:
+    review_paths:
+      - docs/policy/
+      - docs/project/
+      - docs/prd/
+      - docs/sdd/
+      - docs/issues/
+  risk:
+    review_paths:
+      - docs/policy/
+      - docs/project/
+      - docs/prd/
+      - docs/sdd/
+      - docs/issues/
+  settlement:
+    review_paths:
+      - docs/project/
+      - docs/prd/
+      - docs/sdd/
+      - docs/issues/
+      - docs/runbooks/
+  research_loop:
+    review_paths:
+      - docs/project/
+      - docs/math/
+      - docs/issues/
+      - docs/gaps/
+      - docs/test/
+
+always_review:
+  - docs/README.md
+  - docs/project/current_runtime_truth.md
+  - docs/project/bootstrap_inventory.md
+  - docs/issues/governed_product_descent_capability_ladder.md
+  - docs/issues/paper_runtime_blockers.md
+  - docs/gaps/bootstrap_gap_register.md

@@ -87,9 +87,11 @@ Read this before proposing new files, modules, or runtime claims.
 - `docs/prd/crypto_backtesting_mission.md`
 - `docs/prd/backtesting_completion_definition.md`
 - `docs/project/bootstrap_inventory.md`
+- `docs/issues/governed_product_descent_capability_ladder.md`
 - `docs/task/continuous_capture_ownership.md`
 - `docs/task/global_regime_condition_and_shadow_stack.md`
 - `docs/issues/paper_runtime_blockers.md`
+- `docs/gaps/bootstrap_gap_register.md`
 - `docs/plans/strategy_descent_and_instrument_scope.md`
 - `docs/math/regime_shadow_modeling_contracts.md`
 - `docs/math/market_regime_forecast_and_labeling_program.md`
@@ -125,5 +127,6 @@ The repo now also carries policy-only swarm governance files under `.ai/swarm/`:
 - `.ai/swarm/swarm.yaml`
 - `.ai/swarm/lane_rules.yaml`
 - `.ai/swarm/promotion_ladder.yaml`
+- `.ai/swarm/doc_owners.yaml`
 
 They are packet and governance truth, not live supervisor inputs in v1.

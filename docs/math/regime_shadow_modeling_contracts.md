@@ -12,9 +12,6 @@ This document describes only what is currently implemented or explicitly reserve
 
 It does **not** imply:
 
-- policy-owned trade eligibility
-- a hard risk gate
-- paper fills or settlement
 - governed model promotion
 - live trading
 
@@ -23,7 +20,9 @@ The current truthful claim is narrower:
 - deterministic feature construction exists
 - one bounded regime scorer exists
 - one bounded shadow-only ensemble exists
-- all model outputs remain non-promoting until later `policy/`, `risk/`, and `settlement/` ownership lands
+- explicit policy, risk, settlement, and advisory realized-feedback comparison
+  now exist as downstream owners
+- all model outputs remain non-promoting until they are explicitly promoted
 
 ## Data And Time Discipline
 

@@ -222,6 +222,7 @@ def status() -> None:
     """Show engine health — recent ingest runs and source health."""
     from sqlalchemy import func
 
+    from d5_trading_engine.capture.lane_status import build_capture_lane_status_snapshot
     from d5_trading_engine.storage.truth.engine import get_session
     from d5_trading_engine.storage.truth.models import (
         ConditionGlobalRegimeSnapshotV1,
@@ -234,6 +235,8 @@ def status() -> None:
     session = get_session(settings)
 
     try:
+        lane_snapshot = build_capture_lane_status_snapshot(settings=settings)
+
         click.echo("=== Recent Ingest Runs ===")
         runs = session.query(IngestRun).order_by(IngestRun.created_at.desc()).limit(10).all()
         if not runs:
@@ -273,6 +276,34 @@ def status() -> None:
                 f"{event.endpoint}  "
                 f"{event.checked_at}"
             )
+
+        click.echo("\n=== Capture Lanes ===")
+        for lane_name, lane in lane_snapshot["lanes"].items():
+            eligible = "yes" if lane["downstream_eligible"] else "no"
+            required = "yes" if lane["required_for_authorization"] else "no"
+            click.echo(
+                f"  {lane_name:22s}  state={lane['freshness_state']:14s}  "
+                f"eligible={eligible:3s}  required={required:3s}  "
+                f"success={lane['last_success_at_utc'] or '-'}"
+            )
+            click.echo(
+                f"    provider={lane['provider']}  capture={lane['capture_type']}  "
+                f"class={lane['expectation_class']}  "
+                f"failure={lane['last_failure_at_utc'] or '-'}  "
+                f"health={lane['latest_health_at_utc'] or '-'}"
+            )
+            if lane["latest_raw_receipt_at_utc"]:
+                click.echo(f"    raw_receipt={lane['latest_raw_receipt_at_utc']}")
+            if lane["latest_error_summary"]:
+                click.echo(f"    error={lane['latest_error_summary']}")
+
+        if lane_snapshot["blocking_lanes"]:
+            click.echo(
+                "  required blockers="
+                + ", ".join(str(item) for item in lane_snapshot["blocking_lanes"])
+            )
+        else:
+            click.echo("  required blockers=none")
 
         click.echo("\n=== Current Condition ===")
         latest_condition = (

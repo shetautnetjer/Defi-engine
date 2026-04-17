@@ -89,10 +89,14 @@ def _seed_feature_inputs(
         session.flush()
         if include_health:
             for provider, endpoint in (
-                ("jupiter", "https://api.jup.ag/price/v2"),
-                ("helius", "https://api.helius.xyz/v0/addresses"),
-                ("coinbase", "https://api.exchange.coinbase.com/products"),
-                ("fred", "https://api.stlouisfed.org/fred/series/observations"),
+                ("jupiter", "/price/v3"),
+                ("jupiter", "/swap/v1/quote"),
+                ("helius", "/v0/addresses/*/transactions"),
+                ("coinbase", "/market/products"),
+                ("coinbase", "/market/products/*/candles"),
+                ("coinbase", "/market/products/*/ticker"),
+                ("coinbase", "/market/product_book"),
+                ("fred", "observations"),
             ):
                 session.add(
                     SourceHealthEvent(
@@ -402,6 +406,29 @@ def test_cli_status_reports_empty_initialized_db(cli_runner) -> None:
     assert result.exit_code == 0
     assert "No ingest runs yet." in result.output
     assert "No health events yet." in result.output
+    assert "=== Capture Lanes ===" in result.output
+    assert "jupiter-prices" in result.output
+    assert "never_started" in result.output
+    assert "massive-crypto" in result.output
+    assert "readiness_only" in result.output
+
+
+def test_cli_status_reports_capture_lane_states(cli_runner, settings) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    _seed_feature_inputs(settings)
+
+    result = cli_runner.invoke(cli, ["status"])
+
+    assert result.exit_code == 0
+    assert "=== Capture Lanes ===" in result.output
+    assert "jupiter-prices" in result.output
+    assert "state=healthy_recent" in result.output
+    assert "helius-transactions" in result.output
+    assert "massive-crypto" in result.output
+    assert "readiness_only" in result.output
+    assert "required blockers=none" in result.output
 
 
 def test_status_surfaces_latest_failed_condition_run(cli_runner, settings) -> None:

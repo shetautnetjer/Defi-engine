@@ -9,6 +9,7 @@ from statistics import fmean, pstdev
 
 import orjson
 
+from d5_trading_engine.capture.lane_status import build_feature_lane_snapshot
 from d5_trading_engine.common.errors import FeatureError
 from d5_trading_engine.common.logging import get_logger
 from d5_trading_engine.common.time_utils import ensure_utc, utcnow
@@ -19,7 +20,6 @@ from d5_trading_engine.storage.truth.models import (
     FeatureMaterializationRun,
     FeatureSpotChainMacroMinuteV1,
     FredObservation,
-    IngestRun,
     MarketCandle,
     MarketInstrumentRegistry,
     MarketTradeEvent,
@@ -27,7 +27,6 @@ from d5_trading_engine.storage.truth.models import (
     QuoteSnapshot,
     SolanaAddressRegistry,
     SolanaTransferEvent,
-    SourceHealthEvent,
     TokenPriceSnapshot,
     TokenRegistry,
 )
@@ -67,7 +66,6 @@ _FRED_SERIES_FIELDS = {
     "DGS10": "fred_dgs10",
     "DTWEXBGS": "fred_dtwexbgs",
 }
-_DEGRADED_RATIO = 0.8
 _SPOT_CHAIN_REQUIRED_LANES = (
     "jupiter-prices",
     "jupiter-quotes",
@@ -85,56 +83,6 @@ _GLOBAL_REGIME_REQUIRED_LANES = (
     "coinbase-book",
 )
 _GLOBAL_REGIME_OPTIONAL_LANES = ("fred-observations",)
-_FRESHNESS_RULES = {
-    "jupiter-prices": {
-        "provider": "jupiter",
-        "capture_type": "prices",
-        "expectation_class": "recurring_market_snapshot",
-        "window": timedelta(minutes=15),
-    },
-    "jupiter-quotes": {
-        "provider": "jupiter",
-        "capture_type": "quotes",
-        "expectation_class": "recurring_market_snapshot",
-        "window": timedelta(minutes=15),
-    },
-    "helius-transactions": {
-        "provider": "helius",
-        "capture_type": "enhanced_transactions",
-        "expectation_class": "recurring_chain_state_pull",
-        "window": timedelta(minutes=30),
-    },
-    "coinbase-products": {
-        "provider": "coinbase",
-        "capture_type": "products",
-        "expectation_class": "reference_refresh",
-        "window": timedelta(hours=24),
-    },
-    "coinbase-candles": {
-        "provider": "coinbase",
-        "capture_type": "candles",
-        "expectation_class": "recurring_market_data_lane",
-        "window": timedelta(minutes=30),
-    },
-    "coinbase-market-trades": {
-        "provider": "coinbase",
-        "capture_type": "market_trades",
-        "expectation_class": "recurring_market_data_lane",
-        "window": timedelta(minutes=30),
-    },
-    "coinbase-book": {
-        "provider": "coinbase",
-        "capture_type": "book",
-        "expectation_class": "recurring_market_data_lane",
-        "window": timedelta(minutes=30),
-    },
-    "fred-observations": {
-        "provider": "fred",
-        "capture_type": "observations",
-        "expectation_class": "slower_macro_lane",
-        "window": timedelta(days=2),
-    },
-}
 _REGIME_PROXY_PREFERENCE = ("BTC", "ETH", "SOL")
 _REGIME_BUCKET_MINUTES = 15
 _FOUR_HOUR_BUCKET_COUNT = 16
@@ -210,13 +158,6 @@ def _compound_return(values: list[float]) -> float | None:
     return total - 1.0
 
 
-def _isoformat(dt: datetime | None) -> str | None:
-    normalized = ensure_utc(dt)
-    if normalized is None:
-        return None
-    return normalized.isoformat()
-
-
 class FeatureMaterializer:
     """Materialize deterministic feature tables from canonical truth."""
 
@@ -278,120 +219,11 @@ class FeatureMaterializer:
         required_lanes: tuple[str, ...],
         optional_lanes: tuple[str, ...] = (),
     ) -> dict[str, object]:
-        now = utcnow()
-        lanes_to_check = tuple(dict.fromkeys(required_lanes + optional_lanes))
-        session = get_session(self.settings)
-        try:
-            lane_by_receipt = {
-                (rule["provider"], rule["capture_type"]): lane_name
-                for lane_name, rule in _FRESHNESS_RULES.items()
-                if lane_name in lanes_to_check
-            }
-            providers = sorted(
-                {
-                    rule["provider"]
-                    for name, rule in _FRESHNESS_RULES.items()
-                    if name in lanes_to_check
-                }
-            )
-            capture_types = sorted(
-                {
-                    rule["capture_type"]
-                    for name, rule in _FRESHNESS_RULES.items()
-                    if name in lanes_to_check
-                }
-            )
-            latest_success_by_lane: dict[str, IngestRun] = {}
-            latest_failure_by_lane: dict[str, IngestRun] = {}
-            for run in (
-                session.query(IngestRun)
-                .filter(IngestRun.provider.in_(providers))
-                .filter(IngestRun.capture_type.in_(capture_types))
-                .order_by(IngestRun.finished_at.desc(), IngestRun.started_at.desc())
-                .all()
-            ):
-                lane_name = lane_by_receipt.get((run.provider, run.capture_type))
-                if lane_name is None:
-                    continue
-                if run.status == "success" and lane_name not in latest_success_by_lane:
-                    latest_success_by_lane[lane_name] = run
-                elif run.status != "success" and lane_name not in latest_failure_by_lane:
-                    latest_failure_by_lane[lane_name] = run
-
-            latest_health_by_provider: dict[str, SourceHealthEvent] = {}
-            for event in (
-                session.query(SourceHealthEvent)
-                .filter(SourceHealthEvent.provider.in_(providers))
-                .order_by(SourceHealthEvent.checked_at.desc())
-                .all()
-            ):
-                if event.provider not in latest_health_by_provider:
-                    latest_health_by_provider[event.provider] = event
-        finally:
-            session.close()
-
-        lane_states: dict[str, dict[str, object]] = {}
-        blocking_lanes: list[str] = []
-        for lane_name in lanes_to_check:
-            rule = _FRESHNESS_RULES[lane_name]
-            success = latest_success_by_lane.get(lane_name)
-            failure = latest_failure_by_lane.get(lane_name)
-            health = latest_health_by_provider.get(rule["provider"])
-            window = rule["window"]
-
-            if success is None:
-                freshness_state = "never_started"
-            else:
-                success_time = ensure_utc(success.finished_at or success.started_at)
-                assert success_time is not None
-                age = now - success_time
-                health_missing = health is None
-                health_failed = health is not None and not bool(health.is_healthy)
-                if age > window:
-                    freshness_state = "stale"
-                elif health_missing or health_failed or age > (window * _DEGRADED_RATIO):
-                    freshness_state = "degraded"
-                else:
-                    freshness_state = "healthy_recent"
-
-            downstream_eligible = freshness_state == "healthy_recent"
-            latest_error_summary = None
-            if failure is not None and failure.error_message:
-                latest_error_summary = failure.error_message
-            elif health is not None and health.error_message:
-                latest_error_summary = health.error_message
-            elif freshness_state == "never_started":
-                latest_error_summary = "no successful baseline receipt"
-            elif health is None:
-                latest_error_summary = "missing provider health receipt"
-
-            is_required = lane_name in required_lanes
-            lane_states[lane_name] = {
-                "provider": rule["provider"],
-                "capture_type": rule["capture_type"],
-                "expectation_class": rule["expectation_class"],
-                "freshness_window_minutes": int(window.total_seconds() // 60),
-                "required_for_authorization": is_required,
-                "last_success_at_utc": _isoformat(
-                    success.finished_at or success.started_at if success else None
-                ),
-                "last_failure_at_utc": _isoformat(
-                    failure.finished_at or failure.started_at if failure else None
-                ),
-                "latest_health_at_utc": _isoformat(health.checked_at if health else None),
-                "freshness_state": freshness_state,
-                "downstream_eligible": downstream_eligible,
-                "latest_error_summary": latest_error_summary,
-            }
-            if is_required and not downstream_eligible:
-                blocking_lanes.append(f"{lane_name}={freshness_state}")
-
-        return {
-            "generated_at_utc": _isoformat(now),
-            "required_lanes": lane_states,
-            "authorized": not blocking_lanes,
-            "blocking_lanes": blocking_lanes,
-        }
+        return build_feature_lane_snapshot(
+            required_lanes=required_lanes,
+            optional_lanes=optional_lanes,
+            settings=self.settings,
+        )
 
     def materialize_spot_chain_macro_v1(self) -> tuple[str, int]:
         """Materialize the first bounded minute-by-mint feature table."""
