@@ -2,11 +2,11 @@
   "project": "Defi-engine",
   "branchName": "main",
   "description": "Use a Ralph-style 4-lane tmux swarm to keep Stage 1 current-truth consolidation grounded in source truth, bounded feature/condition/shadow surfaces, explicit policy/risk/settlement owners, continuous docs sync, and receipt-backed follow-on runtime hardening on the path to a governed Solana-first backtesting and paper-trading platform.",
-  "activeStoryId": "ORCH-006",
-  "swarmState": "active",
+  "activeStoryId": "",
+  "swarmState": "audit_followons_present",
   "completionAuditState": "pending",
-  "lastCompletionAuditReceiptId": "completion_audit_writer::2026-04-16T18:49:59-07:00",
-  "lastFinderAuditId": "",
+  "lastCompletionAuditReceiptId": "completion_audit_writer::2026-04-17T03:12:33Z",
+  "lastFinderAuditId": "completion_audit_writer::2026-04-17T03:12:33Z",
   "userStories": [
     {
       "id": "ORCH-001",
@@ -24,7 +24,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "orchestration",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Keep the control plane, docs truth, and acceptance loop monotonic before widening capability.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "ORCH-002",
@@ -42,7 +50,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "orchestration",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Keep the control plane, docs truth, and acceptance loop monotonic before widening capability.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "ORCH-003",
@@ -60,7 +76,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "orchestration",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Keep the control plane, docs truth, and acceptance loop monotonic before widening capability.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "ORCH-004",
@@ -78,7 +102,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "orchestration",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Keep the control plane, docs truth, and acceptance loop monotonic before widening capability.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "POL-001",
@@ -96,7 +128,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "policy",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Land explicit strategy-eligibility policy truth instead of implied downstream behavior.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "RISK-001",
@@ -114,7 +154,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "risk",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Keep hard veto logic explicit before any runtime or strategy widening.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "SETTLE-001",
@@ -132,7 +180,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "settlement",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Make paper settlement and reporting truthful before later backtest or execution expansion.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "ORCH-005",
@@ -150,7 +206,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
-      "promoted_by": "completion_audit_architecture@2026-04-16T06:35:27-07:00"
+      "promoted_by": "completion_audit_architecture@2026-04-16T06:35:27-07:00",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "orchestration",
+      "derivedFrom": [
+        "completion_audit_architecture@2026-04-16T06:35:27-07:00"
+      ],
+      "whyNow": "Keep the control plane, docs truth, and acceptance loop monotonic before widening capability.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "SOURCE-001",
@@ -168,7 +232,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
-      "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+      "promoted_by": "2026-04-16T125848Z__completion_audit_writer",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "source",
+      "derivedFrom": [
+        "2026-04-16T125848Z__completion_audit_writer"
+      ],
+      "whyNow": "Keep source freshness and provider truth clean before widening downstream dependence.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "ORCH-006",
@@ -181,12 +253,20 @@
         "A targeted orchestration validation proves one sync path is sufficient to make finder_state, prd.json, and lane_health.* agree on completion-audit state transitions."
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "Stage 1 current-truth consolidation is active: the durable descent guide now lives in docs/issues/governed_product_descent_capability_ladder.md, the missing capability layers are decomposed in docs/gaps/, and writer-integrator must keep the entire docs tree aligned with accepted code, prd.json, and progress.txt as ORCH-006 closes.",
-      "state": "active",
+      "passes": true,
+      "notes": "Stage 1 current-truth consolidation is active: the durable descent guide now lives in docs/issues/governed_product_descent_capability_ladder.md, the missing capability layers are decomposed in docs/gaps/, and writer-integrator must keep the entire docs tree aligned with accepted code, prd.json, and progress.txt as ORCH-006 closes.\nlast_receipt=2026-04-17T030333Z__ORCH-006",
+      "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
-      "promoted_by": "completion_audit_writer::2026-04-16T18:00:00-07:00"
+      "promoted_by": "completion_audit_writer::2026-04-16T18:00:00-07:00",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "orchestration",
+      "derivedFrom": [
+        "completion_audit_writer::2026-04-16T18:00:00-07:00"
+      ],
+      "whyNow": "Keep the control plane, docs truth, and acceptance loop monotonic before widening capability.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "RESEARCH-001",
@@ -204,7 +284,15 @@
       "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
-      "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+      "promoted_by": "2026-04-16T125848Z__completion_audit_writer",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "research_loop",
+      "derivedFrom": [
+        "2026-04-16T125848Z__completion_audit_writer"
+      ],
+      "whyNow": "Bind realized paper outcomes back into research comparison without promoting research into runtime authority.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "EXEC-001",
@@ -222,7 +310,15 @@
       "state": "deferred",
       "recovery_round": 0,
       "origin": "promoted_gap",
-      "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+      "promoted_by": "2026-04-16T125848Z__completion_audit_writer",
+      "stage": "current_truth_consolidation",
+      "ownerLayer": "execution_intent",
+      "derivedFrom": [
+        "2026-04-16T125848Z__completion_audit_writer"
+      ],
+      "whyNow": "Close the remaining execution-intent owner gap between risk and settlement before widening.",
+      "mustNotWiden": "Do not widen beyond Stage 1 current-truth consolidation until orchestration, docs truth, and owner contracts are clean.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-1-current-truth-consolidation"
     },
     {
       "id": "BACKTEST-001",
@@ -240,7 +336,15 @@
       "state": "deferred",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "backtest_truth",
+      "ownerLayer": "settlement",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Define truthful backtest semantics before judging broader strategy quality.",
+      "mustNotWiden": "Do not widen into later-stage strategy or instrument expansion until prerequisite stages are accepted.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-2-backtesting-truth-layer"
     },
     {
       "id": "LABEL-001",
@@ -258,7 +362,15 @@
       "state": "deferred",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "regime_and_label_truth",
+      "ownerLayer": "condition",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Define one canonical regime and label program before expanding strategy families.",
+      "mustNotWiden": "Do not widen into later-stage strategy or instrument expansion until prerequisite stages are accepted.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-3-regime-and-label-truth"
     },
     {
       "id": "STRAT-001",
@@ -276,7 +388,15 @@
       "state": "deferred",
       "recovery_round": 0,
       "origin": "seeded",
-      "promoted_by": ""
+      "promoted_by": "",
+      "stage": "strategy_research",
+      "ownerLayer": "research_loop",
+      "derivedFrom": [
+        "seeded"
+      ],
+      "whyNow": "Add strategy-family comparison only after backtest and label truth are governed.",
+      "mustNotWiden": "Do not widen into later-stage strategy or instrument expansion until prerequisite stages are accepted.",
+      "northStarLink": "docs/issues/governed_product_descent_capability_ladder.md#stage-4-strategy-research-layer"
     }
   ]
 }

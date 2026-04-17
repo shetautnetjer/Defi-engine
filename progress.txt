@@ -582,3 +582,84 @@ Started: 2026-04-15T11:00:00Z
 - Current truthful state
 - `ORCH-006` remains active; this entry records Stage 1 truth-consolidation infrastructure and packet sync, not a completed writer acceptance for the story itself.
 - The supervisor is running again after restart, but the active story still needs writer-integrator to emit the bounded acceptance receipt before the story can close honestly.
+---
+## 2026-04-17T03:06:50Z - ORCH-006 acceptance and completion-audit state correction
+- Previous state -> new state
+- `ORCH-006` active with acceptance pending -> `ORCH-006` accepted and marked `done`, while the swarm truthfully remains in completion-audit follow-on monitoring instead of claiming terminal completion
+- What changed
+- Wrote acceptance receipt `2026-04-17T030333Z__ORCH-006` from the reviewed research, architecture, build, docs-sync, and lane-state packets.
+- Marked `ORCH-006` as `done` with `./scripts/agents/update_story_state.sh --repo . --story-id ORCH-006 --state done --receipt-id 2026-04-17T030333Z__ORCH-006`.
+- Synced `.ai/dropbox/state/accepted_loops.md` and `.ai/dropbox/state/open_questions.md` so the writer ledgers match the accepted orchestration/control-plane truth and the remaining follow-on questions.
+- Updated `tests/test_orchestration_contract.py` so a blank `activeStoryId` is valid when the swarm truthfully sits in `backlog_exhausted`, `audit_followons_present`, or `terminal_complete` rather than forcing the older terminal-only assumption.
+- Refreshed docs-truth state via `.ai/dropbox/state/docs_truth_receipt.json` and `.ai/dropbox/state/docs_sync_status.json`; both remain clean for `ORCH-006`.
+- Files changed
+- `prd.json`
+- `tests/test_orchestration_contract.py`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/docs_truth_receipt.json`
+- `.ai/dropbox/state/docs_sync_status.json`
+- `.ai/dropbox/state/accepted_receipts/2026-04-17T030333Z__ORCH-006.json`
+- `progress.txt`
+- Checks run and their results
+- `bash -n scripts/agents/common.sh scripts/agents/health_swarm.sh scripts/agents/status_swarm.sh scripts/agents/sync_swarm_state.sh scripts/agents/send_swarm.sh scripts/agents/run_persistent_cycle.sh scripts/agents/relaunch_stale_lanes.sh scripts/agents/commit_accepted_story.sh` -> passed
+- `python -m py_compile scripts/agents/swarm_state.py scripts/agents/check_doc_truth.py` -> passed
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `pytest -q tests/test_orchestration_contract.py tests/test_supervisor_monitoring_contract.py tests/test_docs_contract.py` -> initially failed on the stale terminal-only `activeStoryId` assumption, then passed after the contract test update with `22 passed in 0.43s`
+- `python scripts/agents/check_doc_truth.py --repo . --story-id ORCH-006` -> clean receipt `docs_truth::ORCH-006::2026-04-17T03:06:45Z`
+- `git diff --check` -> clean
+- `./scripts/agents/status_swarm.sh --repo . --session defi-engine-swarm` -> `active story:` blank, `swarmState=audit_followons_present`, `completionAuditState=pending`, and `pending_trigger_scope=completion_audit`
+- Story progression
+- `ORCH-006` is now `done`.
+- No eligible story remains, so `activeStoryId` is now blank.
+- The swarm is not terminal yet: `swarmState=audit_followons_present` and `completionAuditState=pending` because completion-audit monitoring is still the truthful next control-plane state.
+- `EXEC-001` remains deferred repo truth, and `ORCH-007` / `ORCH-008` remain audit-known-only cleanup candidates rather than promoted backlog work.
+- Learnings for future iterations
+- Closing a story and exhausting the queue are no longer sufficient evidence for `terminal_complete`; completion-audit scope must be allowed to own the swarm state until its receipts are resolved.
+- Contract tests need to model blank-queue states separately from terminal-clean states, or they will regress as soon as governed audit-follow-on behavior works correctly.
+---
+## 2026-04-17T03:12:33Z - completion audit resolution
+- Previous state -> new state
+- `audit_followons_present` with a pending completion trigger -> completion audit resolved as `audit_known_only`, with no backlog reopening
+- What changed
+- Consumed the pending completion-scope finder packets from `.ai/dropbox/architecture/completion_audit__*` and `.ai/dropbox/research/completion_audit__*`.
+- Wrote a fresh `.ai/dropbox/state/completion_audit_writer.json` and matching `.ai/dropbox/state/finder_decision.json` so the current pending trigger is backed by a writer decision newer than the trigger itself.
+- Kept `EXEC-001` as the only deferred runtime story and left `ORCH-007` / `ORCH-008` as audit-known-only cleanup candidates instead of promoting them into `prd.json`.
+- Story progression
+- `activeStoryId` remains blank because no eligible story exists.
+- The next state target is `swarmState=terminal_complete` and `completionAuditState=clean` once the processed completion-audit trigger is cleared and the control-plane state is resynced.
+---
+## 2026-04-17T03:14:28Z - completion audit settled clean
+- Previous state -> new state
+- completion audit resolved in writer state only -> top-level swarm truth resynced to `terminal_complete` / `clean`
+- What changed
+- Wrote structured receipt `2026-04-17T031428Z__ORCH-006`.
+- Cleared the processed completion-audit trigger with `python scripts/agents/swarm_state.py --repo . clear-processed-finder` and resynced top-level state with `./scripts/agents/sync_swarm_state.sh --repo .`.
+- Refreshed lane health and status so the blank queue, clean docs truth, and matching completion-audit ids are visible in repo-owned state surfaces.
+- Checks run and their results
+- `python scripts/agents/check_doc_truth.py --repo . --story-id ""` -> clean receipt `docs_truth::none::2026-04-17T03:13:52Z`
+- `pytest -q tests/test_orchestration_contract.py tests/test_supervisor_monitoring_contract.py tests/test_docs_contract.py` -> `22 passed in 0.41s`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `git diff --check` -> clean
+- Story progression
+- `activeStoryId` remains blank.
+- `swarmState` is now `terminal_complete` and `completionAuditState` is `clean`.
+- `lastCompletionAuditReceiptId` and `lastFinderAuditId` now both point to `completion_audit_writer::2026-04-17T03:12:33Z`.
+- `EXEC-001` remains the only deferred runtime story; `ORCH-007` and `ORCH-008` remain audit-known-only cleanup candidates outside backlog truth.
+---
+## 2026-04-17T03:50:18Z - writer full-surface truth curation
+- Previous state -> new state
+- writer owned docs truth across a partial planning surface -> writer contract, routing, receipts, and story metadata expanded to the full docs surface and north-star-guided story promotion
+- What changed
+- Added `docs/policy/writer_story_promotion_rubric.md` as the durable writer promotion policy.
+- Expanded `.ai/swarm/doc_owners.yaml` so writer reviews `docs/sdd`, `docs/plans`, `docs/task`, `docs/runbooks`, `docs/prd`, `docs/policy`, `docs/math`, `docs/architecture`, `docs/issues`, `docs/gaps`, `docs/project`, `docs/handoff`, `docs/README.md`, and `README.md`.
+- Added `scripts/agents/write_story_promotion_receipt.sh` plus `.ai/dropbox/state/story_promotion_receipt.json` so writer promotion decisions are recorded in repo-owned state.
+- Normalized acceptance receipts and promoted stories to carry stage, owner-layer, north-star, and routing metadata.
+- Synced writer-facing docs and the swarm packet so the writer now mines issues, gaps, proposals, and receipts for the next bounded stories.
+- Checks run and their results
+- `bash -n scripts/agents/common.sh scripts/agents/write_acceptance_receipt.sh scripts/agents/write_story_promotion_receipt.sh scripts/agents/promote_gap_story.sh scripts/agents/update_story_state.sh scripts/agents/status_swarm.sh scripts/agents/commit_accepted_story.sh` -> passed
+- `pytest -q tests/test_docs_contract.py tests/test_orchestration_contract.py tests/test_supervisor_monitoring_contract.py` -> `22 passed in 0.41s`
+- `python scripts/agents/check_doc_truth.py --repo . --story-id \"\"` -> clean receipt `docs_truth::none::2026-04-17T03:50:18Z`
+- Story progression
+- No active story was reopened.
+- Deferred stories now carry explicit `stage`, `ownerLayer`, `derivedFrom`, `whyNow`, `mustNotWiden`, and `northStarLink` metadata so future writer promotion can stay north-star and stage aware.

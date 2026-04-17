@@ -47,6 +47,7 @@ def test_orchestration_surface_exists() -> None:
         REPO_ROOT / "scripts" / "agents" / "run_persistent_cycle.sh",
         REPO_ROOT / "scripts" / "agents" / "sync_swarm_state.sh",
         REPO_ROOT / "scripts" / "agents" / "write_acceptance_receipt.sh",
+        REPO_ROOT / "scripts" / "agents" / "write_story_promotion_receipt.sh",
         REPO_ROOT / "scripts" / "agents" / "update_story_state.sh",
         REPO_ROOT / "scripts" / "agents" / "promote_gap_story.sh",
         REPO_ROOT / "scripts" / "agents" / "send_swarm.sh",
@@ -96,8 +97,13 @@ def test_prd_has_active_story_and_runtime_owner_backlog() -> None:
             story for story in prd["userStories"] if story["id"] == active_story_id
         )
     else:
-        assert prd["swarmState"] == "terminal_complete"
-        assert prd["completionAuditState"] == "clean"
+        assert prd["swarmState"] in {
+            "backlog_exhausted",
+            "audit_followons_present",
+            "terminal_complete",
+        }
+        if prd["swarmState"] == "terminal_complete":
+            assert prd["completionAuditState"] == "clean"
         active_story = None
     eligible_states = {"active", "ready", "recovery"}
     eligible_story_ids = {
@@ -122,6 +128,12 @@ def test_prd_has_active_story_and_runtime_owner_backlog() -> None:
         assert "recovery_round" in story
         assert "origin" in story
         assert "promoted_by" in story
+        assert "stage" in story
+        assert "ownerLayer" in story
+        assert "derivedFrom" in story
+        assert "whyNow" in story
+        assert "mustNotWiden" in story
+        assert "northStarLink" in story
 
     story_order = [story["id"] for story in prd["userStories"]]
     assert story_order.index("ORCH-005") < story_order.index("SOURCE-001")
@@ -150,6 +162,7 @@ def test_scripts_are_executable_and_prompts_reference_lane_guides() -> None:
         REPO_ROOT / "scripts" / "agents" / "run_persistent_cycle.sh",
         REPO_ROOT / "scripts" / "agents" / "sync_swarm_state.sh",
         REPO_ROOT / "scripts" / "agents" / "write_acceptance_receipt.sh",
+        REPO_ROOT / "scripts" / "agents" / "write_story_promotion_receipt.sh",
         REPO_ROOT / "scripts" / "agents" / "update_story_state.sh",
         REPO_ROOT / "scripts" / "agents" / "promote_gap_story.sh",
         REPO_ROOT / "scripts" / "agents" / "send_swarm.sh",
@@ -185,7 +198,10 @@ def test_scripts_are_executable_and_prompts_reference_lane_guides() -> None:
     assert "check_doc_truth.py" in writer_prompt
     assert "docs_truth_receipt.json" in writer_prompt
     assert "docs_sync_status.json" in writer_prompt
+    assert "story_promotion_receipt.json" in writer_prompt
     assert "write_acceptance_receipt.sh" in writer_prompt
+    assert "write_story_promotion_receipt.sh" in writer_prompt
+    assert "writer_story_promotion_rubric.md" in writer_prompt
     assert "update_story_state.sh" in writer_prompt
 
     research_prompt = (REPO_ROOT / ".ai" / "templates" / "research.md").read_text()
@@ -202,6 +218,23 @@ def test_scripts_are_executable_and_prompts_reference_lane_guides() -> None:
     assert "finder_state.json" in research_finder_prompt
 
 
+def test_send_swarm_preserves_explicit_empty_story_scope_for_completion_paths() -> None:
+    send_swarm = (REPO_ROOT / "scripts" / "agents" / "send_swarm.sh").read_text()
+    assert 'story_id_explicit="false"' in send_swarm
+    assert 'story_id_explicit="true"' in send_swarm
+    assert 'if [[ "$story_id_explicit" == "true" ]]; then' in send_swarm
+    assert 'story_id="$explicit_story_id"' in send_swarm
+    assert 'story_id="$(defi_swarm_active_story "$repo_root")"' in send_swarm
+
+
+def test_commit_accepted_story_skips_ignored_runtime_state_files() -> None:
+    commit_script = (REPO_ROOT / "scripts" / "agents" / "commit_accepted_story.sh").read_text()
+    assert 'git", "ls-files", "--error-unmatch"' in commit_script
+    assert 'git", "check-ignore", "-q"' in commit_script
+    assert "if ignored.returncode == 0:" in commit_script
+    assert "continue" in commit_script
+
+
 def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None:
     swarm = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "swarm.yaml").read_text())
     lane_rules = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "lane_rules.yaml").read_text())
@@ -213,6 +246,7 @@ def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None
     assert "docs/project/current_runtime_truth.md" in swarm["packet"]["required_reads"]
     assert "docs/prd/crypto_backtesting_mission.md" in swarm["packet"]["required_reads"]
     assert "docs/policy/runtime_authority_and_promotion_ladder.md" in swarm["packet"]["required_reads"]
+    assert "docs/policy/writer_story_promotion_rubric.md" in swarm["packet"]["required_reads"]
 
     lane_names = set(lane_rules["lanes"].keys())
     assert lane_names == {"research", "builder", "architecture", "writer_integrator"}
@@ -229,7 +263,11 @@ def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None
     assert "Monte Carlo" in promotion["research_only_families"]
     assert "autoresearch" in promotion["research_only_families"]
     assert "doc_sync" in doc_owners["story_classes"]
+    assert "truth_sync" in doc_owners["story_classes"]
+    assert "writer_governance" in doc_owners["story_classes"]
     assert "execution_intent" in doc_owners["story_classes"]
+    assert "README.md" in doc_owners["always_review"]
+    assert "docs/policy/writer_story_promotion_rubric.md" in doc_owners["always_review"]
     assert "docs/project/current_runtime_truth.md" in doc_owners["always_review"]
 
 
@@ -253,6 +291,8 @@ def test_continuous_loop_uses_story_activation_and_story_scoped_writer_receipts(
     assert "docsSyncState" in health_swarm
     assert "docsTruthReceiptId" in health_swarm
     assert "\"docs truth receipt\"" in health_swarm
+    assert "lastReceiptMissingCapabilities" in health_swarm
+    assert "storyPromotionReceiptId" in health_swarm
 
     send_swarm = (REPO_ROOT / "scripts" / "agents" / "send_swarm.sh").read_text()
     assert "prompt_type=" in send_swarm
