@@ -1,6 +1,6 @@
 # D5 Trading Engine
 
-Paper-only crypto capture with explicit capture-lane freshness ownership, bounded feature materialization, bounded condition scoring, explicit policy tracing, the first hard risk gate, explicit paper settlement ownership, and shadow-only research.
+Paper-only crypto capture with explicit capture-lane freshness ownership, bounded feature materialization, bounded condition scoring, explicit policy tracing, the first hard risk gate, explicit paper settlement ownership, explicit spot-first backtest truth, and shadow-only research.
 
 The north star is a Solana-first backtesting and paper-trading platform that
 can classify market direction and regimes, compare strategies under explicit
@@ -8,9 +8,9 @@ policy/risk/settlement governance, and widen into Jupiter perps and Coinbase
 futures only through governed capability stages.
 
 The current repo truth is a paper-first evidence engine with bounded downstream layers:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), and one bounded shadow lane (`intraday_meta_stack_v1`)
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one explicit execution-intent owner (`ExecutionIntentOwner` -> `execution_intent_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), one settlement-owned spot-first backtest replay owner (`BacktestTruthOwner` -> `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, `backtest_session_report_v1`), and one bounded shadow lane (`intraday_meta_stack_v1`)
 - active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, Coinbase market-data capture, and point-in-time-safe regime history for shadow evaluation
-- still deferred: runtime-owned execution-intent routing between risk and settlement, governed model promotion, deep Helius decoding, and real Massive historical ingest
+- still deferred: canonical label/regime truth, strategy registry and challenger governance, governed model promotion, deep Helius decoding, and real Massive historical ingest
 
 Accepted work should also flow through writer-owned truth curation so the full
 docs surface, `prd.json`, and `progress.txt` stay aligned, and the next bounded
@@ -82,10 +82,11 @@ d5 score-conditions global-regime-v1
 d5 run-shadow intraday-meta-stack-v1
 
 # optional: sync canonical tables into DuckDB
-d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
+  d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
   feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 \
   condition_scoring_run condition_global_regime_snapshot_v1 policy_global_regime_trace_v1 \
-  risk_global_regime_gate_v1 paper_session paper_fill paper_position paper_session_report \
+  risk_global_regime_gate_v1 execution_intent_v1 paper_session paper_fill paper_position paper_session_report \
+  backtest_session_v1 backtest_fill_v1 backtest_position_v1 backtest_session_report_v1 \
   experiment_run experiment_metric experiment_realized_feedback_v1
 ```
 
@@ -140,7 +141,7 @@ Current `capture` provider values:
 - `experiment_realized_feedback_v1`
   - advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots without promoting research outputs into runtime authority
 
-These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one quote-backed paper settlement owner, one bounded shadow evaluation lane, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have runtime-owned instrument selection, automatic execution intent routing, or governed model promotion.
+These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one bounded execution-intent owner, one quote-backed paper settlement owner, one settlement-owned spot-first backtest replay ledger, one bounded shadow evaluation lane, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have governed model promotion, canonical label truth, strategy-family governance, or derivative widening.
 
 ## Time Handling
 

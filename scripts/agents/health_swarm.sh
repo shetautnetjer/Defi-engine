@@ -455,14 +455,20 @@ for spec in lane_specs:
     alive = running and pane_command != "stopped"
     upstream_latest_epoch = 0
     upstream_reason = ""
+    upstream_kind = ""
     for upstream_name in spec["upstream"]:
         upstream_row = next((row for row in lane_rows if row["name"] == upstream_name), None)
         if upstream_row is None:
             continue
-        upstream_epoch = int(upstream_row.get("latestExpectedArtifactEpoch") or 0)
+        upstream_epoch = int(
+            upstream_row.get("effectiveOutputEpoch")
+            or upstream_row.get("latestExpectedArtifactEpoch")
+            or 0
+        )
         if upstream_epoch >= upstream_latest_epoch:
             upstream_latest_epoch = upstream_epoch
             upstream_reason = upstream_name
+            upstream_kind = str(upstream_row.get("effectiveOutputKind") or "")
 
     status = "idle"
     recommendation = "no"
@@ -546,7 +552,10 @@ for spec in lane_specs:
         elif upstream_latest_epoch > 0:
             status = "stale"
             recommendation = "yes"
-            reason = f"upstream artifacts from {upstream_reason} exist but {spec['name']} has no output yet"
+            if upstream_kind == "completion":
+                reason = f"upstream completion from {upstream_reason} exists but {spec['name']} has no output yet"
+            else:
+                reason = f"upstream artifacts from {upstream_reason} exist but {spec['name']} has no output yet"
         elif last_launch_epoch > 0:
             status = "failed"
             recommendation = "yes"
@@ -584,7 +593,10 @@ for spec in lane_specs:
     elif upstream_latest_epoch > effective_output_epoch:
         status = "stale"
         recommendation = "yes"
-        reason = f"upstream artifacts from {upstream_reason} are newer than {spec['name']} output"
+        if upstream_kind == "completion":
+            reason = f"upstream completion from {upstream_reason} is newer than {spec['name']} output"
+        else:
+            reason = f"upstream artifacts from {upstream_reason} are newer than {spec['name']} output"
     else:
         status = "completed"
         recommendation = "no"

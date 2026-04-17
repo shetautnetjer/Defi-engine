@@ -14,6 +14,11 @@ This stage is complete when:
 - fees and slippage assumptions are explicit
 - strategy comparison can run against governed paper outcomes
 
+Current repo truth now satisfies this bounded spot paper backtesting definition
+through the accepted settlement-owned replay ledger in `settlement/backtest.py`
+and the persisted `backtest_session_v1`, `backtest_fill_v1`,
+`backtest_position_v1`, and `backtest_session_report_v1` tables.
+
 ### Regime classification complete
 
 This stage is complete when:
@@ -39,6 +44,10 @@ This stage is complete when:
   all have governed ownership
 - continuous capture ownership is explicit
 - realized feedback reaches the research layer without self-promotion
+
+Current repo truth now satisfies this bounded paper-runtime definition, and the
+next staged work is canonical regime and label truth rather than reopening the
+Stage 1 owner chain or the accepted Stage 2 backtest replay contract.
 
 ### Instrument expansion eligible
 

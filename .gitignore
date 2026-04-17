@@ -67,3 +67,4 @@ htmlcov/
 !.ai/dropbox/state/accepted_receipts/.gitkeep
 scripts/ralph/.last-branch
 scripts/ralph/runs/
+.gitnexus

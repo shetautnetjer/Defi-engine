@@ -8,12 +8,39 @@ This page is intentionally stricter than `docs/gaps/bootstrap_gap_register.md`. 
 
 ## Current Blocking Set
 
-| Blocker | Why it blocks paper runtime | Current state | Close condition | Next action |
-|------|-------|-------|-------|-------|
-| Execution intent between `risk/` and `settlement/` is still manual-explicit | the repo now has a paper ledger, but `PaperSettlement` still requires explicit `risk_verdict_id` plus `quote_snapshot_id`, so a market-wide `allowed` risk verdict does not yet become runtime-owned trade intent on its own | `risk_global_regime_gate_v1` exists and `PaperSettlement` exists, but the selector for mint / size / entry-exit intent is not owned | a repo-owned contract persists or selects explicit quote-backed spot-only mint, size, and entry-exit intent downstream of risk and upstream of settlement | descend into `EXEC-001` once higher-priority follow-ons are clear |
+No current Stage 1 runtime-owner blocker remains open.
+
+The repo now has:
+
+- explicit policy traces
+- explicit risk vetoes
+- explicit execution intent
+- explicit quote-backed paper settlement
+
+Future work is still required, but it is now Stage 2+ truth work rather than a
+missing Stage 1 runtime owner.
+
+The accepted Stage 2 backtest truth slice is also no longer open:
+
+- `BACKTEST-001` landed a settlement-owned spot-first replay ledger through
+  `BacktestTruthOwner` plus `backtest_session_v1`, `backtest_fill_v1`,
+  `backtest_position_v1`, and `backtest_session_report_v1`
+- the next governed product gaps are now canonical label truth and strategy
+  registry/challenger governance rather than another paper-runtime seam
 
 ## Recently Cleared
 
+- `EXEC-001` is now accepted repo truth:
+  - `execution_intent/owner.py` owns the bounded paper-only `execution_intent_v1`
+    surface between `risk/` and `settlement/`.
+  - The owner persists or rejects explicit quote-backed spot-only mint, size,
+    and entry intent and fails closed on ambiguous, unsupported, or stale
+    inputs.
+  - `PaperSettlement` now consumes `execution_intent_id` instead of inferring
+    hidden strategy selection from `risk_verdict_id` plus `quote_snapshot_id`
+    alone.
+  - Runtime authority remains bounded: intent is paper-only, spot-first, and
+    does not imply live execution, promotion, or derivatives support.
 - `RESEARCH-001` is now accepted repo truth:
   - `research_loop/realized_feedback.py` replays experiment config, reads settlement-owned paper truth, and persists advisory comparison receipts in `experiment_realized_feedback_v1`.
   - `ShadowRunner` now invokes the comparator after run-level experiment metrics land, keeping settlement read-only and leaving policy/risk/runtime authority unchanged.

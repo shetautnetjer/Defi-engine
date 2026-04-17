@@ -776,6 +776,69 @@ class RiskGlobalRegimeGateV1(Base):
     )
 
 
+class ExecutionIntentV1(Base):
+    """Runtime-owned execution intent between risk and settlement."""
+
+    __tablename__ = "execution_intent_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    intent_key = Column(String(128), nullable=False, unique=True, index=True)
+    risk_verdict_id = Column(
+        Integer,
+        ForeignKey("risk_global_regime_gate_v1.id"),
+        nullable=True,
+        index=True,
+    )
+    policy_trace_id = Column(
+        Integer,
+        ForeignKey("policy_global_regime_trace_v1.id"),
+        nullable=True,
+        index=True,
+    )
+    condition_snapshot_id = Column(
+        Integer,
+        ForeignKey("condition_global_regime_snapshot_v1.id"),
+        nullable=True,
+        index=True,
+    )
+    source_feature_run_id = Column(
+        String(64),
+        ForeignKey("feature_materialization_run.run_id"),
+        nullable=True,
+        index=True,
+    )
+    quote_snapshot_id = Column(
+        Integer,
+        ForeignKey("quote_snapshot.id"),
+        nullable=True,
+        index=True,
+    )
+    bucket_start_utc = Column(DateTime, nullable=True, index=True)
+    intent_state = Column(String(16), nullable=False, index=True)
+    venue = Column(String(32), nullable=False)
+    settlement_model = Column(String(32), nullable=False)
+    strategy_family = Column(String(64), nullable=False)
+    policy_state = Column(String(32), nullable=True)
+    risk_state = Column(String(32), nullable=True)
+    request_direction = Column(String(16), nullable=True)
+    intent_side = Column(String(16), nullable=True)
+    intent_role = Column(String(16), nullable=False, default="entry")
+    entry_intent = Column(String(32), nullable=False)
+    exit_intent = Column(String(32), nullable=False)
+    stop_intent = Column(String(32), nullable=False)
+    input_mint = Column(String(64), nullable=True)
+    output_mint = Column(String(64), nullable=True)
+    quote_size_lamports = Column(Integer, nullable=True)
+    quoted_output_amount = Column(String(32), nullable=True)
+    reason_codes_json = Column(Text, nullable=False)
+    trace_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_execution_intent_v1_risk_state", "intent_state", "risk_state"),
+    )
+
+
 class PaperSession(Base):
     """Settlement-owned paper session lifecycle receipt."""
 
@@ -801,6 +864,12 @@ class PaperFill(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("paper_session.id"), nullable=False, index=True)
+    execution_intent_id = Column(
+        Integer,
+        ForeignKey("execution_intent_v1.id"),
+        nullable=True,
+        index=True,
+    )
     risk_verdict_id = Column(
         Integer,
         ForeignKey("risk_global_regime_gate_v1.id"),
@@ -882,6 +951,116 @@ class PaperSessionReport(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("paper_session.id"), nullable=False, index=True)
+    report_type = Column(String(32), nullable=False)
+    cash_usdc = Column(Float, nullable=False)
+    position_value_usdc = Column(Float, nullable=False)
+    equity_usdc = Column(Float, nullable=False)
+    realized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    unrealized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    mark_method = Column(String(32), nullable=False)
+    mark_inputs_json = Column(Text, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
+class BacktestSessionV1(Base):
+    """Settlement-owned backtest replay session with explicit assumptions."""
+
+    __tablename__ = "backtest_session_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_key = Column(String(128), nullable=False, unique=True, index=True)
+    status = Column(String(16), nullable=False, index=True)
+    instrument_family = Column(String(16), nullable=False, default="spot")
+    venue = Column(String(32), nullable=False)
+    base_currency = Column(String(16), nullable=False, default="USDC")
+    bucket_granularity = Column(String(16), nullable=False)
+    fee_bps = Column(Integer, nullable=False)
+    slippage_bps = Column(Integer, nullable=False)
+    latency_ms = Column(Integer, nullable=False)
+    mark_method = Column(String(32), nullable=False)
+    metadata_json = Column(Text, nullable=False)
+    starting_cash_usdc = Column(Float, nullable=False, default=0.0)
+    ending_cash_usdc = Column(Float, nullable=True)
+    opened_at = Column(DateTime, nullable=False)
+    closed_at = Column(DateTime, nullable=True)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
+class BacktestFillV1(Base):
+    """Append-only backtest fill receipt with explicit replay assumptions."""
+
+    __tablename__ = "backtest_fill_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("backtest_session_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    event_time = Column(DateTime, nullable=False, index=True)
+    replay_reference = Column(String(128), nullable=False)
+    mint = Column(String(64), nullable=False, index=True)
+    side = Column(String(16), nullable=False)
+    input_amount = Column(String(32), nullable=False)
+    output_amount = Column(String(32), nullable=False)
+    fill_price_usdc = Column(Float, nullable=False)
+    fee_bps = Column(Integer, nullable=False)
+    fee_usdc = Column(Float, nullable=False)
+    slippage_bps = Column(Integer, nullable=False)
+    latency_ms = Column(Integer, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+
+class BacktestPositionV1(Base):
+    """Current backtest position state for one mint inside one replay session."""
+
+    __tablename__ = "backtest_position_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("backtest_session_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    mint = Column(String(64), nullable=False, index=True)
+    net_quantity = Column(Float, nullable=False)
+    cost_basis_usdc = Column(Float, nullable=False)
+    last_fill_id = Column(
+        Integer,
+        ForeignKey("backtest_fill_v1.id"),
+        nullable=False,
+        index=True,
+    )
+    last_mark_source = Column(String(32), nullable=True)
+    last_mark_reference = Column(String(128), nullable=True)
+    last_mark_price_usdc = Column(Float, nullable=True)
+    last_marked_at = Column(DateTime, nullable=True)
+    realized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    unrealized_pnl_usdc = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "mint", name="uq_backtest_position_session_mint"),
+    )
+
+
+class BacktestSessionReportV1(Base):
+    """Settlement-owned report derived from backtest sessions and replay fills."""
+
+    __tablename__ = "backtest_session_report_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("backtest_session_v1.id"),
+        nullable=False,
+        index=True,
+    )
     report_type = Column(String(32), nullable=False)
     cash_usdc = Column(Float, nullable=False)
     position_value_usdc = Column(Float, nullable=False)

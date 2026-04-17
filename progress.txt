@@ -663,3 +663,42 @@ Started: 2026-04-15T11:00:00Z
 - Story progression
 - No active story was reopened.
 - Deferred stories now carry explicit `stage`, `ownerLayer`, `derivedFrom`, `whyNow`, `mustNotWiden`, and `northStarLink` metadata so future writer promotion can stay north-star and stage aware.
+---
+## 2026-04-17T06:26:16Z - EXEC-001 accepted and BACKTEST-001 activated
+- Previous state -> new state
+- `EXEC-001` active with the execution-intent owner still treated as an open Stage 1 seam -> `EXEC-001` accepted and marked `done`, with `BACKTEST-001` activated as the next governed slice
+- What changed
+- Added the explicit execution-intent owner surface in `src/d5_trading_engine/execution_intent/owner.py` and persisted `execution_intent_v1` truth plus `paper_fill.execution_intent_id`.
+- Rewired `PaperSettlement` to consume explicit execution intent rather than inferring full trade intent directly from risk verdicts and quote ids.
+- Added SQLite-safe migration `009_execution_intent_v1.py` and execution-intent coverage in the runtime test suite.
+- Synced the docs packet so current runtime truth, blockers, PRD wording, the SDD, task docs, and repo map all describe execution intent as landed Stage 1 truth instead of an open seam.
+- Wrote acceptance receipt `2026-04-17T062616Z__EXEC-001` and refreshed `.ai/dropbox/state/story_promotion_receipt.json` so the next slice is explicitly `BACKTEST-001`.
+- Checks run and their results
+- `python -m py_compile src/d5_trading_engine/execution_intent/owner.py src/d5_trading_engine/settlement/paper.py src/d5_trading_engine/storage/truth/models.py` -> passed
+- `pytest -q tests/test_execution_intent_owner.py tests/test_settlement_paper.py tests/test_realized_feedback.py` -> `8 passed in 61.22s`
+- `pytest -q tests/test_docs_contract.py tests/test_orchestration_contract.py tests/test_supervisor_monitoring_contract.py` -> `30 passed in 0.70s`
+- `python scripts/agents/check_doc_truth.py --repo . --story-id EXEC-001` -> clean receipt `docs_truth::EXEC-001::2026-04-17T06:25:39Z`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `git diff --check` -> passed
+- Story progression
+- `EXEC-001` is now `done`.
+- `BACKTEST-001` is now the active story.
+- `LABEL-001` and `STRAT-001` remain deferred behind the backtesting-truth slice.
+---
+## 2026-04-17T06:49:40Z - BACKTEST-001 accepted and LABEL-001 activated
+- Previous state -> new state
+- `BACKTEST-001` active with settlement-owned replay truth still described as missing in parts of the packet -> `BACKTEST-001` accepted and marked `done`, with `LABEL-001` activated as the next governed slice
+- What changed
+- Added `BacktestTruthOwner` in `src/d5_trading_engine/settlement/backtest.py` plus persisted `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, and `backtest_session_report_v1` truth.
+- Added SQLite-safe migration `010_backtest_truth_v1.py` and regression coverage in `tests/test_backtest_truth.py`.
+- Synced the docs packet so the runtime truth, README, SDD, architecture doc, task note, repo map, and gap surfaces describe spot-first backtest replay truth as accepted rather than missing.
+- Wrote acceptance receipt `2026-04-17T064940Z__BACKTEST-001` and refreshed `.ai/dropbox/state/story_promotion_receipt.json` so the next slice is explicitly `LABEL-001`.
+- Checks run and their results
+- `python -m py_compile src/d5_trading_engine/settlement/backtest.py src/d5_trading_engine/storage/truth/models.py` -> passed
+- `pytest -q tests/test_backtest_truth.py tests/test_execution_intent_owner.py tests/test_settlement_paper.py tests/test_realized_feedback.py tests/test_docs_contract.py tests/test_orchestration_contract.py tests/test_supervisor_monitoring_contract.py` -> `42 passed in 70.10s`
+- `python scripts/agents/check_doc_truth.py --repo . --story-id BACKTEST-001` -> clean receipt `docs_truth::BACKTEST-001::2026-04-17T06:48:13Z`
+- `python -m json.tool prd.json >/dev/null && git diff --check` -> passed
+- Story progression
+- `BACKTEST-001` is now `done`.
+- `LABEL-001` is now the active story.
+- `STRAT-001` remains deferred behind canonical label truth.

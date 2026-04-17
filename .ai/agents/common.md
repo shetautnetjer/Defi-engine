@@ -40,13 +40,20 @@ Implemented and real now:
   - `experiment_realized_feedback_v1`
 - bounded shadow evaluation:
   - `intraday_meta_stack_v1`
+- explicit backtest truth:
+  - `BacktestTruthOwner`
+  - `backtest_session_v1`
+  - `backtest_fill_v1`
+  - `backtest_position_v1`
+  - `backtest_session_report_v1`
 - Stage 1 current-truth consolidation is active, so writer-integrator is
   expected to keep `docs/`, `prd.json`, and `progress.txt` aligned as accepted
   work lands
 
-Remaining blockers to a fully governed paper engine:
+Next governed gaps after the Stage 1 owner chain:
 
-- runtime-owned execution intent between `risk/` and `settlement/` does not exist yet
+- canonical regime and label taxonomy
+- strategy registry and challenger governance
 
 Research-only future ideas such as Chronos-2, Monte Carlo, Fibonacci-derived
 feature families, autoresearch, and ANN-style relationship modeling remain
@@ -78,12 +85,13 @@ Forecasting, shadow evaluation, memory, and external research are advisory only.
 - Do not silently widen runtime authority.
 - Default safe action is no-trade and no-promotion.
 - Future stories should now descend the real blocker list instead of assuming a
-  placeholder owner is still missing.
+  missing Stage 1 runtime owner still needs to be invented.
 - Read the north-star packet before proposing new major backlog truth:
   - `docs/prd/crypto_backtesting_mission.md`
   - `docs/prd/backtesting_completion_definition.md`
   - `docs/issues/governed_product_descent_capability_ladder.md`
   - `docs/plans/strategy_descent_and_instrument_scope.md`
+  - `docs/architecture/backtest_truth_contract.md`
   - `docs/math/market_regime_forecast_and_labeling_program.md`
   - `docs/policy/runtime_authority_and_promotion_ladder.md`
 

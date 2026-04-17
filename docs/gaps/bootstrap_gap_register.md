@@ -9,6 +9,7 @@ surfaces that still need to be closed:
 - `backtest_truth_model_gap.md`
 - `label_program_and_regime_taxonomy_gap.md`
 - `strategy_registry_and_challenger_framework_gap.md`
+- `codex_watcher_and_autoresearch_gap.md`
 - `execution_intent_gap.md`
 - `instrument_expansion_readiness_gap.md`
 - `tmux_machine_law_and_packet_gap.md`
@@ -56,8 +57,8 @@ missing.
 
 - `trajectory/` remains scaffold-only and non-promoting.
   - Current state: policy, risk, settlement, and advisory realized-feedback are
-    already real repo truth; `trajectory/` still does not own promoted forecast
-    authority, and execution intent remains the main missing runtime owner.
+    already real repo truth; `execution_intent/` is now also real repo truth.
+    `trajectory/` still does not own promoted forecast authority.
 
 ## Validation Gaps
 

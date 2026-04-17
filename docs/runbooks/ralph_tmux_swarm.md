@@ -301,8 +301,11 @@ healthy”:
      markers
    - refreshes `lane_health.md` and `lane_health.json`
 2. `relaunch_stale_lanes.sh`
-   - restarts only the highest-priority lane that is stale or failed
-   - keeps downstream lanes from restarting ahead of fresh upstream artifacts
+   - restarts the highest-priority lane that is stale or failed
+   - also launches the rightful next idle lane for the active story once
+     upstream completion markers prove the previous step finished, even if that
+     upstream lane did not emit fresh story-scoped artifacts
+   - keeps downstream lanes from restarting ahead of fresh upstream outputs
 3. `start_supervisor.sh`
    - launches the detached `run_persistent_cycle.sh` loop
    - no-ops if a healthy supervisor is already running

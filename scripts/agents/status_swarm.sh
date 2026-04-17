@@ -8,6 +8,7 @@ source "$script_dir/common.sh"
 
 repo="${PWD}"
 session_name=""
+refresh="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,8 +20,12 @@ while [[ $# -gt 0 ]]; do
       session_name="${2:?--session requires a value}"
       shift 2
       ;;
+    --refresh)
+      refresh="true"
+      shift
+      ;;
     -h|--help)
-      printf 'Usage: status_swarm.sh [--repo PATH] [--session NAME]\n'
+      printf 'Usage: status_swarm.sh [--repo PATH] [--session NAME] [--refresh]\n'
       exit 0
       ;;
     *)
@@ -33,7 +38,9 @@ done
 repo_root="$(defi_swarm_repo_root "$repo")"
 session_name="${session_name:-$(defi_swarm_session_name)}"
 defi_swarm_bootstrap_runtime_dirs "$repo_root"
-"$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --no-mail --quiet >/dev/null
+if [[ "$refresh" == "true" ]]; then
+  "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --no-mail --quiet >/dev/null
+fi
 
 printf 'active story: %s\n' "$(defi_swarm_active_story "$repo_root")"
 defi_swarm_print_lane_map

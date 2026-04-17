@@ -1,4 +1,4 @@
-"""Paper settlement owner over persisted risk truth and explicit quote intent."""
+"""Paper settlement owner over explicit execution intent and quote truth."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from d5_trading_engine.common.time_utils import ensure_utc, utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
+    ExecutionIntentV1,
     PaperFill,
     PaperPosition,
     PaperSession,
     PaperSessionReport,
     QuoteSnapshot,
-    RiskGlobalRegimeGateV1,
     TokenMetadataSnapshot,
     TokenRegistry,
 )
@@ -38,39 +38,44 @@ class PaperSettlement:
     def simulate_fill(
         self,
         *,
-        risk_verdict_id: int,
-        quote_snapshot_id: int,
+        execution_intent_id: int,
         settlement_attempted_at: datetime | None = None,
     ) -> dict[str, object]:
-        """Create the first settlement-owned paper receipt from risk and quote truth."""
+        """Create settlement-owned paper receipts from explicit execution intent."""
 
         attempted_at = ensure_utc(settlement_attempted_at) or utcnow()
         session_key = self._build_session_key(
-            risk_verdict_id=risk_verdict_id,
-            quote_snapshot_id=quote_snapshot_id,
+            execution_intent_id=execution_intent_id,
             attempted_at=attempted_at,
         )
 
         session = get_session(self.settings)
         try:
-            risk_verdict = (
-                session.query(RiskGlobalRegimeGateV1)
-                .filter_by(id=risk_verdict_id)
+            execution_intent = (
+                session.query(ExecutionIntentV1)
+                .filter_by(id=execution_intent_id)
                 .first()
             )
-            quote_snapshot = session.query(QuoteSnapshot).filter_by(id=quote_snapshot_id).first()
+            quote_snapshot = None
+            if execution_intent is not None and execution_intent.quote_snapshot_id is not None:
+                quote_snapshot = (
+                    session.query(QuoteSnapshot)
+                    .filter_by(id=execution_intent.quote_snapshot_id)
+                    .first()
+                )
 
             reason_codes = self._validate_inputs(
-                risk_verdict=risk_verdict,
+                execution_intent=execution_intent,
                 quote_snapshot=quote_snapshot,
                 attempted_at=attempted_at,
             )
 
-            if reason_codes or risk_verdict is None or quote_snapshot is None:
+            if reason_codes or execution_intent is None or quote_snapshot is None:
                 result = self._persist_skipped_session(
                     session=session,
                     session_key=session_key,
                     attempted_at=attempted_at,
+                    execution_intent=execution_intent,
                     quote_snapshot=quote_snapshot,
                     reason_codes=reason_codes,
                 )
@@ -122,23 +127,24 @@ class PaperSettlement:
 
             paper_fill = PaperFill(
                 session_id=paper_session.id,
-                risk_verdict_id=risk_verdict.id,
-                policy_trace_id=risk_verdict.policy_trace_id,
-                condition_snapshot_id=risk_verdict.condition_snapshot_id,
-                source_feature_run_id=risk_verdict.source_feature_run_id,
+                execution_intent_id=execution_intent.id,
+                risk_verdict_id=execution_intent.risk_verdict_id,
+                policy_trace_id=execution_intent.policy_trace_id,
+                condition_snapshot_id=execution_intent.condition_snapshot_id,
+                source_feature_run_id=execution_intent.source_feature_run_id,
                 quote_snapshot_id=quote_snapshot.id,
-                policy_state=risk_verdict.policy_state,
-                risk_state=risk_verdict.risk_state,
-                request_direction="usdc_to_token",
-                input_mint=quote_snapshot.input_mint,
-                output_mint=quote_snapshot.output_mint,
-                input_amount=quote_snapshot.input_amount,
-                output_amount=quote_snapshot.output_amount or "0",
+                policy_state=execution_intent.policy_state,
+                risk_state=execution_intent.risk_state,
+                request_direction=execution_intent.request_direction,
+                input_mint=execution_intent.input_mint,
+                output_mint=execution_intent.output_mint,
+                input_amount=str(execution_intent.quote_size_lamports),
+                output_amount=execution_intent.quoted_output_amount or "0",
                 fill_price_usdc=fill_metrics["fill_price_usdc"],
                 price_impact_pct=quote_snapshot.price_impact_pct,
                 slippage_bps=quote_snapshot.slippage_bps,
-                fill_side="buy",
-                fill_role="entry",
+                fill_side=execution_intent.intent_side,
+                fill_role=execution_intent.intent_role,
                 created_at=attempted_at,
             )
             session.add(paper_fill)
@@ -185,7 +191,8 @@ class PaperSettlement:
             log.info(
                 "paper_fill_created",
                 session_id=paper_session.id,
-                risk_verdict_id=risk_verdict.id,
+                execution_intent_id=execution_intent.id,
+                risk_verdict_id=execution_intent.risk_verdict_id,
                 quote_snapshot_id=quote_snapshot.id,
             )
             return {
@@ -196,11 +203,12 @@ class PaperSettlement:
                 "fill_id": paper_fill.id,
                 "position_id": paper_position.id,
                 "report_id": paper_report.id,
-                "risk_verdict_id": risk_verdict.id,
+                "execution_intent_id": execution_intent.id,
+                "risk_verdict_id": execution_intent.risk_verdict_id,
                 "quote_snapshot_id": quote_snapshot.id,
-                "policy_state": risk_verdict.policy_state,
-                "risk_state": risk_verdict.risk_state,
-                "reason": "Paper settlement created a quote-backed paper fill.",
+                "policy_state": execution_intent.policy_state,
+                "risk_state": execution_intent.risk_state,
+                "reason": "Paper settlement created a quote-backed paper fill from explicit execution intent.",
                 "reason_codes": [],
                 "is_scaffold": False,
             }
@@ -267,64 +275,55 @@ class PaperSettlement:
     def _validate_inputs(
         self,
         *,
-        risk_verdict: RiskGlobalRegimeGateV1 | None,
+        execution_intent: ExecutionIntentV1 | None,
         quote_snapshot: QuoteSnapshot | None,
         attempted_at: datetime,
     ) -> list[str]:
         reason_codes: list[str] = []
-        if risk_verdict is None:
-            reason_codes.append("risk_verdict_missing")
+        if execution_intent is None:
+            reason_codes.append("execution_intent_missing")
+            return reason_codes
+        if execution_intent.intent_state != "ready":
+            reason_codes.append(f"execution_intent_not_ready:{execution_intent.intent_state}")
+            reason_codes.extend(self._decode_json_array(execution_intent.reason_codes_json))
             return reason_codes
         if quote_snapshot is None:
-            reason_codes.append("quote_snapshot_missing")
+            reason_codes.append("execution_intent_quote_snapshot_missing")
             return reason_codes
 
-        if risk_verdict.risk_state != "allowed":
-            reason_codes.append(f"risk_state_not_allowed:{risk_verdict.risk_state}")
-        if int(risk_verdict.unresolved_input_flag or 0) != 0:
-            reason_codes.append("risk_unresolved_input")
-        if int(risk_verdict.stale_data_authorized_flag or 0) != 1:
-            reason_codes.append("risk_stale_data_not_authorized")
-        if risk_verdict.policy_state != "eligible_long":
+        if execution_intent.quote_snapshot_id != quote_snapshot.id:
+            reason_codes.append("execution_intent_quote_snapshot_mismatch")
+        if execution_intent.risk_verdict_id is None:
+            reason_codes.append("execution_intent_risk_verdict_missing")
+        if execution_intent.policy_trace_id is None:
+            reason_codes.append("execution_intent_policy_trace_missing")
+        if execution_intent.request_direction != "usdc_to_token":
             reason_codes.append(
-                f"policy_state_unsupported_for_spot_settlement:{risk_verdict.policy_state}"
+                f"execution_intent_direction_unsupported:{execution_intent.request_direction}"
             )
-
-        normalized_direction = self._normalize_direction(quote_snapshot.request_direction)
-        if normalized_direction is None:
-            reason_codes.append("quote_request_direction_unsupported")
-        elif normalized_direction != "usdc_to_token":
-            reason_codes.append(f"quote_direction_incompatible:{normalized_direction}")
-
-        usdc_mint = self._usdc_mint()
-        tracked_universe = set(self.settings.token_universe)
-        if (
-            quote_snapshot.input_mint not in tracked_universe
-            or quote_snapshot.output_mint not in tracked_universe
-        ):
-            reason_codes.append("quote_outside_tracked_universe")
-        if quote_snapshot.input_mint != usdc_mint or quote_snapshot.output_mint == usdc_mint:
-            reason_codes.append("quote_not_supported_spot_buy_pair")
+        if execution_intent.intent_side != "buy":
+            reason_codes.append(
+                f"execution_intent_side_unsupported:{execution_intent.intent_side}"
+            )
+        if execution_intent.input_mint != quote_snapshot.input_mint:
+            reason_codes.append("execution_intent_input_mint_mismatch")
+        if execution_intent.output_mint != quote_snapshot.output_mint:
+            reason_codes.append("execution_intent_output_mint_mismatch")
+        if execution_intent.quote_size_lamports != self._parse_int(quote_snapshot.input_amount):
+            reason_codes.append("execution_intent_quote_size_mismatch")
+        if execution_intent.quoted_output_amount != quote_snapshot.output_amount:
+            reason_codes.append("execution_intent_quote_output_mismatch")
 
         quote_timestamp = ensure_utc(quote_snapshot.captured_at) or ensure_utc(
             quote_snapshot.requested_at
         )
         if quote_timestamp is None:
-            reason_codes.append("quote_timestamp_missing")
+            reason_codes.append("execution_intent_quote_timestamp_missing")
         else:
             if quote_timestamp > attempted_at:
                 reason_codes.append("settlement_quote_after_attempt")
             elif (attempted_at - quote_timestamp) > _SETTLEMENT_MAX_QUOTE_AGE:
                 reason_codes.append("settlement_quote_stale")
-
-        quote_size = self._parse_int(quote_snapshot.input_amount)
-        if quote_size is None:
-            reason_codes.append("quote_input_amount_invalid")
-        elif quote_size not in set(self.settings.quote_amounts_lamports):
-            reason_codes.append("quote_size_not_configured")
-
-        if self._parse_int(quote_snapshot.output_amount) in (None, 0):
-            reason_codes.append("quote_output_amount_invalid")
         return reason_codes
 
     def _persist_skipped_session(
@@ -333,11 +332,16 @@ class PaperSettlement:
         session,
         session_key: str,
         attempted_at: datetime,
+        execution_intent: ExecutionIntentV1 | None,
         quote_snapshot: QuoteSnapshot | None,
         reason_codes: list[str],
     ) -> dict[str, object]:
         normalized_direction = self._normalize_direction(
-            quote_snapshot.request_direction if quote_snapshot is not None else None
+            (
+                execution_intent.request_direction
+                if execution_intent is not None
+                else quote_snapshot.request_direction if quote_snapshot is not None else None
+            )
         )
         attempt_cash_usdc = self._derive_attempt_cash_usdc(
             quote_snapshot=quote_snapshot,
@@ -385,7 +389,10 @@ class PaperSettlement:
             "fill_id": None,
             "position_id": None,
             "report_id": paper_report.id,
-            "risk_verdict_id": None,
+            "execution_intent_id": execution_intent.id if execution_intent is not None else None,
+            "risk_verdict_id": (
+                execution_intent.risk_verdict_id if execution_intent is not None else None
+            ),
             "quote_snapshot_id": quote_snapshot.id if quote_snapshot is not None else None,
             "reason": self._summarize_skip(reason_codes),
             "reason_codes": reason_codes,
@@ -451,14 +458,13 @@ class PaperSettlement:
     def _build_session_key(
         self,
         *,
-        risk_verdict_id: int,
-        quote_snapshot_id: int,
+        execution_intent_id: int,
         attempted_at: datetime,
     ) -> str:
         return (
             "paper_"
             f"{attempted_at.strftime('%Y%m%dT%H%M%S%fZ')}_"
-            f"risk{risk_verdict_id}_quote{quote_snapshot_id}"
+            f"intent{execution_intent_id}"
         )
 
     def _normalize_direction(self, value: str | None) -> str | None:
@@ -497,4 +503,7 @@ class PaperSettlement:
 
     def _summarize_skip(self, reason_codes: list[str]) -> str:
         joined = ", ".join(reason_codes)
-        return f"Paper settlement skipped because repo-owned inputs were incompatible: {joined}"
+        return (
+            "Paper settlement skipped because the explicit execution intent "
+            f"or its quote provenance was incompatible: {joined}"
+        )

@@ -144,8 +144,9 @@ def test_prd_has_active_story_and_runtime_owner_backlog() -> None:
     assert story_order.index("LABEL-001") < story_order.index("STRAT-001")
     by_id = {story["id"]: story for story in prd["userStories"]}
     assert by_id["ORCH-005"]["state"] == "done"
-    assert by_id["BACKTEST-001"]["state"] == "deferred"
-    assert by_id["LABEL-001"]["state"] == "deferred"
+    assert by_id["EXEC-001"]["state"] == "done"
+    assert by_id["BACKTEST-001"]["state"] == "done"
+    assert by_id["LABEL-001"]["state"] in {"active", "ready"}
     assert by_id["STRAT-001"]["state"] == "deferred"
 
 
@@ -273,11 +274,12 @@ def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None
 
 def test_continuous_loop_uses_story_activation_and_story_scoped_writer_receipts() -> None:
     persistent_cycle = (REPO_ROOT / "scripts" / "agents" / "run_persistent_cycle.sh").read_text()
-    assert "ensure_active_story()" in persistent_cycle
-    assert "--state active" in persistent_cycle
+    assert "ensure_active_story()" not in persistent_cycle
+    assert "--state active" not in persistent_cycle
     assert "queue_completion_trigger" in persistent_cycle
     assert "finder_phase" in persistent_cycle
     assert "clear_processed_finder" in persistent_cycle
+    assert "sync_swarm_state()" in persistent_cycle
 
     health_swarm = (REPO_ROOT / "scripts" / "agents" / "health_swarm.sh").read_text()
     assert "lane process is still alive for the current story" in health_swarm
@@ -306,9 +308,13 @@ def test_continuous_loop_uses_story_activation_and_story_scoped_writer_receipts(
     assert 'if [[ "$builder_status" == "completed" ]]; then' in relaunch
 
     sync_swarm_state = (REPO_ROOT / "scripts" / "agents" / "sync_swarm_state.sh").read_text()
+    update_story_state = (REPO_ROOT / "scripts" / "agents" / "update_story_state.sh").read_text()
     assert '"swarmState"' in sync_swarm_state
     assert '"completionAuditState"' in sync_swarm_state
     assert "currentScope" in sync_swarm_state
+    assert "cleanup_lane_processes.sh" in sync_swarm_state
+    assert "--activate-next" not in update_story_state
+    assert "Story activation is owned by sync_swarm_state.sh." in update_story_state
 
 
 def test_sync_swarm_state_normalizes_writer_completion_audit_shape(tmp_path: Path) -> None:
@@ -457,6 +463,137 @@ def test_relaunch_prefers_writer_once_builder_is_completed(tmp_path: Path) -> No
     )
     sent = (repo_root / "send_args.txt").read_text(encoding="utf-8")
     assert "--lane writer-integrator --run" in sent
+
+
+def test_relaunch_advances_to_architecture_after_research_completion_without_artifacts(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    scripts_dir = repo_root / "scripts" / "agents"
+    state_dir = repo_root / ".ai" / "dropbox" / "state"
+    runtime_dir = state_dir / "runtime"
+    scripts_dir.mkdir(parents=True)
+    runtime_dir.mkdir(parents=True)
+
+    for name in ("common.sh", "health_swarm.sh", "relaunch_stale_lanes.sh"):
+        shutil.copy2(REPO_ROOT / "scripts" / "agents" / name, scripts_dir / name)
+
+    (scripts_dir / "cleanup_lane_processes.sh").write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "send_swarm.sh").write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$*\" > \"$PWD/send_args.txt\"\n",
+        encoding="utf-8",
+    )
+    for name in ("cleanup_lane_processes.sh", "send_swarm.sh"):
+        os.chmod(scripts_dir / name, 0o755)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    tmux_path = bin_dir / "tmux"
+    tmux_path.write_text(
+        "#!/usr/bin/env bash\n"
+        "case \"$1\" in\n"
+        "  has-session) exit 0 ;;\n"
+        "  display-message) printf 'bash\\n' ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    tmux_path.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+
+    (repo_root / "prd.json").write_text(
+        json.dumps(
+            {
+                "project": "Defi-engine",
+                "activeStoryId": "EXEC-001",
+                "swarmState": "active",
+                "completionAuditState": "pending",
+                "lastCompletionAuditReceiptId": "",
+                "lastFinderAuditId": "",
+                "userStories": [
+                    {
+                        "id": "EXEC-001",
+                        "state": "active",
+                        "passes": False,
+                        "recovery_round": 0,
+                        "origin": "promoted_gap",
+                        "promoted_by": "",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (repo_root / "progress.txt").write_text("", encoding="utf-8")
+    (repo_root / ".ai" / "agents").mkdir(parents=True)
+    (repo_root / ".ai" / "index").mkdir(parents=True)
+    (repo_root / ".ai" / "agents" / "common.md").write_text("common\n", encoding="utf-8")
+    (repo_root / ".ai" / "index" / "current_repo_map.md").write_text("map\n", encoding="utf-8")
+
+    launch_ts = "2026-04-17T04:39:32Z"
+    completion_ts = "2026-04-17T04:41:58Z"
+    launch_epoch = 1_776_399_572
+    completion_epoch = 1_776_400_918
+    (runtime_dir / "research__last_launch.json").write_text(
+        json.dumps(
+            {
+                "ts": launch_ts,
+                "startedAt": launch_ts,
+                "epoch": launch_epoch,
+                "lane": "research",
+                "storyId": "EXEC-001",
+                "scope": "EXEC-001",
+                "mode": "story",
+                "promptFile": str(repo_root / ".ai" / "templates" / "research.md"),
+                "promptType": "research",
+                "session": "swarm-test",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (runtime_dir / "research__last_completion.json").write_text(
+        json.dumps(
+            {
+                "ts": completion_ts,
+                "startedAt": launch_ts,
+                "epoch": completion_epoch,
+                "lane": "research",
+                "storyId": "EXEC-001",
+                "scope": "EXEC-001",
+                "mode": "story",
+                "promptFile": str(repo_root / ".ai" / "templates" / "research.md"),
+                "promptType": "research",
+                "session": "swarm-test",
+                "exitCode": 0,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        ["bash", str(scripts_dir / "relaunch_stale_lanes.sh"), "--repo", str(repo_root)],
+        cwd=repo_root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    lane_health = json.loads((state_dir / "lane_health.json").read_text(encoding="utf-8"))
+    architecture_lane = next(lane for lane in lane_health["lanes"] if lane["name"] == "architecture")
+    assert architecture_lane["status"] == "stale"
+    assert architecture_lane["restartRecommendation"] == "yes"
+    assert architecture_lane["reason"] == "upstream completion from research exists but architecture has no output yet"
+    sent = (repo_root / "send_args.txt").read_text(encoding="utf-8")
+    assert "--lane architecture --run" in sent
 
 
 def test_completion_audit_scope_blocks_terminal_complete_and_retargets_expected_artifacts(tmp_path: Path) -> None:

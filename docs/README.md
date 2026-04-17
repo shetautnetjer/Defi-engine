@@ -30,6 +30,8 @@ promotion before the next slice is treated as backlog truth.
   - writer-owned routing, promotion, and north-star prioritization rules
 - `sdd/d5_trading_engine_sdd.md`
   - current software design for the source-truth stack plus bounded feature, condition, policy, and shadow owners
+- `architecture/backtest_truth_contract.md`
+  - settlement-owned spot-first backtest session, fill, position, and report contract
 - `task/ingest_hardening_phase_1.md`
   - completed hardening slice that made the bootstrap ingest contracts truthful
 - `task/source_expansion_preconditions.md`
@@ -46,6 +48,8 @@ promotion before the next slice is treated as backlog truth.
   - future Massive-driven research and walk-forward protocol
 - `plans/build_sequence_and_runtime_ownership.md`
   - bridge note from source-ingest bootstrap into downstream runtime layer ownership
+- `plans/advisory_shadow_loop_for_label_and_strategy_descent.md`
+  - bounded no-HITL advisory loop for repeated backtest, walk-forward, and challenger scoring in support of `LABEL-001` and `STRAT-001`
 - `plans/source_map_and_source_completeness.md`
   - provider-role map and source-completeness doctrine before downstream runtime dependence
 - `plans/strategy_descent_and_instrument_scope.md`
@@ -55,13 +59,15 @@ promotion before the next slice is treated as backlog truth.
 - `issues/governed_product_descent_capability_ladder.md`
   - durable issue guide for the governed product-descent target and staged capability ladder
 - `gaps/backtest_truth_model_gap.md`
-  - remaining backtesting-truth work before strategy expansion can be trusted
+  - closeout surface for the accepted spot-first backtest truth slice; later widening differences remain deferred
 - `gaps/label_program_and_regime_taxonomy_gap.md`
   - canonical label and regime taxonomy work still missing
 - `gaps/strategy_registry_and_challenger_framework_gap.md`
   - strategy-family, metrics, and challenger work still missing
+- `gaps/codex_watcher_and_autoresearch_gap.md`
+  - missing watcher contract and autoresearch adapter surfaces for safe upgrade suggestions
 - `gaps/execution_intent_gap.md`
-  - the remaining runtime-owner gap between risk and settlement
+  - the Stage 1 runtime-owner gap record, now kept as the closeout surface for `EXEC-001`
 - `gaps/instrument_expansion_readiness_gap.md`
   - the widening ladder and readiness work for perps/futures
 - `gaps/tmux_machine_law_and_packet_gap.md`

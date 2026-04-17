@@ -52,6 +52,16 @@ def test_run_persistent_cycle_waits_for_inflight_finder_lanes_before_relaunching
     assert "waiting on writer finder output" in script
 
 
+def test_run_persistent_cycle_defers_story_activation_to_sync_swarm_state() -> None:
+    script = (REPO_ROOT / "scripts" / "agents" / "run_persistent_cycle.sh").read_text()
+
+    assert "ensure_active_story()" not in script
+    assert 'update_story_state.sh" --repo "$repo_root" --story-id "$next_story" --state active' not in script
+    assert 'update_story_state.sh" --repo "$repo_root" --story-id "$active_story" --state active' not in script
+    assert "sync_swarm_state()" in script
+    assert 'status_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null' not in script
+
+
 def test_sync_swarm_state_clears_active_story_when_terminal_complete(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     scripts_dir = repo_root / "scripts" / "agents"
@@ -222,3 +232,11 @@ def test_run_persistent_cycle_waits_for_scoped_completion_audit_workers_before_r
     assert "lane_has_active_scope_mode architecture completion_audit completion_audit" in script
     assert 'lane_has_active_scope_mode writer-integrator completion_audit completion_audit' in script
     assert "waiting on completion audit lane output" in script
+
+
+def test_status_swarm_is_read_only_unless_refresh_is_requested() -> None:
+    script = (REPO_ROOT / "scripts" / "agents" / "status_swarm.sh").read_text()
+
+    assert "--refresh" in script
+    assert 'if [[ "$refresh" == "true" ]]; then' in script
+    assert '"$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --no-mail --quiet >/dev/null' in script

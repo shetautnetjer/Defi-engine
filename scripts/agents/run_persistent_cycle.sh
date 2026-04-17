@@ -69,10 +69,7 @@ completion_writer_json="$repo_root/.ai/dropbox/state/completion_audit_writer.jso
 architecture_finder_prompt="$repo_root/.ai/templates/architecture_finder.md"
 research_finder_prompt="$repo_root/.ai/templates/research_finder.md"
 finder_state_json="$(defi_swarm_finder_state_path "$repo_root")"
-finder_decision_json="$(defi_swarm_finder_decision_path "$repo_root")"
 lane_health_json="$(defi_swarm_lane_health_json_path "$repo_root")"
-mailbox_path="$(defi_swarm_mailbox_path "$repo_root")"
-performance_receipts_dir="$(defi_swarm_performance_receipts_dir "$repo_root")"
 supervisor_launch_json="$(defi_swarm_supervisor_launch_path "$repo_root")"
 supervisor_heartbeat_json="$(defi_swarm_supervisor_heartbeat_path "$repo_root")"
 supervisor_last_exit_json="$(defi_swarm_supervisor_last_exit_path "$repo_root")"
@@ -158,24 +155,6 @@ ensure_session() {
     return 1
   fi
   "$script_dir/start_swarm.sh" --repo "$repo_root" --session "$session_name" --launch-all >/dev/null
-}
-
-ensure_active_story() {
-  local active_story current_state next_story
-  active_story="$(defi_swarm_active_story "$repo_root")"
-
-  if [[ -n "$active_story" && "$active_story" != "null" ]] && defi_swarm_story_is_eligible "$repo_root" "$active_story"; then
-    current_state="$(defi_swarm_story_state "$repo_root" "$active_story")"
-    if [[ "$current_state" == "ready" ]]; then
-      "$script_dir/update_story_state.sh" --repo "$repo_root" --story-id "$active_story" --state active >/dev/null
-    fi
-    return 0
-  fi
-
-  next_story="$(defi_swarm_next_eligible_story "$repo_root")"
-  if [[ -n "$next_story" ]]; then
-    "$script_dir/update_story_state.sh" --repo "$repo_root" --story-id "$next_story" --state active >/dev/null
-  fi
 }
 
 lane_status() {
@@ -376,7 +355,6 @@ loop=1
 while :; do
   write_supervisor_heartbeat "$loop"
   ensure_session
-  ensure_active_story
   sync_swarm_state
   "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --quiet >/dev/null
 
@@ -461,7 +439,6 @@ while :; do
         supervisor_mode="terminal_monitoring"
         cleanup_terminal_runtime_markers
         sync_swarm_state
-        "$script_dir/status_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
         printf 'persistent-cycle: completion audit is clean; entering terminal monitoring\n'
         ;;
       waiting_architecture|waiting_writer)
@@ -472,7 +449,6 @@ while :; do
   fi
 
   "$script_dir/capture_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
-  "$script_dir/status_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
   auto_commit_latest_receipt
 
   if [[ "$max_cycles" != "0" && "$loop" -ge "$max_cycles" ]]; then

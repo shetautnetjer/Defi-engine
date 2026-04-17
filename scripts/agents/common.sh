@@ -56,19 +56,6 @@ defi_swarm_lane_tmux_target() {
   printf '%s\n' "${session_name}:1.$(defi_swarm_lane_pane_index "$lane")"
 }
 
-defi_swarm_lane_name() {
-  case "${1:?lane number required}" in
-    1) printf 'research\n' ;;
-    2) printf 'builder\n' ;;
-    3) printf 'architecture\n' ;;
-    4) printf 'writer-integrator\n' ;;
-    *)
-      printf 'unknown lane number: %s\n' "$1" >&2
-      return 1
-      ;;
-  esac
-}
-
 defi_swarm_prompt_file() {
   local repo_root="${1:?repo root required}"
   local lane="${2:?lane required}"
@@ -474,22 +461,6 @@ defi_swarm_default_model_for_lane() {
     architecture|writer|writer-integrator|writer_integrator) printf 'gpt-5.4\n' ;;
     *) printf '\n' ;;
   esac
-}
-
-defi_swarm_latest_receipt_path() {
-  local repo_root="${1:?repo root required}"
-  local story_id="${2:?story id required}"
-  local receipts_dir
-  receipts_dir="$(defi_swarm_accepted_receipts_dir "$repo_root")"
-  python - "$receipts_dir" "$story_id" <<'PY'
-from pathlib import Path
-import sys
-
-receipts_dir = Path(sys.argv[1])
-story_id = sys.argv[2]
-matches = sorted(receipts_dir.glob(f"*__{story_id}.json"))
-print(matches[-1] if matches else "")
-PY
 }
 
 defi_swarm_lane_slug() {

@@ -20,7 +20,9 @@ The repo already owns these runtime-adjacent surfaces:
 - bounded condition scoring
 - explicit policy tracing
 - explicit hard risk gating
+- explicit execution intent ownership
 - explicit paper settlement and paper reporting
+- explicit spot-first backtest replay truth
 - bounded shadow evaluation
 - advisory realized-feedback comparison between shadow and paper outcomes
 
@@ -31,21 +33,34 @@ Current concrete surfaces include:
 - `global_regime_v1`
 - `policy_global_regime_trace_v1`
 - `risk_global_regime_gate_v1`
+- `execution_intent_v1`
 - `paper_session`
 - `paper_fill`
 - `paper_position`
 - `paper_session_report`
+- `backtest_session_v1`
+- `backtest_fill_v1`
+- `backtest_position_v1`
+- `backtest_session_report_v1`
 - `experiment_realized_feedback_v1`
 - `intraday_meta_stack_v1`
 
-## Still missing
+## Next governed gaps
 
-The remaining runtime owner gap is:
+The Stage 1 runtime-owner seam is now closed:
 
-- explicit execution intent between `risk/` and `settlement/`
+- `execution_intent/` owns explicit paper-only spot intent between `risk/` and
+  `settlement/`
 
-That gap is about instrument, side, size, and entry-exit intent. It is not a
-reason to reopen policy, risk, or settlement as if those layers were absent.
+The Stage 2 backtesting seam is now also closed:
+
+- `settlement/backtest.py` owns a bounded spot-first replay ledger with
+  explicit session, fill, position, and report assumptions
+
+The next governed product gaps are now:
+
+- canonical regime and label truth
+- strategy registry and challenger governance
 
 The active orchestration hardening work is therefore about:
 
@@ -55,6 +70,8 @@ The active orchestration hardening work is therefore about:
   lane liveness pretend to be progress
 - letting writer-integrator mine accepted proposals from docs, issues, gaps,
   and receipts so the next bounded stories stay north-star aligned
+- promoting `LABEL-001` as the next bounded capability slice after the accepted
+  backtest truth layer
 
 ## Research-only by default
 

@@ -121,11 +121,24 @@ The accepted `RISK-001` slice turns the existing risk scaffold into the first ex
 
 The accepted `SETTLE-001` slice turns the existing settlement scaffold into the first explicit `risk/ -> settlement/` handoff. It now:
 
-- consumes explicit `risk_verdict_id` plus `quote_snapshot_id`
+- consumes explicit `execution_intent_id`
 - persists `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report`
 - keeps settlement quote-backed, paper-only, and spot-only in v1
-- fails closed on stale, missing, or unsupported quote / policy / risk inputs
+- fails closed on stale, missing, or unsupported execution intent or quote provenance
 - leaves short-open behavior explicitly unsupported instead of inventing borrow or perp semantics
+
+## Execution Intent Owner
+
+The accepted `EXEC-001` slice now turns allowed risk truth into explicit
+paper-only spot intent. It now:
+
+- owns `execution_intent_v1` between `risk/` and `settlement/`
+- persists explicit mint, side, size, and entry intent from quote-backed spot
+  context
+- fails closed on stale, missing, unsupported, or ambiguous intent inputs
+- keeps exit and stop semantics explicit as `not_owned` instead of inventing
+  broader strategy authority
+- leaves execution paper-only and spot-first instead of implying live routing
 
 ## Research Feedback Owner
 
@@ -138,11 +151,25 @@ The accepted `RESEARCH-001` slice turns the bounded shadow lane into the first s
 - records rollup realized-feedback metrics back into `experiment_metric`
 - leaves settlement read-only, paper truth authoritative, and runtime promotion unchanged
 
+## Backtest Truth Owner
+
+The accepted `BACKTEST-001` slice now turns settlement-owned replay semantics
+into the first explicit backtest truth contract. It now:
+
+- keeps backtest truth under `settlement/` through `BacktestTruthOwner`
+- persists `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`,
+  and `backtest_session_report_v1`
+- records explicit fee, slippage, latency, bucket-granularity, and mark-method
+  assumptions on each replay session
+- stays spot-only and paper-only instead of implying leverage, funding,
+  liquidation, or live routing
+- keeps strategy selection, label generation, and promotion governance out of
+  scope for this slice
+
 ## Not Yet Safe To Claim
 
 This slice does **not** mean the repo has:
 
-- automatic execution intent routing from `allowed` risk verdicts into mint or size selection
 - governed model promotion
 - spot-short settlement semantics
 - full exit-lifecycle or closed-session realized-PnL governance
@@ -152,12 +179,13 @@ The truthful claim is narrower:
 - `condition/` now has one bounded regime scorer backed by feature truth
 - `policy/` now has one explicit consumer that turns persisted condition truth into traceable `eligible_long`, `eligible_short`, or `no_trade` receipts
 - `risk/` now has one explicit hard gate that turns persisted policy truth into traceable `allowed`, `no_trade`, or `halted` receipts while keeping anomaly out of runtime authority
-- `settlement/` now has one explicit quote-backed paper ledger that turns persisted risk truth plus explicit quote intent into traceable paper sessions, fills, positions, and reports
+- `execution_intent/` now has one explicit bounded owner that turns persisted allowed risk truth plus quote provenance into traceable paper-only spot intent
+- `settlement/` now has one explicit quote-backed paper ledger that turns persisted execution intent into traceable paper sessions, fills, positions, and reports
 - `research_loop/` now has one bounded shadow experiment lane plus advisory realized-feedback comparison receipts grounded in settlement truth
 - shadow remains research-only, and realized-feedback receipts remain advisory rather than promotional
 
 ## Next Actions
 
-1. Define the first runtime-owned execution-intent surface between `risk/` and `settlement/` if the repo wants automatic paper action.
-2. Keep operator wording and docs aligned so `allowed` risk verdicts do not imply automatic paper action without explicit quote-backed intent.
+1. Define canonical regime and label truth so the accepted paper and backtest surfaces feed one governed taxonomy.
+2. Keep operator wording and docs aligned so bounded paper execution intent and backtest replay truth do not imply live execution, strategy promotion, or derivatives widening.
 3. Extend realized-feedback comparison only after settlement owns richer exit-lifecycle or closed-session outcome truth.

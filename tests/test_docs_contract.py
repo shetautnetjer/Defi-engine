@@ -16,6 +16,7 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "plans" / "strategy_descent_and_instrument_scope.md",
     REPO_ROOT / "docs" / "task" / "bootstrap_truth_sync.md",
     REPO_ROOT / "docs" / "architecture" / "bootstrap_architecture.md",
+    REPO_ROOT / "docs" / "architecture" / "backtest_truth_contract.md",
     REPO_ROOT / "docs" / "runbooks" / "first_capture.md",
     REPO_ROOT / "docs" / "runbooks" / "feature_condition_shadow_cycle.md",
     REPO_ROOT / "docs" / "runbooks" / "ralph_tmux_swarm.md",
@@ -133,13 +134,19 @@ def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_la
     runtime_truth = (REPO_ROOT / "docs" / "project" / "current_runtime_truth.md").read_text()
     ai_readme = (REPO_ROOT / ".ai" / "README.md").read_text()
     repo_map = (REPO_ROOT / ".ai" / "index" / "current_repo_map.md").read_text()
+    backtest_arch = (
+        REPO_ROOT / "docs" / "architecture" / "backtest_truth_contract.md"
+    ).read_text()
 
     assert "execution intent" in runtime_truth.lower()
+    assert "backtest" in runtime_truth.lower()
     assert "Stage 1" in runtime_truth
     assert "current truth consolidation" in runtime_truth
     assert ".ai/swarm/" in ai_readme
     assert "policy-only" in ai_readme
     assert ".ai/swarm/swarm.yaml" in repo_map
+    assert "BacktestTruthOwner" in backtest_arch
+    assert "spot-first" in backtest_arch
 
 
 def test_stage_one_issue_and_gap_guides_exist_for_future_handoffs() -> None:

@@ -1,8 +1,8 @@
-# Backtest Truth Model Gap
+# Backtest Truth Model Gap (Closed For BACKTEST-001)
 
 ## Stage
 
-Stage 2: backtesting truth layer.
+Stage 2: backtesting truth layer, accepted for the spot-first replay contract.
 
 ## Current truth
 
@@ -11,14 +11,26 @@ The repo now has:
 - canonical SQLite truth
 - explicit policy tracing
 - explicit hard risk gating
+- explicit execution intent
 - explicit quote-backed paper settlement
+- explicit spot-first backtest replay truth
 - advisory realized-feedback comparison
 
-This means the repo is no longer missing paper ownership entirely.
+The accepted `BACKTEST-001` slice now adds:
 
-## Gap
+- `settlement/backtest.py`
+- `BacktestTruthOwner`
+- `backtest_session_v1`
+- `backtest_fill_v1`
+- `backtest_position_v1`
+- `backtest_session_report_v1`
 
-The repo still lacks one governed backtesting truth model that answers:
+This means the repo no longer lacks a governed spot-first backtesting truth
+contract.
+
+## Closeout scope
+
+The accepted slice now answers, explicitly and in persisted truth:
 
 - what is a tradeable instrument
 - what is a bar, bucket, or event boundary
@@ -26,19 +38,20 @@ The repo still lacks one governed backtesting truth model that answers:
 - what fill assumptions apply
 - what fee, slippage, and latency assumptions apply
 - what counts as realized PnL in paper mode
-- how spot, perps, and futures differ
+- how spot differs from future perps/futures widening
 
-## Why it matters
+## Remaining deferred differences
 
-Without this layer, later strategy and model work can look mathematically
-interesting while still comparing against decorative or inconsistent runtime
-truth.
+What remains deferred is not the Stage 2 backtest truth contract itself, but
+later widening details:
 
-## Close when
+- canonical label/regime truth that will consume this replay layer
+- strategy registry and challenger governance that will compare against it
+- perps/futures-specific assumptions, which still belong in
+  `instrument_expansion_readiness_gap.md`
 
-- a bounded backtesting contract exists in docs and code
-- spot assumptions are explicit and reproducible
-- perps and futures differences are documented without being prematurely
-  promoted into runtime
-- backtest metrics and paper metrics are comparable by design rather than by
-  ad hoc interpretation
+## Why this file stays
+
+This file remains in `docs/gaps/` as the closeout and routing surface for the
+accepted `BACKTEST-001` slice so future loops do not reopen the same gap by
+accident.

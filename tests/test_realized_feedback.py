@@ -4,6 +4,7 @@ import json
 from datetime import timedelta
 
 from d5_trading_engine.common.time_utils import ensure_utc
+from d5_trading_engine.execution_intent.owner import ExecutionIntentOwner
 from d5_trading_engine.features.materializer import FeatureMaterializer
 from d5_trading_engine.policy.global_regime_v1 import GlobalRegimePolicyEvaluator
 from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
@@ -126,9 +127,14 @@ def _seed_shadow_aligned_paper_fill(settings, *, no_shadow_row: bool = False) ->
         output_amount="100000000",
         captured_at=aligned_attempted_at,
     )
-    result = PaperSettlement(settings).simulate_fill(
+    execution_intent = ExecutionIntentOwner(settings).create_spot_intent(
         risk_verdict_id=risk_verdict_id,
         quote_snapshot_id=quote_snapshot_id,
+        intent_created_at=aligned_attempted_at,
+    )
+    assert execution_intent["ready"] is True
+    result = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
         settlement_attempted_at=aligned_attempted_at,
     )
     assert result["filled"] is True

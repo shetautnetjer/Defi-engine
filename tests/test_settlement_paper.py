@@ -4,6 +4,7 @@ import json
 from datetime import timedelta
 
 from d5_trading_engine.common.time_utils import utcnow
+from d5_trading_engine.execution_intent.owner import ExecutionIntentOwner
 from d5_trading_engine.policy.global_regime_v1 import GlobalRegimePolicyEvaluator
 from d5_trading_engine.risk.gate import RiskGate
 from d5_trading_engine.settlement.paper import PaperSettlement
@@ -11,6 +12,7 @@ from d5_trading_engine.storage.truth.engine import get_session, run_migrations_t
 from d5_trading_engine.storage.truth.models import (
     ConditionGlobalRegimeSnapshotV1,
     ConditionScoringRun,
+    ExecutionIntentV1,
     FeatureMaterializationRun,
     IngestRun,
     PaperFill,
@@ -200,6 +202,20 @@ def _seed_allowed_risk_verdict(settings, *, run_id: str, semantic_regime: str) -
     return RiskGate(settings).evaluate_global_regime_v1(policy_trace_id=trace_id)["risk_verdict_id"]
 
 
+def _seed_execution_intent(
+    settings,
+    *,
+    risk_verdict_id: int,
+    quote_snapshot_id: int,
+    intent_created_at=None,
+) -> dict[str, object]:
+    return ExecutionIntentOwner(settings).create_spot_intent(
+        risk_verdict_id=risk_verdict_id,
+        quote_snapshot_id=quote_snapshot_id,
+        intent_created_at=intent_created_at,
+    )
+
+
 def _tracked_mint(settings, symbol: str) -> str:
     return next(
         mint
@@ -226,10 +242,14 @@ def test_paper_settlement_creates_quote_backed_fill_and_report(settings) -> None
         input_amount="10000000",
         output_amount="100000000",
     )
-
-    result = PaperSettlement(settings).simulate_fill(
+    execution_intent = _seed_execution_intent(
+        settings,
         risk_verdict_id=risk_verdict_id,
         quote_snapshot_id=quote_snapshot_id,
+    )
+
+    result = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
     )
 
     assert result["filled"] is True
@@ -247,6 +267,7 @@ def test_paper_settlement_creates_quote_backed_fill_and_report(settings) -> None
 
     session = get_session(settings)
     try:
+        execution_intent_row = session.query(ExecutionIntentV1).one()
         paper_session = session.query(PaperSession).one()
         paper_fill = session.query(PaperFill).one()
         paper_position = session.query(PaperPosition).one()
@@ -254,9 +275,11 @@ def test_paper_settlement_creates_quote_backed_fill_and_report(settings) -> None
     finally:
         session.close()
 
+    assert execution_intent_row.intent_state == "ready"
     assert paper_session.status == "open"
     assert paper_session.base_currency == "USDC"
     assert paper_session.quote_size_lamports == 10_000_000
+    assert paper_fill.execution_intent_id == execution_intent["execution_intent_id"]
     assert paper_fill.risk_verdict_id == risk_verdict_id
     assert paper_fill.quote_snapshot_id == quote_snapshot_id
     assert paper_fill.fill_side == "buy"
@@ -287,19 +310,25 @@ def test_paper_settlement_skips_non_allowed_risk_verdict(settings) -> None:
         input_amount="100000000",
         output_amount="10000000",
     )
-
-    result = PaperSettlement(settings).simulate_fill(
+    execution_intent = _seed_execution_intent(
+        settings,
         risk_verdict_id=risk_verdict_id,
         quote_snapshot_id=quote_snapshot_id,
     )
 
+    result = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
+    )
+
     assert result["filled"] is False
     assert result["session_status"] == "skipped"
-    assert "policy_state_unsupported_for_spot_settlement:eligible_short" in result["reason_codes"]
+    assert "execution_intent_not_ready:rejected" in result["reason_codes"]
+    assert "policy_state_unsupported_for_spot_intent:eligible_short" in result["reason_codes"]
     assert "quote_direction_incompatible:token_to_usdc" in result["reason_codes"]
 
     session = get_session(settings)
     try:
+        intent_row = session.query(ExecutionIntentV1).one()
         assert session.query(PaperSession).count() == 1
         assert session.query(PaperFill).count() == 0
         assert session.query(PaperPosition).count() == 0
@@ -307,6 +336,7 @@ def test_paper_settlement_skips_non_allowed_risk_verdict(settings) -> None:
     finally:
         session.close()
 
+    assert intent_row.intent_state == "rejected"
     assert report.report_type == "session_close"
     assert report.position_value_usdc == 0.0
 
@@ -330,15 +360,20 @@ def test_paper_settlement_skips_stale_quote_without_fill(settings) -> None:
         output_amount="100000000",
         captured_at=utcnow() - timedelta(minutes=15),
     )
-
-    result = PaperSettlement(settings).simulate_fill(
+    execution_intent = _seed_execution_intent(
+        settings,
         risk_verdict_id=risk_verdict_id,
         quote_snapshot_id=quote_snapshot_id,
     )
 
+    result = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
+    )
+
     assert result["filled"] is False
     assert result["session_status"] == "skipped"
-    assert "settlement_quote_stale" in result["reason_codes"]
+    assert "execution_intent_not_ready:rejected" in result["reason_codes"]
+    assert "execution_intent_quote_stale" in result["reason_codes"]
 
     session = get_session(settings)
     try:
@@ -356,15 +391,20 @@ def test_paper_settlement_skips_missing_quote_snapshot(settings) -> None:
         run_id="settlement_missing_quote",
         semantic_regime="long_friendly",
     )
-
-    result = PaperSettlement(settings).simulate_fill(
+    execution_intent = _seed_execution_intent(
+        settings,
         risk_verdict_id=risk_verdict_id,
         quote_snapshot_id=99999,
     )
 
+    result = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
+    )
+
     assert result["filled"] is False
     assert result["session_status"] == "skipped"
-    assert result["reason_codes"] == ["quote_snapshot_missing"]
+    assert "execution_intent_not_ready:rejected" in result["reason_codes"]
+    assert "quote_snapshot_missing" in result["reason_codes"]
 
     session = get_session(settings)
     try:

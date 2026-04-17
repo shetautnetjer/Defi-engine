@@ -205,6 +205,8 @@ if finder_state_changed:
 PY
 
 current_active_story="$(jq -r '.activeStoryId // ""' "$repo_root/prd.json" 2>/dev/null || true)"
-if [[ -z "$previous_active_story" && -n "$current_active_story" ]] && tmux has-session -t "$session_name" >/dev/null 2>&1; then
+if [[ -z "$previous_active_story" && -n "$current_active_story" ]] \
+  && [[ -x "$script_dir/cleanup_lane_processes.sh" ]] \
+  && tmux has-session -t "$session_name" >/dev/null 2>&1; then
   "$script_dir/cleanup_lane_processes.sh" --repo "$repo_root" --session "$session_name" --lane all --story-id "$current_active_story" --default-prompt >/dev/null
 fi

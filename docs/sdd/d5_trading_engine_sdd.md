@@ -3,7 +3,7 @@
 ## Document Status
 
 - status: active
-- scope: current software design for the source-truth stack plus bounded feature, condition, and shadow owners
+- scope: current software design for the source-truth stack plus bounded feature, condition, policy, risk, execution-intent, settlement, backtest, and shadow owners
 
 ## System Overview
 
@@ -17,6 +17,10 @@ adapter client
   -> canonical SQLite truth
   -> bounded deterministic feature materialization
   -> bounded condition scoring
+  -> explicit policy tracing
+  -> explicit risk gating
+  -> explicit execution intent
+  -> explicit paper settlement + spot-first backtest replay truth
   -> bounded shadow evaluation
   -> optional DuckDB sync + research artifacts
 ```
@@ -136,7 +140,7 @@ This design keeps write authority narrow and explicit:
 
 ### Policy, Risk, Settlement, Trajectory
 
-These package boundaries exist, and `policy/` now owns one explicit condition-to-policy evaluator plus `policy_global_regime_trace_v1`, `risk/` now owns one explicit final-veto surface through `RiskGate` plus `risk_global_regime_gate_v1`, and `settlement/` now owns one explicit quote-backed paper ledger through `PaperSettlement` plus `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report`. `trajectory/` still does not own promoted forecast authority, and runtime-owned execution intent between risk and settlement remains a follow-on surface.
+These package boundaries exist, and `policy/` now owns one explicit condition-to-policy evaluator plus `policy_global_regime_trace_v1`, `risk/` now owns one explicit final-veto surface through `RiskGate` plus `risk_global_regime_gate_v1`, `execution_intent/` now owns the first bounded paper-only selector through `ExecutionIntentOwner` plus `execution_intent_v1`, and `settlement/` now owns one explicit quote-backed paper ledger through `PaperSettlement` plus `paper_session`, `paper_fill`, `paper_position`, and `paper_session_report`, plus one spot-first replay ledger through `BacktestTruthOwner` plus `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, and `backtest_session_report_v1`. `trajectory/` still does not own promoted forecast authority.
 
 ## Canonical Data Model
 
@@ -199,6 +203,13 @@ These package boundaries exist, and `policy/` now owns one explicit condition-to
 - `paper_fill`
 - `paper_position`
 - `paper_session_report`
+
+### Backtest Truth
+
+- `backtest_session_v1`
+- `backtest_fill_v1`
+- `backtest_position_v1`
+- `backtest_session_report_v1`
 
 ### Shadow Truth
 
@@ -429,7 +440,7 @@ Live integration is gated separately and not part of default CI.
 - Coinbase currently uses public market endpoints only, so authenticated or execution-aware behavior is absent.
 - Massive remains a planned source, not an operational one.
 - Chronos-2 is optional in the current shadow path and may skip cleanly when its dependencies are unavailable.
-- Runtime-owned execution intent, richer settlement lifecycle / mark history, and promotion-sensitive governance are still intentionally unimplemented.
+- Richer settlement lifecycle / mark history and promotion-sensitive governance are still intentionally unimplemented.
 
 ## References
 

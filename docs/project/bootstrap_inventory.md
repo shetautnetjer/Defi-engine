@@ -1,8 +1,13 @@
 # Bootstrap Inventory
 
-Current snapshot of `Defi-engine` after the first source-owner, condition, policy, risk, and settlement descent slices on 2026-04-16.
+Current snapshot of `Defi-engine` after the first source-owner, condition,
+policy, risk, execution-intent, settlement, and backtest-truth descent slices
+through 2026-04-17.
 
-The capture, condition, policy, risk, settlement, and shadow surfaces are now real repo truth with point-in-time-safe regime history and captured-at-safe macro timing. They remain bounded and non-promoting even though `research_loop/` now has advisory realized-feedback comparison; runtime-owned execution intent is still missing.
+The capture, condition, policy, risk, execution-intent, settlement, and shadow
+surfaces are now real repo truth with point-in-time-safe regime history and
+captured-at-safe macro timing. They remain bounded and non-promoting even
+though `research_loop/` now has advisory realized-feedback comparison.
 
 The repo now also carries a north-star packet for the longer descent into a
 Solana-first backtesting and paper-trading platform. That packet is planning
@@ -46,7 +51,7 @@ owning the continuous docs-sync closeout.
 | Capture runner | implemented | ingest run bookkeeping, raw write, normalization, and health logging are wired across Jupiter, Helius, Coinbase, FRED, and Massive |
 | Capture lane status owner | implemented | `capture/lane_status.py` now owns the governed lane manifest, freshness-state derivation, readiness-only handling, and required-blocker reporting |
 | CLI | implemented | current commands are `init`, `capture`, `materialize-features`, `score-conditions`, `run-shadow`, `status`, and `sync-duckdb`; `d5 status` now includes a per-lane capture-freshness section |
-| Condition/policy/risk/settlement | partial | `condition/` now owns `global_regime_v1`, `policy/` now owns the first explicit `global_regime_v1` eligibility traces, `risk/` now owns the first explicit `global_regime_v1` veto receipts, and `settlement/` now owns the first explicit quote-backed paper session / fill / position / report ledger while execution intent remains explicit-id only |
+| Condition/policy/risk/execution-intent/settlement/backtest | partial | `condition/` now owns `global_regime_v1`, `policy/` now owns the first explicit `global_regime_v1` eligibility traces, `risk/` now owns the first explicit `global_regime_v1` veto receipts, `execution_intent/` now owns the first bounded paper-only `execution_intent_v1` selector, and `settlement/` now owns both the explicit quote-backed paper session / fill / position / report ledger and the first spot-first backtest replay ledger |
 | Features | partial | `spot_chain_macro_v1` and `global_regime_inputs_15m_v1` now materialize freshness-gated feature tables plus `feature_materialization_run` receipts |
 | Models/research_loop/trajectory | partial | `research_loop/` now owns one bounded PIT-safe shadow experiment lane plus advisory realized-feedback comparison receipts over settlement truth, but it remains research-only; `trajectory/` remains mostly scaffolded |
 | Orchestration | implemented | repo-local Ralph/tmux swarm pack now exists under `.ai/`, `prd.json`, `progress.txt`, `scripts/ralph/`, and `scripts/agents/` for story-driven multi-lane execution with lane-health supervision |

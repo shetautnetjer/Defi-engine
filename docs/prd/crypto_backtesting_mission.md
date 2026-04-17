@@ -26,12 +26,10 @@ Implemented now:
 - bounded regime scoring
 - explicit policy tracing
 - explicit risk gating
+- explicit execution intent
 - explicit quote-backed paper settlement
+- explicit spot-first backtest replay truth
 - bounded shadow evaluation
-
-Still missing as governed runtime owners:
-
-- runtime-owned execution intent between `risk/` and `settlement/`
 
 Stage 1 current-truth consolidation is also still active:
 
@@ -44,10 +42,13 @@ Stage 1 current-truth consolidation is also still active:
 
 The governed product descent is:
 
-1. truthful paper runtime and backtesting truth
+1. truthful paper runtime plus explicit backtesting truth
 2. explicit regime and label truth
 3. strategy comparison and promotion governance
 4. instrument widening only after the lower truth surfaces are stable
+
+Accepted repo truth now satisfies the first step of that ladder. The next
+governed slice is canonical regime and label truth.
 
 Future widening order:
 
