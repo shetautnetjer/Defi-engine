@@ -8,8 +8,16 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 
 - `project/bootstrap_inventory.md`
   - stable snapshot of what is implemented, scaffolded, and missing
+- `project/current_runtime_truth.md`
+  - compact current runtime-truth packet for the swarm
+- `prd/crypto_backtesting_mission.md`
+  - north-star product mission for the Solana-first paper backtesting and paper-trading platform
+- `prd/backtesting_completion_definition.md`
+  - explicit definition of stage completion versus terminal swarm completion
 - `prd/d5_trading_engine_prd.md`
   - repo-local product requirements for the paper-first source, feature, condition, and shadow surface
+- `policy/runtime_authority_and_promotion_ladder.md`
+  - authority order and promotion contract for moving advisory research into governed runtime owners
 - `sdd/d5_trading_engine_sdd.md`
   - current software design for the source-truth stack plus bounded feature, condition, policy, and shadow owners
 - `task/ingest_hardening_phase_1.md`
@@ -17,7 +25,7 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - `task/source_expansion_preconditions.md`
   - active bounded execution surface for mint-locked universe expansion without bypassing downstream contracts
 - `task/continuous_capture_ownership.md`
-  - bounded next slice for freshness, completeness, and operator-visible source ownership
+  - accepted source-owner contract for freshness classes, per-lane status output, and deferred completeness follow-ons
 - `task/first_feature_input_contract.md`
   - first post-ingest contract that defines which canonical truth the feature layer may consume
 - `task/global_regime_condition_and_shadow_stack.md`
@@ -30,6 +38,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - bridge note from source-ingest bootstrap into downstream runtime layer ownership
 - `plans/source_map_and_source_completeness.md`
   - provider-role map and source-completeness doctrine before downstream runtime dependence
+- `plans/strategy_descent_and_instrument_scope.md`
+  - governed scope ladder from Solana spot into later Jupiter perps and Coinbase futures expansion
 - `gaps/bootstrap_gap_register.md`
   - deferred or missing capabilities that should not be treated as shipped
 - `issues/paper_runtime_blockers.md`
@@ -46,6 +56,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - repo-local four-lane tmux/Ralph orchestration plus lane-health, mailbox, acceptance receipts, detached supervisor lifecycle, and continuous completion supervision
 - `math/regime_shadow_modeling_contracts.md`
   - bounded mathematical and modeling contract for the current feature, regime, and shadow surfaces
+- `math/market_regime_forecast_and_labeling_program.md`
+  - canonical regime, direction-label, horizon, and evaluation-metric doctrine for future strategy work
 - `test/bootstrap_validation.md`
   - installed-deps validation commands, smoke procedures, and pytest coverage
 - `handoff/2026-04-12_bootstrap_phase_1.md`
@@ -59,6 +71,8 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
   - active bounded execution surfaces
 - `docs/prd/`
   - product requirements and milestone intent
+- `docs/policy/`
+  - runtime authority, governance, and promotion doctrine
 - `docs/sdd/`
   - software and system design surfaces
 - `docs/plans/`
@@ -76,6 +90,7 @@ Code, config, schema, and checks remain the runtime authority. These docs explai
 - repo-local orchestration lives outside `docs/` in `.ai/`, `prd.json`, `progress.txt`, and `scripts/ralph/`
   - detached supervisor lifecycle also lives there through `scripts/agents/start_supervisor.sh`, `stop_supervisor.sh`, and `supervisor_status.sh`
   - finder modes also live there through `.ai/templates/architecture_finder.md`, `.ai/templates/research_finder.md`, and `.ai/dropbox/state/{finder_state.json,finder_decision.json}`
+  - policy-only machine-readable swarm law also lives there through `.ai/swarm/{swarm.yaml,lane_rules.yaml,promotion_ladder.yaml}`
   - treat those as execution-control surfaces, not product or runtime authority
 - `docs/test/`
   - validation notes and smoke checks

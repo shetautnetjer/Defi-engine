@@ -103,7 +103,7 @@ eligible_stories = sorted(
 )
 next_eligible_story = eligible_stories[0]["id"] if eligible_stories else None
 active_story_row = story_index.get(active_story)
-active_story_state = active_story_row["state_norm"] if active_story_row else "missing"
+active_story_state = active_story_row["state_norm"] if active_story_row else ("none" if not active_story else "missing")
 active_story_recovery_round = int(active_story_row.get("recovery_round", 0) or 0) if active_story_row else 0
 active_story_eligible = active_story_state in eligible_states
 
@@ -360,8 +360,12 @@ for spec in lane_specs:
         status = "stopped"
         reason = "tmux session is not running"
     elif not active_story:
-        status = "idle"
-        reason = "no active story is set in prd.json"
+        if swarm_state == "terminal_complete" and completion_audit_state == "clean":
+            status = "idle"
+            reason = "no active story is set because the swarm is in terminal-complete monitoring"
+        else:
+            status = "idle"
+            reason = "no active story is set in prd.json"
     elif spec["name"] == "writer-integrator" and not active_story_eligible and next_eligible_story and next_eligible_story != active_story:
         status = "stale"
         recommendation = "yes"

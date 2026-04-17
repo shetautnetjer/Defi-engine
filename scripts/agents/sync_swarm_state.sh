@@ -86,6 +86,8 @@ last_finder_audit_id = str(finder_state.get("lastFinderAuditId") or "")
 if eligible:
     completion_status = "pending"
     swarm_state = "active"
+    if not doc.get("activeStoryId"):
+        doc["activeStoryId"] = str(eligible[0].get("id") or "")
 else:
     running_audit = False
     for lane in lane_health.get("lanes", []):
@@ -108,6 +110,9 @@ else:
     else:
         completion_status = "pending"
         swarm_state = "backlog_exhausted"
+
+    if swarm_state == "terminal_complete":
+        doc["activeStoryId"] = ""
 
 doc["swarmState"] = swarm_state
 doc["completionAuditState"] = completion_status

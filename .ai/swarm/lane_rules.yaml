@@ -1,0 +1,137 @@
+version: 1
+
+common:
+  required_reads:
+    - AGENTS.md
+    - .ai/agents/common.md
+    - .ai/index/current_repo_map.md
+    - prd.json
+    - progress.txt
+    - docs/project/current_runtime_truth.md
+    - docs/prd/crypto_backtesting_mission.md
+    - docs/prd/backtesting_completion_definition.md
+    - docs/plans/strategy_descent_and_instrument_scope.md
+    - docs/math/market_regime_forecast_and_labeling_program.md
+    - docs/policy/runtime_authority_and_promotion_ladder.md
+  packet_first: true
+  writer_integrator_is_truth_owner: true
+
+lanes:
+  research:
+    purpose: evidence gathering and research-only challenger discovery
+    default_mode: evidence
+    modes:
+      - evidence
+      - research-finder
+    required_skills:
+      - research-skill
+      - exa-search-skill
+      - crawl4ai-skill
+    allowed_writes:
+      - .ai/dropbox/research/
+    forbidden_actions:
+      - update prd.json
+      - update progress.txt
+      - promote backlog truth
+      - claim runtime authority
+      - commit code
+    expected_outputs:
+      - <story-id>__brief.md
+      - <story-id>__doc_refs.json
+      - <story-id>__qa.md
+      - <scope>__research_gap_scan.md
+      - <scope>__unknowns_and_needed_evidence.json
+      - <scope>__followon_story_candidates.json
+    trigger_notes:
+      - finder mode is evidence-first
+      - external methods remain advisory until promoted
+
+  builder:
+    purpose: bounded implementation only
+    default_mode: delivery
+    modes:
+      - delivery
+    required_skills:
+      - jetbrains-mcp
+    model_default: ChatGPT 5.4
+    allowed_writes:
+      - src/
+      - sql/
+      - tests/
+      - docs/ only when explicitly accepted for current story
+      - .ai/dropbox/build/
+    forbidden_actions:
+      - update prd.json
+      - update progress.txt
+      - write acceptance receipts
+      - auto-commit
+      - broad refactor outside accepted story
+    expected_outputs:
+      - <story-id>__delivery.md
+      - <story-id>__files.txt
+      - <story-id>__validation.txt
+      - <story-id>__result.json
+
+  architecture:
+    purpose: ownership, seam review, subtraction decisions, and finder audits
+    default_mode: design-review
+    modes:
+      - design-review
+      - architecture-finder
+      - completion-audit
+    required_skills:
+      - jetbrains-skill
+      - jetbrains-mcp
+    allowed_writes:
+      - .ai/dropbox/architecture/
+    forbidden_actions:
+      - update prd.json
+      - update progress.txt
+      - promote backlog truth
+      - become primary builder
+    expected_outputs:
+      - <story-id>__review.md
+      - <story-id>__contract_notes.md
+      - <story-id>__refinement.md
+      - <story-id>__decision.json
+      - <scope>__architecture_efficiency_audit.md
+      - <scope>__subtraction_candidates.json
+      - <scope>__followon_story_candidates.json
+    finder_rules:
+      subtraction_first: true
+      may_recommend:
+        - subtract
+        - build
+        - demote_to_advisory
+      path_exhausted_authority: true
+
+  writer_integrator:
+    purpose: acceptance, ledger truth, doc sync, and governed promotion
+    default_mode: acceptance
+    modes:
+      - acceptance
+      - completion-audit
+    required_skills:
+      - ralph
+      - ralph-loop
+    allowed_writes:
+      - .ai/dropbox/state/
+      - prd.json
+      - progress.txt
+      - accepted docs
+      - .ai/index/current_repo_map.md
+    forbidden_actions:
+      - accept without receipt
+      - promote finder output without decision artifact
+      - push by default
+    expected_outputs:
+      - accepted_loops.md
+      - rejections.md
+      - open_questions.md
+      - accepted_receipts/<receipt-id>.json
+      - completion_audit_writer.json
+      - finder_decision.json
+    authority:
+      backlog_promotion_owner: true
+      commit_owner: true
+      push_requires_operator: true

@@ -1,0 +1,111 @@
+version: 1
+project_id: defi-engine
+mode: governed-product-descent
+authority_mode: policy-only
+description: >
+  Four-lane Ralph/tmux swarm for paper-first, Solana-first product descent.
+
+packet:
+  required_reads:
+    - AGENTS.md
+    - .ai/agents/common.md
+    - .ai/index/current_repo_map.md
+    - prd.json
+    - progress.txt
+    - docs/project/current_runtime_truth.md
+    - docs/prd/crypto_backtesting_mission.md
+    - docs/prd/backtesting_completion_definition.md
+    - docs/plans/strategy_descent_and_instrument_scope.md
+    - docs/math/regime_shadow_modeling_contracts.md
+    - docs/math/market_regime_forecast_and_labeling_program.md
+    - docs/policy/runtime_authority_and_promotion_ladder.md
+    - docs/sdd/d5_trading_engine_sdd.md
+    - docs/runbooks/ralph_tmux_swarm.md
+    - docs/runbooks/feature_condition_shadow_cycle.md
+
+truth_surfaces:
+  canonical:
+    - prd.json
+    - progress.txt
+    - docs/project/current_runtime_truth.md
+    - docs/prd/crypto_backtesting_mission.md
+    - docs/prd/backtesting_completion_definition.md
+    - docs/plans/strategy_descent_and_instrument_scope.md
+    - docs/math/market_regime_forecast_and_labeling_program.md
+    - docs/policy/runtime_authority_and_promotion_ladder.md
+  exchange:
+    - .ai/dropbox/research/
+    - .ai/dropbox/build/
+    - .ai/dropbox/architecture/
+    - .ai/dropbox/state/
+  advisory:
+    - memory
+    - shadow outputs
+    - finder outputs
+    - external research
+
+lifecycle:
+  session_control: scripts/agents/start_swarm.sh
+  execution_control: scripts/agents/start_supervisor.sh
+  status_surface: scripts/agents/status_swarm.sh
+  stop_all: scripts/agents/stop_swarm.sh
+  supervisor_interval_seconds: 30
+
+story_execution:
+  ledger_file: prd.json
+  history_file: progress.txt
+  active_story_field: activeStoryId
+  eligible_states:
+    - ready
+    - active
+    - recovery
+  terminal_states:
+    - blocked_external
+    - deferred
+    - done
+    - escalated
+
+completion_contract:
+  top_level_fields:
+    - swarmState
+    - completionAuditState
+    - lastCompletionAuditReceiptId
+    - lastFinderAuditId
+  allowed_swarm_states:
+    - active
+    - blocked
+    - backlog_exhausted
+    - audit_followons_present
+    - terminal_complete
+  allowed_completion_audit_states:
+    - pending
+    - running
+    - clean
+    - gaps_promoted
+
+finder_policy:
+  permanent_lanes_added: false
+  architecture_finder_lane: architecture
+  research_finder_lane: research
+  trigger_classes:
+    - accepted_receipt_with_contradictions
+    - accepted_receipt_with_unresolved_risks
+    - accepted_receipt_with_promotion_targets
+    - repeated_failure_class
+    - duplicate_completed_artifact_without_state_change
+    - backlog_exhausted
+
+commit_policy:
+  builder_can_commit: false
+  writer_integrator_can_commit: true
+  push_requires_operator: true
+  accepted_commit_requires:
+    - story_id
+    - receipt_id
+    - validation_receipt
+    - governed_summary
+
+truth_guardrails:
+  do_not_override_prd_or_progress: true
+  do_not_promote_from_yaml: true
+  require_doc_truth_alignment: true

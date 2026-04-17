@@ -71,6 +71,7 @@ finder_state_json="$(defi_swarm_finder_state_path "$repo_root")"
 finder_decision_json="$(defi_swarm_finder_decision_path "$repo_root")"
 lane_health_json="$(defi_swarm_lane_health_json_path "$repo_root")"
 mailbox_path="$(defi_swarm_mailbox_path "$repo_root")"
+performance_receipts_dir="$(defi_swarm_performance_receipts_dir "$repo_root")"
 supervisor_launch_json="$(defi_swarm_supervisor_launch_path "$repo_root")"
 supervisor_heartbeat_json="$(defi_swarm_supervisor_heartbeat_path "$repo_root")"
 supervisor_last_exit_json="$(defi_swarm_supervisor_last_exit_path "$repo_root")"
@@ -80,6 +81,7 @@ if [[ "$max_cycles" != "0" ]]; then
 fi
 exit_reason="running"
 exit_signal=""
+supervisor_mode="execution"
 
 write_supervisor_launch() {
   jq -nc \
@@ -88,9 +90,10 @@ write_supervisor_launch() {
     --arg session "$session_name" \
     --argjson pid "$$" \
     --argjson interval "$interval_seconds" \
+    --arg supervisorMode "$supervisor_mode" \
     --arg mode "$run_mode" \
     --argjson maxCycles "$max_cycles" \
-    '{ts:$ts, repo:$repo, session:$session, pid:$pid, intervalSeconds:$interval, mode:$mode, maxCycles:$maxCycles}' > "$supervisor_launch_json"
+    '{ts:$ts, repo:$repo, session:$session, pid:$pid, intervalSeconds:$interval, mode:$mode, supervisorMode:$supervisorMode, maxCycles:$maxCycles}' > "$supervisor_launch_json"
 }
 
 write_supervisor_heartbeat() {
@@ -103,10 +106,11 @@ write_supervisor_heartbeat() {
     --arg session "$session_name" \
     --arg storyId "$active_story" \
     --arg mode "$run_mode" \
+    --arg supervisorMode "$supervisor_mode" \
     --argjson pid "$$" \
     --argjson cycle "$cycle" \
     --argjson interval "$interval_seconds" \
-    '{ts:$ts, repo:$repo, session:$session, pid:$pid, cycle:$cycle, intervalSeconds:$interval, mode:$mode, activeStoryId:$storyId}' > "$supervisor_heartbeat_json"
+    '{ts:$ts, repo:$repo, session:$session, pid:$pid, cycle:$cycle, intervalSeconds:$interval, mode:$mode, supervisorMode:$supervisorMode, activeStoryId:$storyId}' > "$supervisor_heartbeat_json"
 }
 
 write_supervisor_last_exit() {
@@ -118,9 +122,10 @@ write_supervisor_last_exit() {
     --arg reason "$exit_reason" \
     --arg signal "$exit_signal" \
     --arg mode "$run_mode" \
+    --arg supervisorMode "$supervisor_mode" \
     --argjson pid "$$" \
     --argjson exitCode "$exit_code" \
-    '{ts:$ts, repo:$repo, session:$session, pid:$pid, mode:$mode, exitCode:$exitCode, reason:$reason, signal:($signal | select(length > 0))}' > "$supervisor_last_exit_json"
+    '{ts:$ts, repo:$repo, session:$session, pid:$pid, mode:$mode, supervisorMode:$supervisorMode, exitCode:$exitCode, reason:$reason, signal:($signal | select(length > 0))}' > "$supervisor_last_exit_json"
 }
 
 on_signal() {
@@ -272,6 +277,50 @@ finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
 PY
 }
 
+queue_performance_trigger() {
+  python - "$repo_root" "$performance_receipts_dir" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+receipts_dir = Path(sys.argv[2])
+finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
+state = json.loads(finder_state_path.read_text())
+if state.get("pendingTrigger"):
+    raise SystemExit(0)
+
+matches = sorted(receipts_dir.glob("*.json"))
+if not matches:
+    raise SystemExit(0)
+
+latest = json.loads(matches[-1].read_text())
+receipt_id = str(latest.get("receipt_id") or "")
+recommendation = str(latest.get("recommendation") or "")
+if not receipt_id or receipt_id == state.get("lastProcessedPerformanceReceiptId"):
+    raise SystemExit(0)
+
+state["lastProcessedPerformanceReceiptId"] = receipt_id
+if recommendation == "no_action":
+    finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
+    raise SystemExit(0)
+
+scope = f"performance_{str(latest.get('experiment_run_id') or 'audit')}"
+scope = scope.replace("/", "_").replace(":", "_")
+state["pendingTrigger"] = {
+    "triggerId": f"performance::{receipt_id}",
+    "triggerType": "performance_receipt",
+    "scope": scope,
+    "storyId": "",
+    "performanceReceiptId": receipt_id,
+    "createdAt": str(latest.get("timestamp") or ""),
+}
+finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
+PY
+}
+
 queue_repeated_failure_trigger() {
   python - "$repo_root" "$mailbox_path" <<'PY'
 from __future__ import annotations
@@ -383,6 +432,48 @@ finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
 PY
 }
 
+queue_periodic_terminal_audit() {
+  python - "$repo_root" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+finder_state_path = repo_root / ".ai" / "dropbox" / "state" / "finder_state.json"
+prd = json.loads((repo_root / "prd.json").read_text())
+if str(prd.get("swarmState") or "") != "terminal_complete":
+    raise SystemExit(0)
+
+state = json.loads(finder_state_path.read_text())
+if state.get("pendingTrigger"):
+    raise SystemExit(0)
+
+last_audit_at = str(state.get("lastTerminalAuditAt") or "")
+if last_audit_at:
+    try:
+        last_epoch = datetime.fromisoformat(last_audit_at.replace("Z", "+00:00")).timestamp()
+        now_epoch = datetime.now(timezone.utc).timestamp()
+        if (now_epoch - last_epoch) < 3600:
+            raise SystemExit(0)
+    except ValueError:
+        pass
+
+timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+state["pendingTrigger"] = {
+    "triggerId": f"periodic_completion_audit::{timestamp}",
+    "triggerType": "periodic_completion_audit",
+    "scope": "completion_audit",
+    "storyId": "",
+    "sourceReceiptId": str(prd.get("lastCompletionAuditReceiptId") or ""),
+    "createdAt": timestamp,
+}
+finder_state_path.write_text(json.dumps(state, indent=2) + "\n")
+PY
+}
+
 finder_phase() {
   python - "$repo_root" <<'PY'
 from __future__ import annotations
@@ -480,9 +571,10 @@ elif finder_decision_path.exists():
     decision_id = str(doc.get("decision_id") or "")
 
 state["pendingTrigger"] = None
-if trigger_type == "completion_audit":
+if trigger_type in {"completion_audit", "periodic_completion_audit"}:
     state["lastProcessedCompletionScope"] = f"completion_audit::{pending.get('sourceReceiptId') or ''}"
     state["queuedReceiptFollowons"] = []
+    state["lastTerminalAuditAt"] = __import__("datetime").datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 if decision_id:
     state["lastFinderAuditId"] = decision_id
     state["lastWriterDecisionId"] = decision_id
@@ -504,6 +596,10 @@ cleanup_terminal_runtime_markers() {
   done
 }
 
+auto_commit_latest_receipt() {
+  "$script_dir/commit_accepted_story.sh" --repo "$repo_root" >/dev/null || true
+}
+
 write_supervisor_launch
 
 loop=1
@@ -514,10 +610,15 @@ while :; do
   sync_swarm_state
   "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --quiet >/dev/null
 
+  "$script_dir/sync_performance_receipts.sh" --repo "$repo_root" >/dev/null || true
   queue_receipt_followons
-  queue_repeated_failure_trigger
+  queue_performance_trigger
+  if defi_swarm_has_eligible_stories "$repo_root"; then
+    queue_repeated_failure_trigger
+  fi
   if ! defi_swarm_has_eligible_stories "$repo_root"; then
     queue_completion_trigger
+    queue_periodic_terminal_audit
   fi
   sync_swarm_state
   "$script_dir/health_swarm.sh" --repo "$repo_root" --session "$session_name" --quiet >/dev/null
@@ -526,6 +627,7 @@ while :; do
 
   finder_mode="$(finder_phase)"
   if [[ "$finder_mode" != "none" ]]; then
+    supervisor_mode="execution"
     printf 'persistent-cycle: finder=%s\n' "$finder_mode"
     case "$finder_mode" in
       launch_architecture)
@@ -551,6 +653,7 @@ while :; do
         ;;
     esac
   elif defi_swarm_has_eligible_stories "$repo_root"; then
+    supervisor_mode="execution"
     "$script_dir/relaunch_stale_lanes.sh" --repo "$repo_root" --session "$session_name"
   else
     audit_mode="$(completion_audit_mode)"
@@ -563,17 +666,18 @@ while :; do
         "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt"
         ;;
       gaps_promoted)
+        supervisor_mode="execution"
         printf 'persistent-cycle: writer promoted new gap stories; continuing\n'
         ;;
       clean)
+        supervisor_mode="terminal_monitoring"
         cleanup_terminal_runtime_markers
         sync_swarm_state
-        "$script_dir/status_swarm.sh" --repo "$repo_root" --session "$session_name"
-        printf 'persistent-cycle: completion audit is clean; stopping\n'
-        exit_reason="clean"
-        break
+        "$script_dir/status_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
+        printf 'persistent-cycle: completion audit is clean; entering terminal monitoring\n'
         ;;
       waiting_architecture|waiting_writer)
+        supervisor_mode="execution"
         printf 'persistent-cycle: waiting on completion audit lane output\n'
         ;;
     esac
@@ -581,6 +685,7 @@ while :; do
 
   "$script_dir/capture_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
   "$script_dir/status_swarm.sh" --repo "$repo_root" --session "$session_name" >/dev/null
+  auto_commit_latest_receipt
 
   if [[ "$max_cycles" != "0" && "$loop" -ge "$max_cycles" ]]; then
     exit_reason="bounded_limit"

@@ -1,8 +1,16 @@
 # Bootstrap Inventory
 
-Current snapshot of `Defi-engine` after the first condition, policy, risk, and settlement descent slices on 2026-04-16.
+Current snapshot of `Defi-engine` after the first source-owner, condition, policy, risk, and settlement descent slices on 2026-04-16.
 
-The condition, policy, risk, settlement, and shadow surfaces are now real repo truth with point-in-time-safe regime history and captured-at-safe macro timing, but they remain bounded and non-promoting until continuous capture ownership, runtime execution intent, and realized-feedback governance are explicit.
+The capture, condition, policy, risk, settlement, and shadow surfaces are now real repo truth with point-in-time-safe regime history and captured-at-safe macro timing. They remain bounded and non-promoting even though `research_loop/` now has advisory realized-feedback comparison; runtime-owned execution intent is still missing.
+
+The repo now also carries a north-star packet for the longer descent into a
+Solana-first backtesting and paper-trading platform. That packet is planning
+truth, not proof that the later-stage product is already implemented.
+
+The repo also now carries a policy-only machine-readable swarm packet under
+`.ai/swarm/` so packet rules, lane authority, and promotion doctrine do not
+live only in prose.
 
 ## Public Surface
 
@@ -31,13 +39,14 @@ The condition, policy, risk, settlement, and shadow surfaces are now real repo t
 | Coinbase adapter/normalizer | partial | public products, candles, trade prints, and L2 book capture exist; execution and fill modeling are deferred |
 | Massive adapter/normalizer | scaffolded | fail-closed readiness/probe path surfaces auth and entitlement failure explicitly |
 | Capture runner | implemented | ingest run bookkeeping, raw write, normalization, and health logging are wired across Jupiter, Helius, Coinbase, FRED, and Massive |
-| CLI | implemented | current commands are `init`, `capture`, `materialize-features`, `score-conditions`, `run-shadow`, `status`, and `sync-duckdb` |
+| Capture lane status owner | implemented | `capture/lane_status.py` now owns the governed lane manifest, freshness-state derivation, readiness-only handling, and required-blocker reporting |
+| CLI | implemented | current commands are `init`, `capture`, `materialize-features`, `score-conditions`, `run-shadow`, `status`, and `sync-duckdb`; `d5 status` now includes a per-lane capture-freshness section |
 | Condition/policy/risk/settlement | partial | `condition/` now owns `global_regime_v1`, `policy/` now owns the first explicit `global_regime_v1` eligibility traces, `risk/` now owns the first explicit `global_regime_v1` veto receipts, and `settlement/` now owns the first explicit quote-backed paper session / fill / position / report ledger while execution intent remains explicit-id only |
 | Features | partial | `spot_chain_macro_v1` and `global_regime_inputs_15m_v1` now materialize freshness-gated feature tables plus `feature_materialization_run` receipts |
-| Models/research_loop/trajectory | partial | `research_loop/` now owns one bounded PIT-safe shadow experiment lane, but it remains research-only; `trajectory/` remains mostly scaffolded |
+| Models/research_loop/trajectory | partial | `research_loop/` now owns one bounded PIT-safe shadow experiment lane plus advisory realized-feedback comparison receipts over settlement truth, but it remains research-only; `trajectory/` remains mostly scaffolded |
 | Orchestration | implemented | repo-local Ralph/tmux swarm pack now exists under `.ai/`, `prd.json`, `progress.txt`, `scripts/ralph/`, and `scripts/agents/` for story-driven multi-lane execution with lane-health supervision |
 | Tests | implemented | default `pytest` stays offline-safe; live-gated Jupiter and Helius integration harnesses exist for provider receipts |
-| Docs | partial | docs inventory, architecture, runbook, validation notes, active task docs, and new planning docs exist |
+| Docs | partial | docs inventory, architecture, runbook, validation notes, active task docs, and north-star mission/scope/math/governance docs exist |
 
 ## Current Drifts From The Earlier Bootstrap Sketch
 
@@ -50,6 +59,8 @@ The condition, policy, risk, settlement, and shadow surfaces are now real repo t
 
 - `.ai/agents/` owns lane guidance for the research, builder, architecture, and writer-integrator roles
 - `.ai/index/current_repo_map.md` is the fast current-truth index for the swarm
+- `.ai/swarm/` holds policy-only machine-readable swarm law for packet reads,
+  lane authority, and promotion doctrine
 - `.ai/dropbox/` is working exchange only, not canonical repo truth
 - `.ai/dropbox/state/` now produces runtime lane-health, compacted mailbox, finder, runtime, acceptance, and detached-supervisor receipts for continuous supervision
 - `prd.json` and `progress.txt` are the canonical story ledger for long-horizon Ralph loops and now carry explicit story states plus top-level swarm completion truth (`swarmState`, `completionAuditState`)

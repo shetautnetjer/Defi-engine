@@ -12,6 +12,10 @@ Read this before proposing new files, modules, or runtime claims.
 - raw JSONL receipt capture
 - DuckDB sync on demand
 - provider seams for Jupiter, Helius, Coinbase, FRED
+- `capture/lane_status.py`
+  - shared capture-lane freshness owner and blocker resolver
+- `d5 status`
+  - operator-visible per-lane capture freshness and eligibility surface
 
 ### Features
 
@@ -61,6 +65,8 @@ Read this before proposing new files, modules, or runtime claims.
 
 - `intraday_meta_stack_v1`
   - bounded shadow-only lane
+- `experiment_realized_feedback_v1`
+  - advisory comparison receipts between replayed shadow context and settlement-owned paper outcomes
 - triple-barrier labels
 - `IsolationForest`
 - `RandomForest`
@@ -71,36 +77,53 @@ Read this before proposing new files, modules, or runtime claims.
 
 ## Remaining runtime blockers
 
-- continuous capture ownership still needs an explicit runtime cadence and freshness owner
 - risk-to-settlement execution intent is still explicit-id only; there is no runtime-owned instrument or size selection surface yet
-- `research_loop/` still does not compare shadow outputs against realized paper outcomes
-- the orchestration layer still needs a clean terminal completion contract so backlog exhaustion, audit-known follow-ons, and terminal completion are governed states instead of implicit outcomes
 
 ## Current repo-local docs to read first
 
 - `README.md`
 - `docs/README.md`
+- `docs/project/current_runtime_truth.md`
+- `docs/prd/crypto_backtesting_mission.md`
+- `docs/prd/backtesting_completion_definition.md`
 - `docs/project/bootstrap_inventory.md`
+- `docs/task/continuous_capture_ownership.md`
 - `docs/task/global_regime_condition_and_shadow_stack.md`
 - `docs/issues/paper_runtime_blockers.md`
+- `docs/plans/strategy_descent_and_instrument_scope.md`
 - `docs/math/regime_shadow_modeling_contracts.md`
+- `docs/math/market_regime_forecast_and_labeling_program.md`
+- `docs/policy/runtime_authority_and_promotion_ladder.md`
 - `docs/runbooks/feature_condition_shadow_cycle.md`
 
 ## Current safe framing
 
-- current repo = source truth + bounded features + bounded condition + explicit
-  policy traces + explicit risk gate + explicit paper settlement + bounded shadow
-- target repo = governed paper engine with continuous capture ownership,
-  explicit execution intent, realized feedback governance, and auditable promotion controls
+- current repo = source truth + explicit capture freshness owner + bounded features
+  + bounded condition + explicit policy traces + explicit risk gate + explicit
+  paper settlement + bounded shadow + advisory realized-feedback comparison
+- target repo = governed paper engine with explicit execution intent,
+  realized feedback governance, auditable promotion controls, and a staged
+  Solana-first backtesting platform that widens into perps and futures only
+  after the lower truth layers are strong
 
 ## Orchestration rule
 
 Unless an actual blocker is discovered, future stories should bias toward:
 
-1. `ORCH-005` until terminal completion and finder-governed follow-on promotion are explicit
-2. the remaining blockers in `docs/issues/paper_runtime_blockers.md`
-3. execution-intent hardening or realized-feedback governance only when the gap is receipt-backed
-4. policy or risk follow-on only when a real downstream blocker requires it
+1. the remaining blockers in `docs/issues/paper_runtime_blockers.md`
+2. the staged backtesting story families in `prd.json` once current blocker stories are complete
+3. execution-intent hardening only when the gap is receipt-backed
+4. perps or futures work only when the scope ladder says widening is eligible
 
 Keep the 4-lane swarm fixed. Finder work happens inside the existing research
 and architecture lanes and stays advisory until writer-integrator promotes it.
+
+## Machine-readable swarm law
+
+The repo now also carries policy-only swarm governance files under `.ai/swarm/`:
+
+- `.ai/swarm/swarm.yaml`
+- `.ai/swarm/lane_rules.yaml`
+- `.ai/swarm/promotion_ladder.yaml`
+
+They are packet and governance truth, not live supervisor inputs in v1.

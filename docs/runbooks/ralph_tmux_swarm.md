@@ -9,11 +9,45 @@ Use this workflow when the work is long-horizon, story-driven, and easier to
 understand with fixed lane roles than with one large undifferentiated agent.
 
 The current intended target for this workflow is receipt-backed follow-on runtime
-hardening after the first settlement owner:
+hardening after the first source-owner, settlement-owner, and realized-feedback slices:
 
-- continuous capture ownership when freshness / cadence is still implicit
 - execution-intent routing between `risk/` and `settlement/`
-- realized-feedback governance in `research_loop/`
+
+The longer north-star target is a paper-first, Solana-first crypto backtesting
+and paper-trading platform that classifies direction and regimes, compares
+strategies under explicit policy/risk/settlement governance, and widens into
+Jupiter perps and Coinbase futures only through governed capability stages.
+
+## Required packet
+
+Before a lane widens backlog truth, it should read this packet:
+
+- `AGENTS.md`
+- `.ai/agents/common.md`
+- `.ai/index/current_repo_map.md`
+- `prd.json`
+- `progress.txt`
+- `docs/project/current_runtime_truth.md`
+- `docs/prd/crypto_backtesting_mission.md`
+- `docs/prd/backtesting_completion_definition.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/issues/paper_runtime_blockers.md`
+- `docs/sdd/d5_trading_engine_sdd.md`
+- `docs/math/regime_shadow_modeling_contracts.md`
+- `docs/math/market_regime_forecast_and_labeling_program.md`
+- `docs/policy/runtime_authority_and_promotion_ladder.md`
+- `docs/plans/strategy_descent_and_instrument_scope.md`
+- `docs/runbooks/feature_condition_shadow_cycle.md`
+
+The repo also carries a machine-readable swarm governance packet:
+
+- `.ai/swarm/swarm.yaml`
+- `.ai/swarm/lane_rules.yaml`
+- `.ai/swarm/promotion_ladder.yaml`
+
+In v1 this `.ai/swarm/` layer is policy-only. It documents packet rules, lane
+authority, and promotion doctrine, but it does not override `prd.json`,
+`progress.txt`, or the live supervisor scripts.
 
 ## Story truth
 
@@ -222,6 +256,8 @@ Every story loop should follow this order:
    - update `prd.json`
    - append `progress.txt`
    - update affected docs
+   - optionally create a commit if the slice is accepted, validated, and the
+     writer-integrator can tie the commit to the story id and receipt id
 
 Blocked stories enter recovery rather than stopping the swarm immediately:
 
@@ -259,6 +295,8 @@ healthy”:
    - then runs the final architect + writer completion audit before stopping
 
 The mailbox is an append-only notification surface. It does not advance story
+truth by itself. Research systems may propose and compare, but they remain
+advisory until the promotion ladder says otherwise.
 truth. Writer-integrator still owns acceptance.
 
 Use `mailbox_current.json` for the compacted current-notification view.

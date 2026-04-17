@@ -7,15 +7,21 @@ ACTIVE_DOCS = [
     REPO_ROOT / "README.md",
     REPO_ROOT / "docs" / "README.md",
     REPO_ROOT / "docs" / "project" / "bootstrap_inventory.md",
+    REPO_ROOT / "docs" / "project" / "current_runtime_truth.md",
+    REPO_ROOT / "docs" / "prd" / "crypto_backtesting_mission.md",
+    REPO_ROOT / "docs" / "prd" / "backtesting_completion_definition.md",
     REPO_ROOT / "docs" / "task" / "source_expansion_preconditions.md",
     REPO_ROOT / "docs" / "plans" / "source_expansion_preconditions.md",
     REPO_ROOT / "docs" / "plans" / "historical_research_protocol.md",
+    REPO_ROOT / "docs" / "plans" / "strategy_descent_and_instrument_scope.md",
     REPO_ROOT / "docs" / "task" / "bootstrap_truth_sync.md",
     REPO_ROOT / "docs" / "architecture" / "bootstrap_architecture.md",
     REPO_ROOT / "docs" / "runbooks" / "first_capture.md",
     REPO_ROOT / "docs" / "runbooks" / "feature_condition_shadow_cycle.md",
     REPO_ROOT / "docs" / "runbooks" / "ralph_tmux_swarm.md",
     REPO_ROOT / "docs" / "math" / "regime_shadow_modeling_contracts.md",
+    REPO_ROOT / "docs" / "math" / "market_regime_forecast_and_labeling_program.md",
+    REPO_ROOT / "docs" / "policy" / "runtime_authority_and_promotion_ladder.md",
     REPO_ROOT / "docs" / "test" / "bootstrap_validation.md",
 ]
 REQUIRED_DOCS = ACTIVE_DOCS + [
@@ -74,3 +80,61 @@ def test_ralph_runbook_mentions_persistent_supervision() -> None:
     assert "completionAuditState" in runbook
     assert "terminal_complete" in runbook
     assert "audit_followons_present" in runbook
+    assert ".ai/swarm/swarm.yaml" in runbook
+    assert "policy-only" in runbook
+
+
+def test_north_star_docs_define_scope_and_governance() -> None:
+    mission = (REPO_ROOT / "docs" / "prd" / "crypto_backtesting_mission.md").read_text()
+    completion = (
+        REPO_ROOT / "docs" / "prd" / "backtesting_completion_definition.md"
+    ).read_text()
+    scope = (
+        REPO_ROOT / "docs" / "plans" / "strategy_descent_and_instrument_scope.md"
+    ).read_text()
+    math_program = (
+        REPO_ROOT / "docs" / "math" / "market_regime_forecast_and_labeling_program.md"
+    ).read_text()
+    authority = (
+        REPO_ROOT / "docs" / "policy" / "runtime_authority_and_promotion_ladder.md"
+    ).read_text()
+
+    assert "paper-first" in mission
+    assert "Solana-first" in mission
+    assert "Jupiter perps" in scope
+    assert "Coinbase futures" in scope
+    assert "future-stage" in scope
+    assert "`up`" in math_program
+    assert "`down`" in math_program
+    assert "`flat`" in math_program
+    assert "Chronos-2" in math_program
+    assert "Monte Carlo" in math_program
+    assert "Fibonacci" in math_program
+    assert "advisory" in authority
+    assert "writer-integrator" in authority
+    assert "terminal_complete" in completion
+
+
+def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_law() -> None:
+    runtime_truth = (REPO_ROOT / "docs" / "project" / "current_runtime_truth.md").read_text()
+    ai_readme = (REPO_ROOT / ".ai" / "README.md").read_text()
+    repo_map = (REPO_ROOT / ".ai" / "index" / "current_repo_map.md").read_text()
+
+    assert "execution intent" in runtime_truth.lower()
+    assert ".ai/swarm/" in ai_readme
+    assert "policy-only" in ai_readme
+    assert ".ai/swarm/swarm.yaml" in repo_map
+
+
+def test_realized_feedback_docs_no_longer_treat_research_loop_as_missing() -> None:
+    blocker_doc = (REPO_ROOT / "docs" / "issues" / "paper_runtime_blockers.md").read_text()
+    task_doc = (
+        REPO_ROOT / "docs" / "task" / "global_regime_condition_and_shadow_stack.md"
+    ).read_text()
+    repo_map = (REPO_ROOT / ".ai" / "index" / "current_repo_map.md").read_text()
+
+    assert "`research_loop/` is only partially governed" not in blocker_doc
+    assert "RESEARCH-001" in blocker_doc
+    assert "experiment_realized_feedback_v1" in task_doc
+    assert "advisory realized-feedback comparison receipts" in task_doc
+    assert "experiment_realized_feedback_v1" in repo_map

@@ -289,3 +289,214 @@ Started: 2026-04-15T11:00:00Z
 - Learnings for future iterations
 - The swarm is now honest about seeded-backlog exhaustion versus true terminal completion, but the next real work is still implementation: `ORCH-005` must land before `SOURCE-001`, `RESEARCH-001`, or deferred `EXEC-001` can be claimed as the correct next governed follow-ons.
 - Compacted mailbox state is more useful than raw mailbox tail for active-story operations, but stale cross-story notifications still need later cleanup or supersession semantics if they start distracting operators.
+---
+## 2026-04-16T14:07:27Z - ORCH-005 acceptance
+- Previous state -> new state
+- active orchestration hardening slice -> accepted terminal-completion and finder-governed follow-on contract
+- What was accepted
+- Confirmed there was no pending finder review: `finder_state.json` was idle and `finder_decision.json` remained `status: none`.
+- Accepted the existing terminal-completion design across `prd.json`, `scripts/agents/sync_swarm_state.sh`, `scripts/agents/run_persistent_cycle.sh`, the runbook, and the orchestration/docs contract tests.
+- Accepted the bounded builder hardening in `scripts/agents/common.sh` and `tests/test_orchestration_contract.py`, which normalizes stale writer completion-audit artifacts and proves `audit_id` propagation into `prd.json.lastCompletionAuditReceiptId`.
+- Files changed
+- `scripts/agents/common.sh`
+- `tests/test_orchestration_contract.py`
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T140727Z__ORCH-005.json`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `bash -n scripts/agents/common.sh scripts/agents/sync_swarm_state.sh scripts/agents/run_persistent_cycle.sh` -> passed
+- `ruff check tests/test_orchestration_contract.py` -> passed
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` -> `10 passed in 0.07s`
+- `git diff --check` -> clean
+- Story progression
+- Wrote acceptance receipt `2026-04-16T140727Z__ORCH-005`.
+- Marked `ORCH-005` as `done`.
+- Rotated `activeStoryId` to `SOURCE-001`.
+- `lastCompletionAuditReceiptId` now carries `completion_audit_writer::2026-04-16T06:20:43-07:00`.
+- `RESEARCH-001` remains `ready` and `EXEC-001` remains `deferred`.
+- Learnings for future iterations
+- The only accepted ORCH-005 hardening needed at the end was contract alignment and propagation proof, not a wider orchestration redesign.
+- Raw mailbox tail output is still noisier than `mailbox_current.json`, but that remains follow-on polish rather than a blocker for the current completion contract.
+---
+## 2026-04-16T14:15:17Z - SOURCE-001 blocked
+- Previous state -> new state
+- active source-owner follow-on -> recovery pending architecture contract
+- What was observed
+- Confirmed there is no pending finder review: `finder_state.json` remains idle and `finder_decision.json` remains `status: none`.
+- Research artifacts for `SOURCE-001` are present and point toward a shared source-lane resolver plus `d5 status` first, but architecture did not emit `SOURCE-001__review.md`, `SOURCE-001__contract_notes.md`, `SOURCE-001__refinement.md`, or `SOURCE-001__decision.json`.
+- Builder correctly stopped instead of inventing the missing source-owner boundary and recorded `needs_architecture: true` in `.ai/dropbox/build/SOURCE-001__result.json`.
+- Current orchestration validation is still red in the worktree because `tests/test_orchestration_contract.py` asserts `ORCH-005` is active while `prd.json` already rotates `activeStoryId` to `SOURCE-001`; this contradiction is real but still tied to in-flight ORCH-005 worktree edits, not accepted `SOURCE-001` repo truth.
+- Files changed
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T141517Z__SOURCE-001.json`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/rejections.md`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `git status --short` -> showed in-flight writer-owned ORCH-005 edits plus unrelated existing user changes in `AGENTS.md` and `docs/issues/memory_hindsight_observer_hygiene.md`
+- `git diff --stat` -> showed current worktree changes were limited to writer-owned ORCH-005 acceptance surfaces, not `SOURCE-001` implementation files
+- `pytest tests/test_orchestration_contract.py tests/test_docs_contract.py -q` -> `1 failed, 9 passed`; failure remains `test_prd_has_active_story_and_runtime_owner_backlog` expecting `ORCH-005` to stay active
+- `git diff --check` -> clean
+- Story progression
+- Wrote blocked receipt `2026-04-16T141517Z__SOURCE-001`.
+- Updated `SOURCE-001` to `recovery` and incremented `recovery_round` to `1`.
+- Kept `activeStoryId` on `SOURCE-001` because it remains the highest-priority eligible story and still needs an architecture handoff before another builder attempt.
+- Learnings for future iterations
+- `SOURCE-001` should not advance from research alone; the shared source-owner boundary, operator surface choice, and lane-manifest scope need an explicit architecture decision before code changes are safe.
+- In-flight orchestration worktree edits can invalidate builder-side validation notes in both directions, so writer-integrator must continue to rerun checks against the current worktree before accepting or rejecting a loop.
+---
+## 2026-04-16T14:39:19Z - SOURCE-001 acceptance
+- Previous state -> new state
+- active source-owner recovery slice -> accepted continuous-capture freshness owner
+- What was accepted
+- Confirmed there was no pending finder review: `finder_state.json` remained idle and `finder_decision.json` remained `status: none`.
+- Accepted the shared source-owner implementation across `src/d5_trading_engine/capture/lane_status.py`, `src/d5_trading_engine/features/materializer.py`, and `src/d5_trading_engine/cli.py`.
+- Accepted the targeted test coverage in `tests/test_capture_lane_status.py`, `tests/test_cli.py`, `tests/test_condition_scoring.py`, and `tests/test_shadow_runner.py`, plus the writer-owned orchestration contract cleanup in `tests/test_orchestration_contract.py`.
+- Synced truth-facing docs and lane guidance so continuous capture ownership is no longer described as a missing runtime owner in `README.md`, `docs/README.md`, `docs/project/bootstrap_inventory.md`, `docs/issues/paper_runtime_blockers.md`, `docs/task/continuous_capture_ownership.md`, `docs/sdd/d5_trading_engine_sdd.md`, `.ai/index/current_repo_map.md`, `.ai/agents/common.md`, and `docs/runbooks/ralph_tmux_swarm.md`.
+- Files changed
+- `src/d5_trading_engine/capture/lane_status.py`
+- `src/d5_trading_engine/features/materializer.py`
+- `src/d5_trading_engine/cli.py`
+- `tests/test_capture_lane_status.py`
+- `tests/test_cli.py`
+- `tests/test_condition_scoring.py`
+- `tests/test_shadow_runner.py`
+- `tests/test_orchestration_contract.py`
+- `README.md`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/issues/paper_runtime_blockers.md`
+- `docs/task/continuous_capture_ownership.md`
+- `docs/sdd/d5_trading_engine_sdd.md`
+- `.ai/index/current_repo_map.md`
+- `.ai/agents/common.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/rejections.md`
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T143919Z__SOURCE-001.json`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `ruff check src/d5_trading_engine/capture/lane_status.py src/d5_trading_engine/features/materializer.py src/d5_trading_engine/cli.py tests/test_capture_lane_status.py tests/test_cli.py tests/test_condition_scoring.py tests/test_shadow_runner.py tests/test_orchestration_contract.py` -> passed
+- `pytest tests/test_capture_lane_status.py tests/test_cli.py tests/test_condition_scoring.py tests/test_shadow_runner.py tests/test_docs_contract.py tests/test_orchestration_contract.py -q` -> `35 passed in 83.29s`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `git diff --check` -> clean
+- Story progression
+- Wrote acceptance receipt `2026-04-16T143919Z__SOURCE-001`.
+- Marked `SOURCE-001` as `done`.
+- Rotated `activeStoryId` to `RESEARCH-001`.
+- `EXEC-001` remains `deferred`.
+- Learnings for future iterations
+- `capture_cursor` stays explicitly deferred in SOURCE-001 v1; cursor-backed completeness should only be promoted through a later bounded Helius-history slice.
+- The shared lane manifest plus suffix-based endpoint matching is enough for the first accepted source-owner surface, but a later hardening slice may want shared constants or structured status output if operator automation grows.
+---
+## 2026-04-16T14:55:00Z - North-star packet and staged backtesting backlog
+- Previous state -> new state
+- runtime-owner and swarm packet only -> explicit north-star product packet plus deferred backtesting, labeling, and strategy story families
+- What was implemented
+- Added five north-star docs covering the product mission, stage completion, instrument widening ladder, math/labeling program, and runtime-authority promotion ladder.
+- Updated the swarm packet in `README.md`, `docs/README.md`, `.ai/README.md`, `.ai/index/current_repo_map.md`, `.ai/agents/common.md`, `.ai/agents/writer_integrator.md`, and `docs/runbooks/ralph_tmux_swarm.md` so future loops read the same north-star product frame before widening backlog truth.
+- Added deferred story families to `prd.json`: `BACKTEST-001`, `LABEL-001`, and `STRAT-001`, explicitly staged behind the current blocker backlog instead of becoming accidental active work.
+- Synced docs and orchestration contract tests so the new packet is enforced and the backlog order is checked.
+- Files changed
+- `docs/prd/crypto_backtesting_mission.md`
+- `docs/prd/backtesting_completion_definition.md`
+- `docs/plans/strategy_descent_and_instrument_scope.md`
+- `docs/math/market_regime_forecast_and_labeling_program.md`
+- `docs/policy/runtime_authority_and_promotion_ladder.md`
+- `README.md`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `.ai/README.md`
+- `.ai/index/current_repo_map.md`
+- `.ai/agents/common.md`
+- `.ai/agents/writer_integrator.md`
+- `prd.json`
+- `progress.txt`
+- `tests/test_docs_contract.py`
+- `tests/test_orchestration_contract.py`
+- Checks run and their results
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `pytest tests/test_docs_contract.py tests/test_orchestration_contract.py -q` -> passed after adding explicit future-stage wording to the instrument-scope doc
+- `git diff --check` -> passed
+- Learnings for future iterations
+- The swarm should be pointed at a small north-star packet and a staged product ladder, not told to “become the final app” through open-ended autonomy.
+- Futures and perps belong in the docs now as future-stage targets, but they should stay out of current runtime authority until the lower truth layers are stronger.
+---
+## 2026-04-16T15:26:43Z - RESEARCH-001 acceptance
+- Previous state -> new state
+- active realized-feedback comparison slice -> accepted advisory experiment-vs-paper feedback owner
+- What was accepted
+- Confirmed there was no pending finder review: `finder_state.json` remained idle and `finder_decision.json` remained `status: none`.
+- Accepted the shared research-loop implementation across `src/d5_trading_engine/research_loop/shadow_runner.py`, `src/d5_trading_engine/research_loop/realized_feedback.py`, `src/d5_trading_engine/storage/truth/models.py`, `sql/migrations/versions/008_experiment_realized_feedback_v1.py`, and `tests/test_realized_feedback.py`.
+- Accepted the bounded contract that keeps settlement as paper-truth owner while `research_loop/` writes advisory `experiment_realized_feedback_v1` receipts keyed by replayed config, feature-run time, regime bucket, and mint.
+- Synced truth-facing docs and orchestration guidance so realized-feedback comparison is no longer described as a missing runtime blocker in `README.md`, `docs/issues/paper_runtime_blockers.md`, `docs/task/global_regime_condition_and_shadow_stack.md`, `docs/project/bootstrap_inventory.md`, `docs/runbooks/ralph_tmux_swarm.md`, `docs/sdd/d5_trading_engine_sdd.md`, `.ai/index/current_repo_map.md`, and `.ai/agents/common.md`.
+- Files changed
+- `src/d5_trading_engine/research_loop/shadow_runner.py`
+- `src/d5_trading_engine/research_loop/realized_feedback.py`
+- `src/d5_trading_engine/storage/truth/models.py`
+- `sql/migrations/versions/008_experiment_realized_feedback_v1.py`
+- `tests/test_realized_feedback.py`
+- `tests/test_docs_contract.py`
+- `tests/test_orchestration_contract.py`
+- `README.md`
+- `docs/issues/paper_runtime_blockers.md`
+- `docs/task/global_regime_condition_and_shadow_stack.md`
+- `docs/project/bootstrap_inventory.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `docs/sdd/d5_trading_engine_sdd.md`
+- `.ai/index/current_repo_map.md`
+- `.ai/agents/common.md`
+- `.ai/dropbox/state/accepted_loops.md`
+- `.ai/dropbox/state/open_questions.md`
+- `.ai/dropbox/state/accepted_receipts/2026-04-16T152643Z__RESEARCH-001.json`
+- `prd.json`
+- `progress.txt`
+- Checks run and their results
+- `ruff check src/d5_trading_engine/research_loop/shadow_runner.py src/d5_trading_engine/research_loop/realized_feedback.py src/d5_trading_engine/storage/truth/models.py sql/migrations/versions/008_experiment_realized_feedback_v1.py tests/test_realized_feedback.py` -> passed
+- `pytest tests/test_realized_feedback.py tests/test_shadow_runner.py tests/test_settlement_paper.py tests/test_migrations.py tests/test_docs_contract.py tests/test_orchestration_contract.py -q` -> `23 passed in 102.09s`
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `git diff --check` -> clean
+- Story progression
+- Wrote acceptance receipt `2026-04-16T152643Z__RESEARCH-001`.
+- Marked `RESEARCH-001` as `done`.
+- No eligible story remains, so `activeStoryId` stays pinned to `RESEARCH-001`.
+- `swarmState` is now `terminal_complete` and `completionAuditState` is `clean`.
+- `EXEC-001`, `BACKTEST-001`, `LABEL-001`, and `STRAT-001` remain deferred future-stage work.
+- Learnings for future iterations
+- Advisory realized-feedback comparison is now truthful repo capability, but it should stay bounded until the repo owns a richer closed-trade or exit-lifecycle truth surface.
+- Replayed config snapshots are sufficient for v1 matching, but future feedback slices may want stronger persisted experiment provenance if operator-facing comparison grows.
+---
+## 2026-04-16T23:50:00Z - Machine-readable swarm governance packet
+- Previous state -> new state
+- prose-only swarm packet doctrine -> policy-only `.ai/swarm/` governance layer added without changing live supervisor authority
+- What was added
+- Added `.ai/swarm/swarm.yaml`, `.ai/swarm/lane_rules.yaml`, and `.ai/swarm/promotion_ladder.yaml` as machine-readable packet, lane, and promotion doctrine.
+- Added `docs/project/current_runtime_truth.md` so the packet no longer points at a missing runtime-truth surface.
+- Synced `.ai/README.md`, `.ai/index/current_repo_map.md`, `docs/runbooks/ralph_tmux_swarm.md`, `docs/README.md`, and `docs/project/bootstrap_inventory.md` so the YAML packet is treated as required governance truth but explicitly not as a live runtime input in v1.
+- Updated orchestration and docs contract tests to require the new `.ai/swarm/` layer and parse the YAML packet.
+- Files changed
+- `.ai/swarm/swarm.yaml`
+- `.ai/swarm/lane_rules.yaml`
+- `.ai/swarm/promotion_ladder.yaml`
+- `docs/project/current_runtime_truth.md`
+- `.ai/README.md`
+- `.ai/index/current_repo_map.md`
+- `docs/runbooks/ralph_tmux_swarm.md`
+- `docs/README.md`
+- `docs/project/bootstrap_inventory.md`
+- `tests/test_orchestration_contract.py`
+- `tests/test_docs_contract.py`
+- `progress.txt`
+- Checks run and their results
+- `python - <<'PY' ... yaml.safe_load(...) ... PY` -> PyYAML available locally
+- `python -m json.tool prd.json >/dev/null` -> passed
+- `pytest tests/test_docs_contract.py tests/test_orchestration_contract.py -q` -> pending rerun after this ledger append
+- `git diff --check` -> pending rerun after this ledger append
+- Learnings for future iterations
+- A policy-only swarm packet is a good first step because it stabilizes packet reads and lane authority without creating a second live control plane.
+- `prd.json` still carries a separate truth repair follow-on because it currently says `swarmState=terminal_complete` while `activeStoryId=RESEARCH-001`; the YAML packet should document that contradiction, not silently normalize it.

@@ -82,6 +82,55 @@ defi_swarm_require_repo_files() {
   done
 }
 
+defi_swarm_normalize_completion_audit_writer() {
+  local path="${1:?writer completion audit path required}"
+  [[ -f "$path" ]] || return 0
+
+  python - "$path" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    doc = json.loads(path.read_text())
+except json.JSONDecodeError:
+    raise SystemExit(0)
+
+if not isinstance(doc, dict):
+    raise SystemExit(0)
+
+changed = False
+audited_at = str(doc.get("audited_at") or "")
+
+defaults = {
+    "status": "",
+    "promoted_story_ids": [],
+    "deferred_story_ids": [],
+    "rationale": [],
+    "audited_at": audited_at,
+}
+
+for key, value in defaults.items():
+    if doc.get(key) is None:
+        doc[key] = value
+        changed = True
+
+audit_id = str(doc.get("audit_id") or "")
+if not audit_id:
+    if audited_at:
+        doc["audit_id"] = f"completion_audit_writer::{audited_at}"
+    else:
+        doc["audit_id"] = ""
+    changed = True
+
+if changed:
+    path.write_text(json.dumps(doc, indent=2) + "\n")
+PY
+}
+
 defi_swarm_bootstrap_runtime_dirs() {
   local repo_root="${1:?repo root required}"
   mkdir -p \
@@ -90,10 +139,12 @@ defi_swarm_bootstrap_runtime_dirs() {
     "$repo_root/.ai/dropbox/architecture" \
     "$repo_root/.ai/dropbox/state" \
     "$repo_root/.ai/dropbox/state/accepted_receipts" \
+    "$repo_root/.ai/dropbox/state/performance_receipts" \
     "$repo_root/.ai/dropbox/state/runtime"
 
   local mailbox lane_health_md lane_health_json accepted_loops rejections open_questions
-  local mailbox_current finder_state finder_decision
+  local mailbox_current finder_state finder_decision completion_audit_writer
+  local auto_commit_state
   mailbox="$(defi_swarm_mailbox_path "$repo_root")"
   mailbox_current="$(defi_swarm_mailbox_current_path "$repo_root")"
   lane_health_md="$(defi_swarm_lane_health_md_path "$repo_root")"
@@ -103,6 +154,8 @@ defi_swarm_bootstrap_runtime_dirs() {
   open_questions="$repo_root/.ai/dropbox/state/open_questions.md"
   finder_state="$(defi_swarm_finder_state_path "$repo_root")"
   finder_decision="$(defi_swarm_finder_decision_path "$repo_root")"
+  completion_audit_writer="$repo_root/.ai/dropbox/state/completion_audit_writer.json"
+  auto_commit_state="$(defi_swarm_auto_commit_state_path "$repo_root")"
   [[ -f "$mailbox" ]] || : > "$mailbox"
   [[ -f "$mailbox_current" ]] || printf '%s\n' '[]' > "$mailbox_current"
   [[ -f "$lane_health_md" ]] || cat <<'EOF' > "$lane_health_md"
@@ -121,11 +174,35 @@ EOF
   "lastProcessedReceiptId": "",
   "lastProcessedFailureSignature": "",
   "lastProcessedCompletionScope": "",
+  "lastProcessedPerformanceReceiptId": "",
+  "lastTerminalAuditAt": "",
   "lastFinderAuditId": "",
   "lastWriterDecisionId": ""
 }
 EOF
   [[ -f "$finder_decision" ]] || printf '%s\n' '{"decision_id":"","scope":"","status":"none","promoted_story_ids":[],"deferred_story_ids":[],"rationale":"","decided_at":""}' > "$finder_decision"
+  defi_swarm_normalize_completion_audit_writer "$completion_audit_writer"
+  if [[ ! -f "$auto_commit_state" ]]; then
+    local latest_receipt_id=""
+    latest_receipt_id="$(python - "$repo_root/.ai/dropbox/state/accepted_receipts" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+receipts_dir = Path(sys.argv[1])
+matches = sorted(receipts_dir.glob("*.json"))
+if not matches:
+    print("")
+    raise SystemExit(0)
+doc = json.loads(matches[-1].read_text())
+print(str(doc.get("receipt_id") or ""))
+PY
+)"
+    jq -nc \
+      --arg receiptId "$latest_receipt_id" \
+      --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{lastAutoCommitReceiptId:$receiptId, lastCommitSha:"", updatedAt:$ts}' > "$auto_commit_state"
+  fi
 }
 
 defi_swarm_active_story() {
@@ -155,6 +232,11 @@ defi_swarm_state_dir() {
 defi_swarm_accepted_receipts_dir() {
   local repo_root="${1:?repo root required}"
   printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/accepted_receipts"
+}
+
+defi_swarm_performance_receipts_dir() {
+  local repo_root="${1:?repo root required}"
+  printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/performance_receipts"
 }
 
 defi_swarm_runtime_state_dir() {
@@ -222,6 +304,11 @@ defi_swarm_finder_state_path() {
 defi_swarm_finder_decision_path() {
   local repo_root="${1:?repo root required}"
   printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/finder_decision.json"
+}
+
+defi_swarm_auto_commit_state_path() {
+  local repo_root="${1:?repo root required}"
+  printf '%s\n' "$(defi_swarm_runtime_state_dir "$repo_root")/auto_commit_state.json"
 }
 
 defi_swarm_story_field() {

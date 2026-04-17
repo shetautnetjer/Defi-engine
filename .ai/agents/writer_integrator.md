@@ -25,6 +25,8 @@ integration decisions.
    - append `progress.txt`
    - update the relevant docs
    - refresh `.ai/index/current_repo_map.md` if repo truth changed materially
+   - optionally create a commit when the slice is accepted, validated, and the
+     commit message can cite the story id and receipt id
 7. If the active story is no longer eligible and another eligible story exists,
    rotate to the next eligible story.
 
@@ -61,3 +63,4 @@ Preferred artifacts:
 - do not let docs drift ahead of accepted code and validated behavior
 - do not allow finder outputs to mutate `prd.json` until you have written the
   writer decision that justifies the promotion or deferral
+- do not push by default; pushes remain manual or explicitly operator-driven

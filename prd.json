@@ -2,10 +2,10 @@
   "project": "Defi-engine",
   "branchName": "main",
   "description": "Use a Ralph-style 4-lane tmux swarm to keep repo execution grounded in source truth, bounded feature/condition/shadow surfaces, explicit policy/risk/settlement owners, and receipt-backed follow-on runtime hardening.",
-  "activeStoryId": "ORCH-005",
-  "swarmState": "active",
+  "activeStoryId": "",
+  "swarmState": "audit_followons_present",
   "completionAuditState": "pending",
-  "lastCompletionAuditReceiptId": "",
+  "lastCompletionAuditReceiptId": "completion_audit_writer::2026-04-16T09:01:50-07:00",
   "lastFinderAuditId": "",
   "userStories": [
     {
@@ -91,9 +91,9 @@
         "Writer-integrator remains the only promotion authority for finder outputs, and docs/tests describe the terminal-completion plus audit-followon contract clearly."
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "Promoted from the 2026-04-16 architecture completion audit to make backlog exhaustion, audit-known follow-ons, and terminal completion governed states instead of implicit swarm behavior.",
-      "state": "active",
+      "passes": true,
+      "notes": "Promoted from the 2026-04-16 architecture completion audit to make backlog exhaustion, audit-known follow-ons, and terminal completion governed states instead of implicit swarm behavior.\nlast_receipt=2026-04-16T140727Z__ORCH-005",
+      "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
       "promoted_by": "completion_audit_architecture@2026-04-16T06:35:27-07:00"
@@ -163,9 +163,9 @@
         "Docs, blocker tracking, and validation artifacts describe continuous capture ownership as an accepted runtime owner rather than an active missing blocker."
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "",
-      "state": "ready",
+      "passes": true,
+      "notes": "last_receipt=2026-04-16T141517Z__SOURCE-001\nlast_receipt=2026-04-16T143919Z__SOURCE-001",
+      "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
       "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
@@ -181,9 +181,9 @@
         "Docs, blocker tracking, and the repo map no longer describe realized-feedback comparison as a missing blocker once the accepted comparison path exists."
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "",
-      "state": "ready",
+      "passes": true,
+      "notes": "last_receipt=2026-04-16T152643Z__RESEARCH-001",
+      "state": "done",
       "recovery_round": 0,
       "origin": "promoted_gap",
       "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
@@ -205,6 +205,60 @@
       "recovery_round": 0,
       "origin": "promoted_gap",
       "promoted_by": "2026-04-16T125848Z__completion_audit_writer"
+    },
+    {
+      "id": "BACKTEST-001",
+      "title": "Define the backtesting truth model",
+      "description": "As a repo operator, I want governed backtesting truth for sessions, fills, slippage, fees, latency, and realized PnL so future strategy work compares against a truthful paper/backtest model instead of shadow-only evidence.",
+      "acceptanceCriteria": [
+        "The repo has an explicit backtesting truth contract that distinguishes tradeable instruments, bucket boundaries, fill assumptions, and realized PnL.",
+        "Spot, perps, and futures assumptions are differentiated without widening runtime authority early.",
+        "The docs packet explains how backtests, paper sessions, and future instrument widening relate.",
+        "Backtesting truth is staged after the current blocker backlog instead of bypassing source ownership or execution intent."
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Deferred until current blocker stories and execution-intent hardening are farther along; this story family defines the next governed product descent rather than the current active slice.",
+      "state": "deferred",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
+    },
+    {
+      "id": "LABEL-001",
+      "title": "Define the market regime and labeling program",
+      "description": "As a repo operator, I want canonical regime and direction labels with explicit horizons, confidence handling, and evaluation metrics so future model comparisons are governed by one math truth surface.",
+      "acceptanceCriteria": [
+        "The repo defines canonical `up`, `down`, `flat`, invalid, and low-confidence label classes with explicit horizon and threshold rules.",
+        "The repo defines a bounded regime taxonomy with explicit unknown and stale-input behavior.",
+        "Evaluation metrics are explicit enough to compare strategy and forecast ideas honestly.",
+        "The labeling program is documented as a future governed product surface rather than immediate runtime authority."
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Deferred until the current blocker backlog is farther along; this is a north-star story family for the future strategy program.",
+      "state": "deferred",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
+    },
+    {
+      "id": "STRAT-001",
+      "title": "Define governed strategy comparison and promotion candidates",
+      "description": "As a repo operator, I want a governed strategy-evaluation layer that compares advisory research outputs against backtesting and paper truth without letting promising models silently become runtime authority.",
+      "acceptanceCriteria": [
+        "The repo defines how candidate strategies are compared across regimes and instrument stages.",
+        "Research outputs such as Chronos-2, Monte Carlo, Fibonacci, autoresearch, and ANN-style modeling are explicitly advisory until promoted.",
+        "Promotion candidates have explicit contracts, receipts, and rollback expectations before they can influence runtime owners.",
+        "The strategy-comparison story family stays staged behind current blocker work and future backtesting truth."
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Deferred until current blockers plus backtesting and labeling truth are ready; strategy work should not jump ahead of the governing truth surfaces.",
+      "state": "deferred",
+      "recovery_round": 0,
+      "origin": "seeded",
+      "promoted_by": ""
     }
   ]
 }

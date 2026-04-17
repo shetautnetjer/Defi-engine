@@ -1,0 +1,129 @@
+version: 1
+
+runtime_authority_chain:
+  - source
+  - features
+  - condition
+  - policy
+  - risk
+  - execution_intent
+  - settlement
+
+advisory_classes:
+  - shadow_model_output
+  - external_research
+  - memory_context
+  - finder_audit
+  - autoresearch_hypothesis
+  - chronos2_summary
+  - monte_carlo_study
+  - fibonacci_annotation
+  - ann_relationship_experiment
+
+promotion_stages:
+  - id: idea
+    allowed_outputs:
+      - note
+      - hypothesis
+    forbidden_outputs:
+      - runtime eligibility
+      - risk gating
+      - execution intent
+      - settlement truth
+
+  - id: shadow
+    allowed_outputs:
+      - shadow metric
+      - comparison artifact
+      - experiment note
+    forbidden_outputs:
+      - runtime decision
+      - production strategy eligibility
+
+  - id: challenger
+    allowed_outputs:
+      - challenger report
+      - bounded comparison
+      - promotion candidate draft
+    required_evidence:
+      - deterministic inputs
+      - chronological evaluation
+      - validation receipts
+      - explicit failure modes
+
+  - id: accepted_research_surface
+    allowed_outputs:
+      - accepted research artifact
+      - documented experiment surface
+    required_evidence:
+      - receipt-backed writer acceptance
+      - docs updated
+      - still advisory unless promoted again
+
+  - id: promotion_candidate
+    allowed_outputs:
+      - promotion_candidate artifact
+      - proposed owner layer
+      - rollback note
+    required_evidence:
+      - deterministic contract
+      - owner identified
+      - risk compatibility
+      - replayable validation
+      - bounded scope
+
+  - id: promoted_runtime_owner
+    allowed_outputs:
+      - code under explicit owner layer
+      - tests
+      - docs sync
+      - receipt-backed acceptance
+    required_evidence:
+      - writer-integrator approval
+      - owner-layer contract
+      - rollback path
+      - open risks recorded
+
+promotion_rules:
+  writer_integrator_is_only_promotion_authority: true
+  research_and_architecture_may_propose_only: true
+  promotion_requires_receipt: true
+  promotion_requires_docs_sync: true
+  promotion_requires_validation: true
+
+research_only_families:
+  - Chronos-2
+  - Monte Carlo
+  - Fibonacci feature families
+  - autoresearch
+  - ANN relationship modeling
+  - broad feature search
+
+target_layer_rules:
+  source:
+    may_receive_from:
+      - promoted_runtime_owner
+  features:
+    may_receive_from:
+      - promoted_runtime_owner
+  condition:
+    may_receive_from:
+      - promoted_runtime_owner
+  policy:
+    may_receive_from:
+      - promoted_runtime_owner
+  risk:
+    may_receive_from:
+      - promoted_runtime_owner
+  execution_intent:
+    may_receive_from:
+      - promoted_runtime_owner
+  settlement:
+    may_receive_from:
+      - promoted_runtime_owner
+
+default_safe_action:
+  no_trade: true
+  no_promotion: true
+  keep_advisory: true
+  require_explicit_followon_story: true

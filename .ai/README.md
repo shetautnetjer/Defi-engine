@@ -33,6 +33,26 @@ The swarm now runs as a continuous completion loop:
 - top-level swarm completion truth in `prd.json` via `swarmState` and
   `completionAuditState`
 
+The north-star packet the swarm should read before widening backlog truth now
+also includes:
+
+- `docs/project/current_runtime_truth.md`
+- `docs/prd/crypto_backtesting_mission.md`
+- `docs/prd/backtesting_completion_definition.md`
+- `docs/plans/strategy_descent_and_instrument_scope.md`
+- `docs/math/market_regime_forecast_and_labeling_program.md`
+- `docs/policy/runtime_authority_and_promotion_ladder.md`
+
+The repo also carries a machine-readable governance layer under `.ai/swarm/`:
+
+- `swarm.yaml`
+- `lane_rules.yaml`
+- `promotion_ladder.yaml`
+
+In v1 these YAMLs are policy-only. They document packet rules, lane authority,
+and promotion doctrine, but they do not override `prd.json`, `progress.txt`, or
+the live supervisor scripts.
+
 Lifecycle is intentionally split:
 
 - `scripts/agents/start_swarm.sh`

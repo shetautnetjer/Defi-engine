@@ -44,6 +44,8 @@ lane_health_md="$(defi_swarm_lane_health_md_path "$repo_root")"
 lane_health_json="$(defi_swarm_lane_health_json_path "$repo_root")"
 mailbox_path="$(defi_swarm_mailbox_path "$repo_root")"
 mailbox_current_path="$(defi_swarm_mailbox_current_path "$repo_root")"
+finder_state_path="$(defi_swarm_finder_state_path "$repo_root")"
+performance_receipts_dir="$(defi_swarm_performance_receipts_dir "$repo_root")"
 
 printf 'repo: %s\n' "$repo_root"
 printf 'session: %s\n' "$session_name"
@@ -53,6 +55,27 @@ printf 'mailbox: %s\n' "$mailbox_path"
 printf 'mailbox_current: %s\n' "$mailbox_current_path"
 printf '%s\n' 'supervisor_summary:'
 "$script_dir/supervisor_status.sh" --repo "$repo_root" | sed 's/^/  /'
+if [[ -f "$finder_state_path" ]]; then
+  printf '%s\n' 'governance_summary:'
+  jq -r '
+    [
+      "pending_trigger_type=" + (.pendingTrigger.triggerType // "none"),
+      "pending_trigger_scope=" + (.pendingTrigger.scope // "none"),
+      "last_processed_performance_receipt=" + (.lastProcessedPerformanceReceiptId // "none"),
+      "last_terminal_audit=" + (.lastTerminalAuditAt // "none")
+    ] | .[]' "$finder_state_path" | sed 's/^/  /'
+fi
+if compgen -G "$performance_receipts_dir/*.json" > /dev/null; then
+  printf '%s\n' 'latest_performance_receipt:'
+  latest_performance_receipt="$(ls -1 "$performance_receipts_dir"/*.json | sort | tail -n 1)"
+  jq -r '
+    [
+      "receipt_id=" + (.receipt_id // "none"),
+      "recommendation=" + (.recommendation // "none"),
+      "trigger_class=" + (.trigger_class // "none"),
+      "experiment_run_id=" + (.experiment_run_id // "none")
+    ] | .[]' "$latest_performance_receipt" | sed 's/^/  /'
+fi
 
 if tmux has-session -t "$session_name" >/dev/null 2>&1; then
   printf 'state: running\n'
