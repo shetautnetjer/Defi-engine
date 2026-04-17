@@ -11,7 +11,9 @@ usage() {
 Usage: write_acceptance_receipt.sh --repo PATH [--story-id ID] --decision accept|reject|block|escalate \
   [--promotion-status pending|complete|not_applicable] [--lane writer-integrator] \
   [--upstream-artifact PATH ...] [--candidate-artifact PATH ...] [--check TEXT ...] \
-  [--contradiction TEXT ...] [--risk TEXT ...] [--promotion-target TEXT ...] \
+  [--contradiction TEXT ...] [--risk TEXT ...] [--missing-capability TEXT ...] \
+  [--promotion-target TEXT ...] [--derived-from-receipt ID ...] \
+  [--owner-layer LAYER] [--stage STAGE] [--must-not-widen TEXT ...] \
   --rationale TEXT --next-action TEXT
 
 Write one structured acceptance receipt JSON under .ai/dropbox/state/accepted_receipts/.
@@ -30,7 +32,12 @@ declare -a candidate_artifacts=()
 declare -a checks_run=()
 declare -a contradictions=()
 declare -a risks=()
+declare -a missing_capabilities=()
 declare -a promotion_targets=()
+declare -a must_not_widen=()
+declare -a derived_from_receipts=()
+owner_layer=""
+stage=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,8 +81,28 @@ while [[ $# -gt 0 ]]; do
       risks+=("${2:?--risk requires a value}")
       shift 2
       ;;
+    --missing-capability)
+      missing_capabilities+=("${2:?--missing-capability requires a value}")
+      shift 2
+      ;;
     --promotion-target)
       promotion_targets+=("${2:?--promotion-target requires a value}")
+      shift 2
+      ;;
+    --derived-from-receipt)
+      derived_from_receipts+=("${2:?--derived-from-receipt requires a value}")
+      shift 2
+      ;;
+    --owner-layer)
+      owner_layer="${2:?--owner-layer requires a value}"
+      shift 2
+      ;;
+    --stage)
+      stage="${2:?--stage requires a value}"
+      shift 2
+      ;;
+    --must-not-widen)
+      must_not_widen+=("${2:?--must-not-widen requires a value}")
       shift 2
       ;;
     --rationale)
@@ -134,7 +161,8 @@ safe_timestamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
 receipt_id="${safe_timestamp}__${story_id}"
 output_path="$receipts_dir/${receipt_id}.json"
 
-python - "$output_path" "$receipt_id" "$story_id" "$decision" "$promotion_status" "$lane" "$timestamp" "$rationale" "$next_action" <<'PY' "${upstream_artifacts[@]}" -- "${candidate_artifacts[@]}" -- "${checks_run[@]}" -- "${contradictions[@]}" -- "${risks[@]}" -- "${promotion_targets[@]}"
+python - "$output_path" "$receipt_id" "$story_id" "$decision" "$promotion_status" "$lane" "$timestamp" "$rationale" "$next_action" "$owner_layer" "$stage" <<'PY' \
+  "${upstream_artifacts[@]}" -- "${candidate_artifacts[@]}" -- "${checks_run[@]}" -- "${contradictions[@]}" -- "${risks[@]}" -- "${missing_capabilities[@]}" -- "${promotion_targets[@]}" -- "${must_not_widen[@]}" -- "${derived_from_receipts[@]}"
 from __future__ import annotations
 
 import json
@@ -150,8 +178,10 @@ lane = sys.argv[6]
 timestamp = sys.argv[7]
 rationale = sys.argv[8]
 next_action = sys.argv[9]
+owner_layer = sys.argv[10]
+stage = sys.argv[11]
 
-parts = sys.argv[10:]
+parts = sys.argv[12:]
 
 groups: list[list[str]] = [[]]
 for item in parts:
@@ -160,7 +190,7 @@ for item in parts:
         continue
     groups[-1].append(item)
 
-while len(groups) < 6:
+while len(groups) < 9:
     groups.append([])
 
 doc = {
@@ -175,11 +205,15 @@ doc = {
     "checks_run": groups[2],
     "contradictions_found": groups[3],
     "unresolved_risks": groups[4],
-    "promotion_targets": groups[5],
+    "missing_capabilities": groups[5],
+    "promotion_targets": groups[6],
+    "must_not_widen": groups[7],
+    "derived_from_receipt_ids": groups[8],
+    "owner_layer": owner_layer,
+    "stage": stage,
     "rationale": rationale,
     "next_action": next_action,
 }
 output_path.write_text(json.dumps(doc, indent=2) + "\n")
 print(str(output_path))
 PY
-

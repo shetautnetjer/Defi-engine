@@ -53,6 +53,8 @@ The active orchestration hardening work is therefore about:
 - keeping the entire `docs/` tree aligned with accepted repo truth
 - letting writer-integrator finish acceptance cleanly instead of letting stale
   lane liveness pretend to be progress
+- letting writer-integrator mine accepted proposals from docs, issues, gaps,
+  and receipts so the next bounded stories stay north-star aligned
 
 ## Research-only by default
 
@@ -76,6 +78,15 @@ Canonical swarm truth still lives in:
 - `prd.json`
 - `progress.txt`
 - accepted docs
+
+Writer-integrator is the only lane allowed to turn accepted findings into:
+
+- updated docs truth across `docs/sdd/`, `docs/plans/`, `docs/task/`,
+  `docs/runbooks/`, `docs/prd/`, `docs/policy/`, `docs/math/`,
+  `docs/architecture/`, `docs/issues/`, `docs/gaps/`, `docs/project/`, and
+  `README.md`
+- the next bounded stories in `prd.json`
+- durable receipts in `.ai/dropbox/state/`
 
 The `.ai/dropbox/` tree is an exchange surface. The `.ai/swarm/*.yaml` layer is
 a machine-readable governance packet, not a live runtime source of truth in v1.

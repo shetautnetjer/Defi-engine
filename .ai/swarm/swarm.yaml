@@ -19,6 +19,7 @@ packet:
     - docs/math/regime_shadow_modeling_contracts.md
     - docs/math/market_regime_forecast_and_labeling_program.md
     - docs/policy/runtime_authority_and_promotion_ladder.md
+    - docs/policy/writer_story_promotion_rubric.md
     - docs/sdd/d5_trading_engine_sdd.md
     - docs/runbooks/ralph_tmux_swarm.md
     - docs/runbooks/feature_condition_shadow_cycle.md
@@ -33,6 +34,7 @@ truth_surfaces:
     - docs/plans/strategy_descent_and_instrument_scope.md
     - docs/math/market_regime_forecast_and_labeling_program.md
     - docs/policy/runtime_authority_and_promotion_ladder.md
+    - docs/policy/writer_story_promotion_rubric.md
   exchange:
     - .ai/dropbox/research/
     - .ai/dropbox/build/

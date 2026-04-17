@@ -8,6 +8,10 @@ The active repo discipline is Stage 1 current-truth consolidation: accepted
 work should keep the whole `docs/` tree aligned with code truth, `prd.json`,
 and `progress.txt`.
 
+Writer-integrator is the repo's continuous truth curator. Accepted work should
+flow through repo-wide docs reconciliation, issue/gap routing, and bounded story
+promotion before the next slice is treated as backlog truth.
+
 ## Current Documents
 
 - `project/bootstrap_inventory.md`
@@ -22,6 +26,8 @@ and `progress.txt`.
   - repo-local product requirements for the paper-first source, feature, condition, and shadow surface
 - `policy/runtime_authority_and_promotion_ladder.md`
   - authority order and promotion contract for moving advisory research into governed runtime owners
+- `policy/writer_story_promotion_rubric.md`
+  - writer-owned routing, promotion, and north-star prioritization rules
 - `sdd/d5_trading_engine_sdd.md`
   - current software design for the source-truth stack plus bounded feature, condition, policy, and shadow owners
 - `task/ingest_hardening_phase_1.md`
@@ -114,6 +120,10 @@ and `progress.txt`.
   - validation notes and smoke checks
 - `docs/handoff/`
   - historical handoff and receipt surfaces
+
+Across all of these classes, writer should review the full docs surface on every
+accepted loop and update every affected file category needed to keep repo truth
+current.
 
 ## Reserved But Intentionally Absent In This Phase
 

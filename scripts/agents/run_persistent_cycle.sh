@@ -183,6 +183,23 @@ lane_status() {
   jq -r --arg lane "$lane_name" '.lanes[] | select(.name == $lane) | .status' "$lane_health_json"
 }
 
+lane_has_active_scope_mode() {
+  local lane_name="${1:?lane required}"
+  local scope="${2:?scope required}"
+  local mode="${3:?mode required}"
+  jq -e \
+    --arg lane "$lane_name" \
+    --arg scope "$scope" \
+    --arg mode "$mode" \
+    '
+    .lanes[]
+    | select(.name == $lane)
+    | (.activePid != null)
+      and ((.activeScope // "") == $scope)
+      and ((.activeMode // "") == $mode)
+    ' "$lane_health_json" >/dev/null
+}
+
 completion_audit_mode() {
   local latest_truth_epoch=0
   local arch_epoch=0
@@ -207,11 +224,11 @@ completion_audit_mode() {
     writer_status="$(jq -r '.status // ""' "$completion_writer_json" 2>/dev/null || true)"
   fi
 
-  if [[ "$(lane_status architecture)" == "running" ]]; then
+  if lane_has_active_scope_mode architecture completion_audit completion_audit || [[ "$(lane_status architecture)" == "running" ]]; then
     printf 'waiting_architecture\n'
     return 0
   fi
-  if [[ "$(lane_status writer-integrator)" == "running" ]]; then
+  if lane_has_active_scope_mode writer-integrator completion_audit completion_audit || [[ "$(lane_status writer-integrator)" == "running" ]]; then
     printf 'waiting_writer\n'
     return 0
   fi
@@ -385,22 +402,34 @@ while :; do
     printf 'persistent-cycle: finder=%s\n' "$finder_mode"
     case "$finder_mode" in
       launch_architecture)
-        pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
-        pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
-        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane architecture --run --prompt-file "$architecture_finder_prompt" --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
+        if [[ "$(lane_status architecture)" == "running" ]]; then
+          printf 'persistent-cycle: waiting on architecture finder output\n'
+        else
+          pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
+          pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
+          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane architecture --run --prompt-file "$architecture_finder_prompt" --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
+        fi
         ;;
       launch_research)
-        pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
-        pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
-        "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane research --run --prompt-file "$research_finder_prompt" --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
+        if [[ "$(lane_status research)" == "running" ]]; then
+          printf 'persistent-cycle: waiting on research finder output\n'
+        else
+          pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
+          pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
+          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane research --run --prompt-file "$research_finder_prompt" --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
+        fi
         ;;
       launch_writer)
-        pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
-        pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
-        if [[ "$pending_scope" == "completion_audit" ]]; then
-          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt" --scope "$pending_scope" --mode completion_audit --story-id "$pending_story_id"
+        if [[ "$(lane_status writer-integrator)" == "running" ]]; then
+          printf 'persistent-cycle: waiting on writer finder output\n'
         else
-          "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
+          pending_scope="$(jq -r '.pendingTrigger.scope // empty' "$finder_state_json")"
+          pending_story_id="$(jq -r '.pendingTrigger.storyId // empty' "$finder_state_json")"
+          if [[ "$pending_scope" == "completion_audit" ]]; then
+            "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --prompt-file "$completion_writer_prompt" --scope "$pending_scope" --mode completion_audit --story-id "$pending_story_id"
+          else
+            "$script_dir/send_swarm.sh" --repo "$repo_root" --session "$session_name" --lane writer --run --scope "$pending_scope" --mode finder --story-id "$pending_story_id"
+          fi
         fi
         ;;
       processed)

@@ -175,7 +175,7 @@ defi_swarm_bootstrap_runtime_dirs() {
 
   local mailbox lane_health_md lane_health_json accepted_loops rejections open_questions
   local mailbox_current finder_state finder_decision completion_audit_writer
-  local auto_commit_state docs_truth_receipt docs_sync_status
+  local auto_commit_state docs_truth_receipt docs_sync_status story_promotion_receipt
   mailbox="$(defi_swarm_mailbox_path "$repo_root")"
   mailbox_current="$(defi_swarm_mailbox_current_path "$repo_root")"
   lane_health_md="$(defi_swarm_lane_health_md_path "$repo_root")"
@@ -189,6 +189,7 @@ defi_swarm_bootstrap_runtime_dirs() {
   auto_commit_state="$(defi_swarm_auto_commit_state_path "$repo_root")"
   docs_truth_receipt="$(defi_swarm_docs_truth_receipt_path "$repo_root")"
   docs_sync_status="$(defi_swarm_docs_sync_status_path "$repo_root")"
+  story_promotion_receipt="$(defi_swarm_story_promotion_receipt_path "$repo_root")"
   [[ -f "$mailbox" ]] || : > "$mailbox"
   [[ -f "$mailbox_current" ]] || printf '%s\n' '[]' > "$mailbox_current"
   [[ -f "$lane_health_md" ]] || cat <<'EOF' > "$lane_health_md"
@@ -234,6 +235,25 @@ EOF
   "updatedAt": "",
   "contradictionCount": 0,
   "changedDocs": []
+}
+EOF
+  [[ -f "$story_promotion_receipt" ]] || cat <<'EOF' > "$story_promotion_receipt"
+{
+  "receipt_id": "",
+  "story_id": "",
+  "stage": "",
+  "owner_layer": "",
+  "why_now": "",
+  "north_star_link": "",
+  "docs_reviewed": [],
+  "issue_docs_updated": [],
+  "gap_docs_updated": [],
+  "stories_created": [],
+  "stories_updated": [],
+  "deferred_items": [],
+  "proposal_sources": [],
+  "summary": "",
+  "updated_at": ""
 }
 EOF
   defi_swarm_normalize_completion_audit_writer "$completion_audit_writer"
@@ -302,6 +322,11 @@ defi_swarm_docs_truth_receipt_path() {
 defi_swarm_docs_sync_status_path() {
   local repo_root="${1:?repo root required}"
   printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/docs_sync_status.json"
+}
+
+defi_swarm_story_promotion_receipt_path() {
+  local repo_root="${1:?repo root required}"
+  printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/story_promotion_receipt.json"
 }
 
 defi_swarm_runtime_state_dir() {

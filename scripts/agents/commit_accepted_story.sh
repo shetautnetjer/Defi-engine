@@ -88,6 +88,7 @@ stage_paths = [
     repo_root / ".ai" / "dropbox" / "state" / "rejections.md",
     repo_root / ".ai" / "dropbox" / "state" / "docs_truth_receipt.json",
     repo_root / ".ai" / "dropbox" / "state" / "docs_sync_status.json",
+    repo_root / ".ai" / "dropbox" / "state" / "story_promotion_receipt.json",
     receipt_path,
 ]
 for raw_path in receipt.get("candidate_artifacts", []):
@@ -109,7 +110,23 @@ if not tracked_paths:
     raise SystemExit(0)
 
 for path in tracked_paths:
-    subprocess.run(["git", "add", "--", str(path.relative_to(repo_root))], cwd=repo_root, check=True)
+    relative = str(path.relative_to(repo_root))
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", relative],
+        cwd=repo_root,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if tracked.returncode != 0:
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", "--", relative],
+            cwd=repo_root,
+            check=False,
+        )
+        if ignored.returncode == 0:
+            continue
+    subprocess.run(["git", "add", "--", relative], cwd=repo_root, check=True)
 
 diff_check = subprocess.run(
     ["git", "diff", "--cached", "--quiet"],

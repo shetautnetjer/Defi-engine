@@ -46,6 +46,7 @@ mailbox_path="$(defi_swarm_mailbox_path "$repo_root")"
 mailbox_current_path="$(defi_swarm_mailbox_current_path "$repo_root")"
 finder_state_path="$(defi_swarm_finder_state_path "$repo_root")"
 performance_receipts_dir="$(defi_swarm_performance_receipts_dir "$repo_root")"
+story_promotion_receipt_path="$(defi_swarm_story_promotion_receipt_path "$repo_root")"
 
 printf 'repo: %s\n' "$repo_root"
 printf 'session: %s\n' "$session_name"
@@ -119,10 +120,15 @@ if [[ -f "$lane_health_json" ]]; then
         "last_receipt=" + (.lastReceiptId // "none"),
         "decision=" + (.lastReceiptDecision // "none"),
         "promotion=" + (.promotionStatus // "none"),
+        "last_receipt_owner_layer=" + (.lastReceiptOwnerLayer // "none"),
+        "last_receipt_stage=" + (.lastReceiptStage // "none"),
         "docs_sync_state=" + (.docsSyncState // "none"),
         "docs_sync_story=" + (.docsSyncStoryId // "none"),
         "docs_truth_receipt=" + (.docsTruthReceiptId // "none"),
         "docs_truth_contradictions=" + ((.docsTruthContradictionCount // 0) | tostring),
+        "story_promotion_receipt=" + (.storyPromotionReceiptId // "none"),
+        "story_promotion_stage=" + (.storyPromotionStage // "none"),
+        "story_promotion_owner_layer=" + (.storyPromotionOwnerLayer // "none"),
         "path_exhausted=" + ((.pathExhausted // false) | tostring),
         "next_eligible=" + (.nextEligibleStoryId // "none"),
         "last_completion_audit_receipt=" + (.lastCompletionAuditReceiptId // "none"),
@@ -135,8 +141,28 @@ if [[ -f "$lane_health_json" ]]; then
   jq -r '.story.lastReceiptContradictionsFound[]? // empty' "$lane_health_json" | sed 's/^/  - /'
   printf '%s\n' 'latest_receipt_unresolved_risks:'
   jq -r '.story.lastReceiptUnresolvedRisks[]? // empty' "$lane_health_json" | sed 's/^/  - /'
+  printf '%s\n' 'latest_receipt_missing_capabilities:'
+  jq -r '.story.lastReceiptMissingCapabilities[]? // empty' "$lane_health_json" | sed 's/^/  - /'
   printf '%s\n' 'latest_receipt_promotion_targets:'
   jq -r '.story.lastReceiptPromotionTargets[]? // empty' "$lane_health_json" | sed 's/^/  - /'
+fi
+if [[ -f "$story_promotion_receipt_path" ]]; then
+  printf '%s\n' 'story_promotion_summary:'
+  jq -r '
+    [
+      "receipt_id=" + (.receipt_id // "none"),
+      "story_id=" + (.story_id // "none"),
+      "stage=" + (.stage // "none"),
+      "owner_layer=" + (.owner_layer // "none"),
+      "north_star_link=" + (.north_star_link // "none"),
+      "summary=" + (.summary // "none")
+    ] | .[]' "$story_promotion_receipt_path" | sed 's/^/  /'
+  printf '%s\n' 'story_promotion_created:'
+  jq -r '.stories_created[]? // empty' "$story_promotion_receipt_path" | sed 's/^/  - /'
+  printf '%s\n' 'story_promotion_updated:'
+  jq -r '.stories_updated[]? // empty' "$story_promotion_receipt_path" | sed 's/^/  - /'
+  printf '%s\n' 'story_promotion_deferred:'
+  jq -r '.deferred_items[]? // empty' "$story_promotion_receipt_path" | sed 's/^/  - /'
 fi
 if [[ -f "$mailbox_current_path" ]]; then
   active_story="$(jq -r '.activeStoryId // ""' "$lane_health_json" 2>/dev/null || true)"

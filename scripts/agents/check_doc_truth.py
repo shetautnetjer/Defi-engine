@@ -17,6 +17,7 @@ REQUIRED_DOCS = [
     "docs/gaps/execution_intent_gap.md",
     "docs/gaps/instrument_expansion_readiness_gap.md",
     "docs/gaps/tmux_machine_law_and_packet_gap.md",
+    "docs/policy/writer_story_promotion_rubric.md",
 ]
 
 FORBIDDEN_SNIPPETS: dict[str, list[str]] = {
@@ -56,6 +57,13 @@ REQUIRED_SNIPPETS: dict[str, list[str]] = {
         "check_doc_truth.py",
         "docs_truth_receipt.json",
         "docs_sync_status.json",
+        "story_promotion_receipt.json",
+    ],
+    "docs/policy/writer_story_promotion_rubric.md": [
+        "wrong now",
+        "docs/issues/",
+        "docs/gaps/",
+        "best next governed slice",
     ],
 }
 
@@ -144,6 +152,20 @@ def main() -> int:
                 )
 
     changed_docs = sorted({entry["file"] for entry in contradictions})
+    issue_doc_candidates = sorted(
+        {
+            entry["file"]
+            for entry in contradictions
+            if entry["file"].startswith("docs/issues/")
+            or (
+                entry["file"].startswith("docs/")
+                and not entry["file"].startswith("docs/gaps/")
+            )
+        }
+    )
+    gap_doc_candidates = sorted(
+        {entry["file"] for entry in contradictions if entry["file"].startswith("docs/gaps/")}
+    )
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     story_id = args.story_id
     receipt_id = f"docs_truth::{story_id or 'none'}::{generated_at}"
@@ -158,6 +180,8 @@ def main() -> int:
         "contradiction_count": len(contradictions),
         "contradictions": contradictions,
         "changed_docs_expected": changed_docs,
+        "issue_doc_candidates": issue_doc_candidates,
+        "gap_doc_candidates": gap_doc_candidates,
     }
     docs_truth_receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
 
@@ -168,6 +192,8 @@ def main() -> int:
         "updatedAt": generated_at,
         "contradictionCount": len(contradictions),
         "changedDocs": changed_docs,
+        "issueDocCandidates": issue_doc_candidates,
+        "gapDocCandidates": gap_doc_candidates,
     }
     docs_sync_status_path.write_text(json.dumps(sync_status, indent=2) + "\n", encoding="utf-8")
 

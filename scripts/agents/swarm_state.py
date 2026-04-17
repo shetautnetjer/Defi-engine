@@ -143,7 +143,12 @@ def queue_receipt_followons(repo_root: Path) -> None:
         queued = list(state.get("queuedReceiptFollowons") or [])
         needs_followon = any(
             latest.get(key)
-            for key in ("contradictions_found", "unresolved_risks", "promotion_targets")
+            for key in (
+                "contradictions_found",
+                "unresolved_risks",
+                "missing_capabilities",
+                "promotion_targets",
+            )
         )
         if needs_followon and all(
             item.get("receiptId") != receipt_id for item in queued if isinstance(item, dict)

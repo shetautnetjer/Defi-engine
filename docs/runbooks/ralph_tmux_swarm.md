@@ -22,6 +22,9 @@ The active repo discipline is Stage 1 current-truth consolidation:
 
 - keep the entire `docs/` tree current as accepted work lands
 - keep `prd.json`, `progress.txt`, and docs truth aligned
+- let writer-integrator continuously route contradictions into `docs/issues/`,
+  missing capability into `docs/gaps/`, and only the best next receipt-backed
+  stories into `prd.json`
 - prefer rich status and clean terminal state over fake liveness
 
 ## Required packet
@@ -43,6 +46,7 @@ Before a lane widens backlog truth, it should read this packet:
 - `docs/math/regime_shadow_modeling_contracts.md`
 - `docs/math/market_regime_forecast_and_labeling_program.md`
 - `docs/policy/runtime_authority_and_promotion_ladder.md`
+- `docs/policy/writer_story_promotion_rubric.md`
 - `docs/plans/strategy_descent_and_instrument_scope.md`
 - `docs/runbooks/feature_condition_shadow_cycle.md`
 
@@ -85,6 +89,8 @@ The writer-integrator lane is the only lane that may:
 - append `progress.txt`
 - treat docs changes as accepted repo truth
 - complete the repo-wide docs-truth reconciliation for an accepted story
+- mine accepted proposals from the docs surface and receipts to decide the next
+  bounded stories
 
 ## Lane roles
 
@@ -133,6 +139,7 @@ Runtime supervision receipts are created under `.ai/dropbox/state/`:
 - `finder_decision.json`
 - `docs_truth_receipt.json`
 - `docs_sync_status.json`
+- `story_promotion_receipt.json`
 - `accepted_receipts/*.json`
 - `runtime/*` launch, active, and completion markers
 - `completion_audit_*.json`

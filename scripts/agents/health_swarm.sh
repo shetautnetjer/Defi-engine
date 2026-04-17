@@ -119,6 +119,7 @@ active_story_eligible = active_story_state in eligible_states
 finder_state = read_json(state_dir / "finder_state.json") or {}
 docs_truth_receipt = read_json(state_dir / "docs_truth_receipt.json") or {}
 docs_sync_status = read_json(state_dir / "docs_sync_status.json") or {}
+story_promotion_receipt = read_json(state_dir / "story_promotion_receipt.json") or {}
 pending_trigger = finder_state.get("pendingTrigger") or {}
 pending_trigger_type = str(pending_trigger.get("triggerType") or "")
 pending_scope = str(pending_trigger.get("scope") or "")
@@ -302,8 +303,11 @@ latest_receipt_ts = (
 )
 latest_receipt_contradictions = list(latest_receipt.get("contradictions_found") or []) if latest_receipt else []
 latest_receipt_risks = list(latest_receipt.get("unresolved_risks") or []) if latest_receipt else []
+latest_receipt_missing_capabilities = list(latest_receipt.get("missing_capabilities") or []) if latest_receipt else []
 latest_receipt_promotion_targets = list(latest_receipt.get("promotion_targets") or []) if latest_receipt else []
 latest_receipt_next_action = str(latest_receipt.get("next_action") or "") if latest_receipt else ""
+latest_receipt_owner_layer = str(latest_receipt.get("owner_layer") or "") if latest_receipt else ""
+latest_receipt_stage = str(latest_receipt.get("stage") or "") if latest_receipt else ""
 docs_sync_state = str(docs_sync_status.get("status") or "pending")
 docs_sync_story_id = str(docs_sync_status.get("storyId") or "")
 docs_truth_receipt_id = str(docs_truth_receipt.get("receipt_id") or "")
@@ -311,6 +315,14 @@ docs_truth_contradictions = list(docs_truth_receipt.get("contradictions") or [])
 docs_truth_contradiction_count = int(
     docs_truth_receipt.get("contradiction_count") or len(docs_truth_contradictions)
 )
+story_promotion_receipt_id = str(story_promotion_receipt.get("receipt_id") or "")
+story_promotion_stage = str(story_promotion_receipt.get("stage") or "")
+story_promotion_owner_layer = str(story_promotion_receipt.get("owner_layer") or "")
+story_promotion_story_id = str(story_promotion_receipt.get("story_id") or "")
+story_promotion_created = list(story_promotion_receipt.get("stories_created") or [])
+story_promotion_updated = list(story_promotion_receipt.get("stories_updated") or [])
+story_promotion_deferred = list(story_promotion_receipt.get("deferred_items") or [])
+story_promotion_summary = str(story_promotion_receipt.get("summary") or "")
 accepted_state = "none"
 if active_story_state == "done" or (last_receipt_decision == "accept" and last_promotion_status == "complete"):
     accepted_state = "complete"
@@ -658,12 +670,23 @@ doc = {
         "promotionStatus": last_promotion_status,
         "lastReceiptContradictionsFound": latest_receipt_contradictions,
         "lastReceiptUnresolvedRisks": latest_receipt_risks,
+        "lastReceiptMissingCapabilities": latest_receipt_missing_capabilities,
         "lastReceiptPromotionTargets": latest_receipt_promotion_targets,
+        "lastReceiptOwnerLayer": latest_receipt_owner_layer or None,
+        "lastReceiptStage": latest_receipt_stage or None,
         "lastReceiptNextAction": latest_receipt_next_action or None,
         "docsSyncState": docs_sync_state,
         "docsSyncStoryId": docs_sync_story_id or None,
         "docsTruthReceiptId": docs_truth_receipt_id or None,
         "docsTruthContradictionCount": docs_truth_contradiction_count,
+        "storyPromotionReceiptId": story_promotion_receipt_id or None,
+        "storyPromotionStoryId": story_promotion_story_id or None,
+        "storyPromotionStage": story_promotion_stage or None,
+        "storyPromotionOwnerLayer": story_promotion_owner_layer or None,
+        "storyPromotionStoriesCreated": story_promotion_created,
+        "storyPromotionStoriesUpdated": story_promotion_updated,
+        "storyPromotionDeferredItems": story_promotion_deferred,
+        "storyPromotionSummary": story_promotion_summary or None,
         "pathExhausted": path_exhausted,
         "architectureRecommendedAction": architecture_recommended_action or None,
         "builderResult": builder_result.get("result") if builder_result else None,
@@ -694,10 +717,16 @@ md_lines = [
     f"- Last receipt: `{last_receipt_id or 'none'}`",
     f"- Last receipt decision: `{last_receipt_decision or 'none'}`",
     f"- Promotion status: `{last_promotion_status or 'none'}`",
+    f"- Last receipt owner layer: `{latest_receipt_owner_layer or 'none'}`",
+    f"- Last receipt stage: `{latest_receipt_stage or 'none'}`",
     f"- Docs sync state: `{docs_sync_state}`",
     f"- Docs sync story: `{docs_sync_story_id or 'none'}`",
     f"- Docs truth receipt: `{docs_truth_receipt_id or 'none'}`",
     f"- Docs truth contradictions: `{docs_truth_contradiction_count}`",
+    f"- Story promotion receipt: `{story_promotion_receipt_id or 'none'}`",
+    f"- Story promotion story: `{story_promotion_story_id or 'none'}`",
+    f"- Story promotion stage: `{story_promotion_stage or 'none'}`",
+    f"- Story promotion owner layer: `{story_promotion_owner_layer or 'none'}`",
     f"- Next eligible story: `{next_eligible_story or 'none'}`",
     f"- Architecture path exhausted: `{str(path_exhausted).lower()}`",
     "",
@@ -712,6 +741,11 @@ if latest_receipt_risks:
     for item in latest_receipt_risks:
         md_lines.append(f"  - {item}")
     md_lines.append("")
+if latest_receipt_missing_capabilities:
+    md_lines.append("- Receipt missing capabilities:")
+    for item in latest_receipt_missing_capabilities:
+        md_lines.append(f"  - {item}")
+    md_lines.append("")
 if latest_receipt_promotion_targets:
     md_lines.append("- Receipt promotion targets:")
     for item in latest_receipt_promotion_targets:
@@ -719,6 +753,24 @@ if latest_receipt_promotion_targets:
     md_lines.append("")
 if latest_receipt_next_action:
     md_lines.append(f"- Receipt next action: `{latest_receipt_next_action}`")
+    md_lines.append("")
+if story_promotion_created:
+    md_lines.append("- Story promotion created:")
+    for item in story_promotion_created:
+        md_lines.append(f"  - {item}")
+    md_lines.append("")
+if story_promotion_updated:
+    md_lines.append("- Story promotion updated:")
+    for item in story_promotion_updated:
+        md_lines.append(f"  - {item}")
+    md_lines.append("")
+if story_promotion_deferred:
+    md_lines.append("- Story promotion deferred:")
+    for item in story_promotion_deferred:
+        md_lines.append(f"  - {item}")
+    md_lines.append("")
+if story_promotion_summary:
+    md_lines.append(f"- Story promotion summary: `{story_promotion_summary}`")
     md_lines.append("")
 for row in lane_rows:
     md_lines.extend(

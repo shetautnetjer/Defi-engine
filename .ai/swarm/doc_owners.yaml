@@ -1,114 +1,278 @@
 version: 1
 
 story_classes:
+  truth_sync:
+    review_paths:
+      - README.md
+      - docs/README.md
+      - docs/project/
+      - docs/sdd/
+      - docs/plans/
+      - docs/task/
+      - docs/runbooks/
+      - docs/prd/
+      - docs/policy/
+      - docs/math/
+      - docs/architecture/
+      - docs/issues/
+      - docs/gaps/
   doc_sync:
     review_paths:
+      - README.md
+      - docs/README.md
+      - docs/sdd/
+      - docs/plans/
+      - docs/task/
+      - docs/runbooks/
+      - docs/prd/
+      - docs/policy/
+      - docs/math/
+      - docs/architecture/
       - docs/issues/
       - docs/gaps/
       - docs/project/
-      - docs/runbooks/
-      - docs/README.md
+      - docs/handoff/
   backtest_truth:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/prd/
       - docs/plans/
+      - docs/task/
+      - docs/runbooks/
       - docs/math/
       - docs/policy/
+      - docs/sdd/
+      - docs/architecture/
       - docs/gaps/backtest_truth_model_gap.md
       - docs/project/
-      - docs/runbooks/
   label_program:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/math/
       - docs/plans/
+      - docs/task/
       - docs/prd/
+      - docs/policy/
+      - docs/sdd/
+      - docs/architecture/
       - docs/gaps/label_program_and_regime_taxonomy_gap.md
       - docs/project/
   strategy_research:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/math/
       - docs/plans/
+      - docs/task/
+      - docs/prd/
+      - docs/policy/
+      - docs/architecture/
+      - docs/issues/
+      - docs/gaps/strategy_registry_and_challenger_framework_gap.md
+      - docs/project/
+  strategy_eval:
+    review_paths:
+      - README.md
+      - docs/README.md
+      - docs/prd/
+      - docs/plans/
+      - docs/task/
+      - docs/policy/
+      - docs/math/
+      - docs/test/
       - docs/issues/
       - docs/gaps/strategy_registry_and_challenger_framework_gap.md
       - docs/project/
   execution_intent:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/policy/
       - docs/sdd/
+      - docs/architecture/
+      - docs/plans/
+      - docs/task/
       - docs/prd/
       - docs/gaps/execution_intent_gap.md
       - docs/project/
       - docs/runbooks/
   instrument_expansion:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/plans/
+      - docs/task/
       - docs/prd/
+      - docs/policy/
+      - docs/math/
+      - docs/architecture/
       - docs/gaps/instrument_expansion_readiness_gap.md
       - docs/project/
       - docs/runbooks/
+  promotion_candidate:
+    review_paths:
+      - README.md
+      - docs/README.md
+      - docs/prd/
+      - docs/plans/
+      - docs/policy/
+      - docs/math/
+      - docs/architecture/
+      - docs/issues/
+      - docs/gaps/
+      - docs/project/
   orchestration:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/runbooks/
+      - docs/plans/
+      - docs/task/
       - docs/project/
       - docs/issues/
       - docs/gaps/tmux_machine_law_and_packet_gap.md
       - docs/test/
+  writer_governance:
+    review_paths:
+      - README.md
+      - docs/README.md
+      - docs/project/
+      - docs/plans/
+      - docs/task/
+      - docs/prd/
+      - docs/policy/
+      - docs/issues/
+      - docs/gaps/
+      - docs/runbooks/
+      - docs/sdd/
+      - docs/math/
+      - docs/architecture/
 
 layers:
   source:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/project/
       - docs/sdd/
+      - docs/task/
       - docs/runbooks/
       - docs/issues/
       - docs/gaps/
   features:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/project/
       - docs/math/
       - docs/sdd/
+      - docs/task/
       - docs/runbooks/
       - docs/issues/
   condition:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/project/
       - docs/math/
       - docs/sdd/
+      - docs/task/
       - docs/runbooks/
       - docs/issues/
   policy:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/policy/
       - docs/project/
       - docs/prd/
       - docs/sdd/
+      - docs/plans/
+      - docs/task/
+      - docs/runbooks/
+      - docs/math/
+      - docs/architecture/
       - docs/issues/
   risk:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/policy/
       - docs/project/
       - docs/prd/
       - docs/sdd/
+      - docs/plans/
+      - docs/task/
+      - docs/runbooks/
+      - docs/math/
+      - docs/architecture/
       - docs/issues/
   settlement:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/project/
       - docs/prd/
       - docs/sdd/
+      - docs/plans/
+      - docs/task/
+      - docs/policy/
+      - docs/math/
+      - docs/architecture/
       - docs/issues/
       - docs/runbooks/
   research_loop:
     review_paths:
+      - README.md
+      - docs/README.md
       - docs/project/
       - docs/math/
+      - docs/plans/
+      - docs/task/
+      - docs/prd/
+      - docs/policy/
+      - docs/architecture/
       - docs/issues/
       - docs/gaps/
       - docs/test/
+  writer_integrator:
+    review_paths:
+      - README.md
+      - docs/README.md
+      - docs/project/
+      - docs/sdd/
+      - docs/plans/
+      - docs/task/
+      - docs/runbooks/
+      - docs/prd/
+      - docs/policy/
+      - docs/math/
+      - docs/architecture/
+      - docs/issues/
+      - docs/gaps/
+      - docs/handoff/
+  orchestration:
+    review_paths:
+      - README.md
+      - docs/README.md
+      - docs/project/
+      - docs/runbooks/
+      - docs/test/
+      - docs/issues/
+      - docs/gaps/
 
 always_review:
+  - README.md
   - docs/README.md
   - docs/project/current_runtime_truth.md
   - docs/project/bootstrap_inventory.md
+  - docs/prd/crypto_backtesting_mission.md
+  - docs/plans/strategy_descent_and_instrument_scope.md
+  - docs/math/market_regime_forecast_and_labeling_program.md
+  - docs/policy/runtime_authority_and_promotion_ladder.md
+  - docs/policy/writer_story_promotion_rubric.md
   - docs/issues/governed_product_descent_capability_ladder.md
   - docs/issues/paper_runtime_blockers.md
   - docs/gaps/bootstrap_gap_register.md

@@ -36,6 +36,8 @@ done
 
 repo_root="$(defi_swarm_repo_root "$repo")"
 defi_swarm_bootstrap_runtime_dirs "$repo_root"
+session_name="$(defi_swarm_session_name)"
+previous_active_story="$(jq -r '.activeStoryId // ""' "$repo_root/prd.json" 2>/dev/null || true)"
 
 python - "$repo_root" <<'PY'
 from __future__ import annotations
@@ -133,6 +135,40 @@ writer_audit_mismatch = bool(
     and last_finder_audit_id
     and last_completion_audit_id != last_finder_audit_id
 )
+finder_state_changed = False
+
+followon_ids: list[str] = []
+for key in ("promoted_story_ids", "deferred_story_ids"):
+    for value in writer_audit.get(key) or []:
+        story_id = str(value or "")
+        if story_id and story_id not in followon_ids:
+            followon_ids.append(story_id)
+
+reactivated_followon = None
+if (
+    not eligible
+    and not doc.get("activeStoryId")
+    and str(writer_audit.get("status") or "") in {"gap_promoted", "audit_known_only"}
+):
+    deferred_candidates = [
+        story
+        for story in stories
+        if str(story.get("id") or "") in followon_ids
+        and str(story.get("state") or "") == "deferred"
+    ]
+    deferred_candidates.sort(key=lambda item: (item.get("priority", 9999), str(item.get("id") or "")))
+    if deferred_candidates:
+        reactivated_followon = deferred_candidates[0]
+        reactivated_followon["state"] = "active"
+        reactivated_followon["passes"] = False
+        doc["activeStoryId"] = str(reactivated_followon.get("id") or "")
+        eligible = [reactivated_followon]
+        if isinstance(finder_state, dict) and isinstance(finder_state.get("pendingTrigger"), dict):
+            trigger_type = str(finder_state["pendingTrigger"].get("triggerType") or "")
+            trigger_scope = str(finder_state["pendingTrigger"].get("scope") or "")
+            if trigger_type == "completion_audit" or trigger_scope == "completion_audit":
+                finder_state["pendingTrigger"] = None
+                finder_state_changed = True
 
 if eligible:
     completion_status = "pending"
@@ -164,4 +200,11 @@ doc["completionAuditState"] = completion_status
 doc["lastCompletionAuditReceiptId"] = last_completion_audit_id
 doc["lastFinderAuditId"] = last_finder_audit_id
 prd_path.write_text(json.dumps(doc, indent=2) + "\n")
+if finder_state_changed:
+    write_json(finder_state_path, finder_state)
 PY
+
+current_active_story="$(jq -r '.activeStoryId // ""' "$repo_root/prd.json" 2>/dev/null || true)"
+if [[ -z "$previous_active_story" && -n "$current_active_story" ]] && tmux has-session -t "$session_name" >/dev/null 2>&1; then
+  "$script_dir/cleanup_lane_processes.sh" --repo "$repo_root" --session "$session_name" --lane all --story-id "$current_active_story" --default-prompt >/dev/null
+fi

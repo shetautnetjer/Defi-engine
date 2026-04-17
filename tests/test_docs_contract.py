@@ -22,6 +22,7 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "math" / "regime_shadow_modeling_contracts.md",
     REPO_ROOT / "docs" / "math" / "market_regime_forecast_and_labeling_program.md",
     REPO_ROOT / "docs" / "policy" / "runtime_authority_and_promotion_ladder.md",
+    REPO_ROOT / "docs" / "policy" / "writer_story_promotion_rubric.md",
     REPO_ROOT / "docs" / "test" / "bootstrap_validation.md",
 ]
 REQUIRED_DOCS = ACTIVE_DOCS + [
@@ -105,6 +106,9 @@ def test_north_star_docs_define_scope_and_governance() -> None:
     authority = (
         REPO_ROOT / "docs" / "policy" / "runtime_authority_and_promotion_ladder.md"
     ).read_text()
+    writer_rubric = (
+        REPO_ROOT / "docs" / "policy" / "writer_story_promotion_rubric.md"
+    ).read_text()
 
     assert "paper-first" in mission
     assert "Solana-first" in mission
@@ -119,6 +123,9 @@ def test_north_star_docs_define_scope_and_governance() -> None:
     assert "Fibonacci" in math_program
     assert "advisory" in authority
     assert "writer-integrator" in authority
+    assert "docs/issues/" in writer_rubric
+    assert "docs/gaps/" in writer_rubric
+    assert "best next governed slice" in writer_rubric
     assert "terminal_complete" in completion
 
 

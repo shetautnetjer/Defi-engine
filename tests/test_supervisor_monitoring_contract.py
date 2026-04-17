@@ -37,9 +37,19 @@ def test_docs_sync_fields_are_exposed_in_health_and_status_surfaces() -> None:
     assert "docsSyncState" in health_script
     assert "docsTruthReceiptId" in health_script
     assert "docs_truth_receipt" in health_script
+    assert "storyPromotionReceiptId" in health_script
     assert "docs_sync_state=" in status_script
     assert "docs_truth_receipt=" in status_script
+    assert "story_promotion_receipt=" in status_script
     assert 'if [[ "$builder_status" == "completed" ]]; then' in relaunch_script
+
+
+def test_run_persistent_cycle_waits_for_inflight_finder_lanes_before_relaunching() -> None:
+    script = (REPO_ROOT / "scripts" / "agents" / "run_persistent_cycle.sh").read_text()
+    assert 'if [[ "$(lane_status architecture)" == "running" ]]; then' in script
+    assert 'if [[ "$(lane_status research)" == "running" ]]; then' in script
+    assert 'if [[ "$(lane_status writer-integrator)" == "running" ]]; then' in script
+    assert "waiting on writer finder output" in script
 
 
 def test_sync_swarm_state_clears_active_story_when_terminal_complete(tmp_path: Path) -> None:
@@ -117,3 +127,98 @@ def test_sync_swarm_state_clears_active_story_when_terminal_complete(tmp_path: P
     assert doc["swarmState"] == "terminal_complete"
     assert doc["completionAuditState"] == "clean"
     assert doc["activeStoryId"] == ""
+
+
+def test_sync_swarm_state_reactivates_best_deferred_followon_from_completion_audit(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    scripts_dir = repo_root / "scripts" / "agents"
+    state_dir = repo_root / ".ai" / "dropbox" / "state"
+    scripts_dir.mkdir(parents=True)
+    state_dir.mkdir(parents=True)
+
+    (repo_root / "scripts").mkdir(exist_ok=True)
+    for name in ("common.sh", "sync_swarm_state.sh"):
+        shutil.copy2(REPO_ROOT / "scripts" / "agents" / name, scripts_dir / name)
+
+    (state_dir / "finder_state.json").write_text(
+        json.dumps(
+            {
+                "pendingTrigger": {
+                    "triggerId": "completion_audit::receipt-1",
+                    "triggerType": "completion_audit",
+                    "scope": "completion_audit",
+                    "storyId": "",
+                },
+                "queuedReceiptFollowons": [],
+                "lastProcessedReceiptId": "",
+                "lastProcessedFailureSignature": "",
+                "lastProcessedCompletionScope": "",
+                "lastProcessedPerformanceReceiptId": "",
+                "lastTerminalAuditAt": "",
+                "lastFinderAuditId": "completion_audit_writer::2026-04-16T09:01:50-07:00",
+                "lastWriterDecisionId": "completion_audit_writer::2026-04-16T09:01:50-07:00",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (state_dir / "lane_health.json").write_text(json.dumps({"lanes": [], "story": {}}, indent=2) + "\n")
+    (state_dir / "completion_audit_writer.json").write_text(
+        json.dumps(
+            {
+                "audit_id": "completion_audit_writer::2026-04-16T09:01:50-07:00",
+                "status": "audit_known_only",
+                "promoted_story_ids": [],
+                "deferred_story_ids": ["EXEC-001", "BACKTEST-001"],
+                "rationale": ["reactivate the best current deferred follow-on"],
+                "audited_at": "2026-04-16T09:01:50-07:00",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (repo_root / "prd.json").write_text(
+        json.dumps(
+            {
+                "project": "Defi-engine",
+                "activeStoryId": "",
+                "swarmState": "audit_followons_present",
+                "completionAuditState": "pending",
+                "lastCompletionAuditReceiptId": "",
+                "lastFinderAuditId": "",
+                "userStories": [
+                    {"id": "ORCH-006", "state": "done", "passes": True, "priority": 10},
+                    {"id": "EXEC-001", "state": "deferred", "passes": False, "priority": 11},
+                    {"id": "BACKTEST-001", "state": "deferred", "passes": False, "priority": 12},
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    subprocess.run(
+        ["bash", str(scripts_dir / "sync_swarm_state.sh"), "--repo", str(repo_root)],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    doc = json.loads((repo_root / "prd.json").read_text())
+    finder_state = json.loads((state_dir / "finder_state.json").read_text())
+    assert doc["activeStoryId"] == "EXEC-001"
+    assert doc["swarmState"] == "active"
+    assert doc["completionAuditState"] == "pending"
+    story = next(row for row in doc["userStories"] if row["id"] == "EXEC-001")
+    assert story["state"] == "active"
+    assert finder_state["pendingTrigger"] is None
+
+
+def test_run_persistent_cycle_waits_for_scoped_completion_audit_workers_before_relaunching() -> None:
+    script = (REPO_ROOT / "scripts" / "agents" / "run_persistent_cycle.sh").read_text()
+
+    assert "lane_has_active_scope_mode()" in script
+    assert "lane_has_active_scope_mode architecture completion_audit completion_audit" in script
+    assert 'lane_has_active_scope_mode writer-integrator completion_audit completion_audit' in script
+    assert "waiting on completion audit lane output" in script

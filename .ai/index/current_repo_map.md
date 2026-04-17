@@ -129,4 +129,10 @@ The repo now also carries policy-only swarm governance files under `.ai/swarm/`:
 - `.ai/swarm/promotion_ladder.yaml`
 - `.ai/swarm/doc_owners.yaml`
 
+Writer-owned north-star curation now also depends on:
+
+- `docs/policy/writer_story_promotion_rubric.md`
+- `scripts/agents/write_story_promotion_receipt.sh`
+- `.ai/dropbox/state/story_promotion_receipt.json`
+
 They are packet and governance truth, not live supervisor inputs in v1.

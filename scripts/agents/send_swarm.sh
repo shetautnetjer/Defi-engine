@@ -24,6 +24,7 @@ prompt_text=""
 prompt_file=""
 model=""
 explicit_story_id=""
+story_id_explicit="false"
 scope=""
 mode=""
 
@@ -58,7 +59,13 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --story-id)
-      explicit_story_id="${2:?--story-id requires a value}"
+      if [[ $# -lt 2 ]]; then
+        printf 'send_swarm: --story-id requires a value\n' >&2
+        usage >&2
+        exit 2
+      fi
+      explicit_story_id="${2-}"
+      story_id_explicit="true"
       shift 2
       ;;
     --scope)
@@ -95,7 +102,11 @@ fi
 repo_root="$(defi_swarm_repo_root "$repo")"
 session_name="${session_name:-$(defi_swarm_session_name)}"
 lane_target="$(defi_swarm_lane_number "$lane")"
-story_id="${explicit_story_id:-$(defi_swarm_active_story "$repo_root")}"
+if [[ "$story_id_explicit" == "true" ]]; then
+  story_id="$explicit_story_id"
+else
+  story_id="$(defi_swarm_active_story "$repo_root")"
+fi
 
 if [[ "$run_mode" == "true" ]]; then
   if [[ -z "$prompt_file" ]]; then

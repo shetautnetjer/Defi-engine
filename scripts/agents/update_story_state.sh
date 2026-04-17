@@ -130,6 +130,18 @@ if "origin" not in target:
     target["origin"] = "seeded"
 if "promoted_by" not in target:
     target["promoted_by"] = ""
+if "stage" not in target:
+    target["stage"] = "current_truth_consolidation"
+if "ownerLayer" not in target:
+    target["ownerLayer"] = "writer_integrator"
+if "derivedFrom" not in target:
+    target["derivedFrom"] = []
+if "whyNow" not in target:
+    target["whyNow"] = "Maintain bounded progress toward the north-star mission."
+if "mustNotWiden" not in target:
+    target["mustNotWiden"] = "Do not widen beyond the current bounded capability stage."
+if "northStarLink" not in target:
+    target["northStarLink"] = "docs/issues/governed_product_descent_capability_ladder.md"
 if receipt_id:
     target["notes"] = (target.get("notes", "") + ("\n" if target.get("notes") else "") + f"last_receipt={receipt_id}").strip()
 
