@@ -28,6 +28,16 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "policy" / "writer_story_promotion_rubric.md",
     REPO_ROOT / "docs" / "test" / "bootstrap_validation.md",
 ]
+TRAINING_WORKSPACE_DOCS = [
+    REPO_ROOT / "training" / "README.md",
+    REPO_ROOT / "training" / "AGENTS.md",
+    REPO_ROOT / "training" / "vendor" / "autoresearch" / "UPSTREAM.md",
+    REPO_ROOT / "training" / "automation" / "README.md",
+    REPO_ROOT / "training" / "config" / "source_sets.example.json",
+    REPO_ROOT / "training" / "rubrics" / "paper_practice_default.json",
+    REPO_ROOT / "training" / "prompts" / "training_review.md.tmpl",
+    REPO_ROOT / "training" / "bin" / "emit_training_event.py",
+]
 REQUIRED_DOCS = ACTIVE_DOCS + [
     REPO_ROOT / "docs" / "issues" / "governed_product_descent_capability_ladder.md",
     REPO_ROOT / "docs" / "gaps" / "bootstrap_gap_register.md",
@@ -49,6 +59,11 @@ def test_single_root_env_template_exists() -> None:
 
 def test_required_bootstrap_docs_exist() -> None:
     missing = [path for path in REQUIRED_DOCS if not path.exists()]
+    assert not missing
+
+
+def test_training_workspace_docs_exist() -> None:
+    missing = [path for path in TRAINING_WORKSPACE_DOCS if not path.exists()]
     assert not missing
 
 
@@ -241,6 +256,25 @@ def test_docs_and_agents_route_handoff_vs_dropbox_cleanly() -> None:
     assert "verbose human" in docs_index
     assert ".ai/dropbox/" in handoff_readme
     assert "durable human-readable continuation surface" in handoff_readme
+
+
+def test_training_workspace_and_readme_expose_repo_owned_training_lane() -> None:
+    readme = (REPO_ROOT / "README.md").read_text()
+    training_readme = (REPO_ROOT / "training" / "README.md").read_text()
+    training_agents = (REPO_ROOT / "training" / "AGENTS.md").read_text()
+    upstream = (REPO_ROOT / "training" / "vendor" / "autoresearch" / "UPSTREAM.md").read_text()
+
+    assert "d5 training bootstrap" in readme
+    assert "d5 training walk-forward" in readme
+    assert "d5 training review" in readme
+    assert "d5 training loop" in readme
+    assert "d5 training status" in readme
+    assert "codex --exec" in training_readme
+    assert "SQL as canonical truth" in training_readme
+    assert "QMD as evidence" in training_readme
+    assert "paper-only" in training_agents
+    assert "one bounded thing at a time" in training_agents
+    assert "karpathy/autoresearch" in upstream
 
 
 def test_stage_one_issue_and_gap_guides_exist_for_future_handoffs() -> None:

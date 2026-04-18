@@ -4,6 +4,7 @@ D5 Trading Engine — CLI Entry Point
 Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
+- d5 training ... : Repo-owned training wrappers for bootstrap, walk-forward, review, loop, and status
 - d5 materialize-features : Materialize deterministic feature tables
 - d5 score-conditions : Score bounded market conditions
 - d5 run-shadow   : Run shadow ML evaluation lanes
@@ -114,6 +115,145 @@ def init() -> None:
         click.echo("✓ Database migrations applied to head.")
     except Exception as exc:
         click.echo(f"✗ Database migration failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.group("training")
+def training_group() -> None:
+    """Repo-owned training wrappers for automation-friendly paper practice."""
+
+
+@training_group.command("bootstrap")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_bootstrap(json_output: bool) -> None:
+    """Run the repo-owned historical bootstrap wrapper."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.bootstrap()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training bootstrap: "
+                f"{result['run_id']} revision={result['active_profile_revision_id']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training bootstrap failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("walk-forward")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_walk_forward(json_output: bool) -> None:
+    """Run the repo-owned adaptive historical walk-forward wrapper."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.walk_forward()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training walk-forward: "
+                f"{result['run_id']} revision={result['active_profile_revision_id']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training walk-forward failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("review")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_review(json_output: bool) -> None:
+    """Render the latest bounded training review packet."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.review()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training review: "
+                f"{result['run_id']} revision={result['active_profile_revision_id']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training review failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("loop")
+@click.option(
+    "--with-helius-ws",
+    is_flag=True,
+    default=False,
+    help="Include one bounded Helius websocket burst in each live regime cycle.",
+)
+@click.option("--max-iterations", type=int, default=None)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_loop(
+    with_helius_ws: bool,
+    max_iterations: int | None,
+    json_output: bool,
+) -> None:
+    """Run the repo-owned training loop wrapper."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.loop(
+            with_helius_ws=with_helius_ws,
+            max_iterations=max_iterations,
+        )
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training loop: "
+                f"{result['run_id']} iterations={result['iterations_completed']} "
+                f"revision={result['active_profile_revision_id']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training loop failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("status")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_status(json_output: bool) -> None:
+    """Show the repo-owned training surface status."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.status()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training status: "
+                f"revision={result['active_profile_revision_id']} "
+                f"workspace={result['workspace_root']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training status failed: {exc}", err=True)
         sys.exit(1)
 
 
@@ -615,7 +755,7 @@ def run_paper_practice_bootstrap(json_output: bool) -> None:
 @cli.command("run-backtest-walk-forward")
 @click.option("--json", "json_output", is_flag=True, default=False)
 def run_backtest_walk_forward(json_output: bool) -> None:
-    """Run the adaptive historical walk-forward replay ladder.""" 
+    """Run the adaptive historical walk-forward replay ladder."""
     from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 
     runtime = PaperPracticeRuntime(get_settings())

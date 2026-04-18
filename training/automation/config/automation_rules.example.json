@@ -1,0 +1,34 @@
+{
+  "defaults": {
+    "mode": "suggest",
+    "template": "automation/prompts/generic_review.md.tmpl",
+    "receipt_prefix": "receipt"
+  },
+  "event_types": {
+    "condition_run_completed": {
+      "mode": "suggest",
+      "template": "automation/prompts/condition_review.md.tmpl",
+      "receipt_prefix": "condition"
+    },
+    "paper_session_closed": {
+      "mode": "suggest",
+      "template": "automation/prompts/paper_session_review.md.tmpl",
+      "receipt_prefix": "paper"
+    },
+    "experiment_completed": {
+      "mode": "suggest",
+      "template": "automation/prompts/experiment_review.md.tmpl",
+      "receipt_prefix": "experiment"
+    },
+    "tests_failed": {
+      "mode": "auto-edit",
+      "template": "automation/prompts/tests_failed_fix.md.tmpl",
+      "receipt_prefix": "fix"
+    },
+    "migration_failed": {
+      "mode": "auto-edit",
+      "template": "automation/prompts/tests_failed_fix.md.tmpl",
+      "receipt_prefix": "migration-fix"
+    }
+  }
+}

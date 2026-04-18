@@ -1050,3 +1050,95 @@ def test_cli_core_ladder_commands_dispatch_json(
     )
     assert backtest_result.exit_code == 0
     assert json.loads(backtest_result.output)["run_id"] == "backtest_walk_forward_test"
+
+
+def test_cli_training_group_dispatches_json(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.bootstrap",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_bootstrap_test",
+            "artifact_dir": "/tmp/training/bootstrap",
+            "artifact_paths": ["/tmp/training/bootstrap/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_bootstrap",
+            "next_command": "d5 training walk-forward --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.walk_forward",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_walk_forward_test",
+            "artifact_dir": "/tmp/training/walk-forward",
+            "artifact_paths": ["/tmp/training/walk-forward/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_walk_forward",
+            "next_command": "d5 training review --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.review",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_review_test",
+            "artifact_dir": "/tmp/training/review",
+            "artifact_paths": ["/tmp/training/review/report.qmd"],
+            "active_profile_revision_id": "paper_profile_revision_review",
+            "next_command": "d5 training loop --max-iterations 1 --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.loop",
+        lambda self, **kwargs: {
+            "status": "completed",
+            "run_id": "training_loop_test",
+            "artifact_dir": "/tmp/training/loop",
+            "artifact_paths": ["/tmp/training/loop/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_loop",
+            "iterations_completed": kwargs.get("max_iterations") or 0,
+            "next_command": "d5 training status --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.status",
+        lambda self: {
+            "status": "ok",
+            "run_id": "training_status_test",
+            "artifact_dir": "/tmp/training/status",
+            "artifact_paths": ["/tmp/training/status/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_status",
+            "workspace_root": "training",
+            "next_command": "d5 training review --json",
+        },
+    )
+
+    bootstrap_result = cli_runner.invoke(cli, ["training", "bootstrap", "--json"])
+    assert bootstrap_result.exit_code == 0
+    assert json.loads(bootstrap_result.output)["run_id"] == "training_bootstrap_test"
+
+    walk_forward_result = cli_runner.invoke(cli, ["training", "walk-forward", "--json"])
+    assert walk_forward_result.exit_code == 0
+    assert json.loads(walk_forward_result.output)["run_id"] == "training_walk_forward_test"
+
+    review_result = cli_runner.invoke(cli, ["training", "review", "--json"])
+    assert review_result.exit_code == 0
+    assert json.loads(review_result.output)["run_id"] == "training_review_test"
+
+    loop_result = cli_runner.invoke(
+        cli,
+        ["training", "loop", "--max-iterations", "1", "--json"],
+    )
+    assert loop_result.exit_code == 0
+    loop_payload = json.loads(loop_result.output)
+    assert loop_payload["run_id"] == "training_loop_test"
+    assert loop_payload["iterations_completed"] == 1
+
+    status_result = cli_runner.invoke(cli, ["training", "status", "--json"])
+    assert status_result.exit_code == 0
+    status_payload = json.loads(status_result.output)
+    assert status_payload["workspace_root"] == "training"

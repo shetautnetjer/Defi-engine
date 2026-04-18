@@ -31,6 +31,21 @@ overlay.
 - `d5 paper-practice-status`
 - `d5 run-paper-close <session_key> --quote-snapshot-id <id> --reason <reason>`
 
+## Repo-owned training wrappers
+
+The persistent automation and evaluation surface also lives under `training/`
+and is exposed through:
+
+- `d5 training bootstrap`
+- `d5 training walk-forward`
+- `d5 training review`
+- `d5 training loop`
+- `d5 training status`
+
+These wrappers are the preferred `codex --exec` entrypoints because they keep
+SQL as truth, QMD as evidence, and `.ai/` as the live control plane instead of
+burying the workflow in shell-only conventions.
+
 All four commands should be usable from `codex exec` and other automation
 wrappers through `--json`.
 

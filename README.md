@@ -94,6 +94,13 @@ d5 run-shadow intraday-meta-stack-v1
 # bounded shadow regime-model comparison lane
 d5 run-shadow regime-model-compare-v1
 
+# repo-owned training wrappers for automation and review
+d5 training bootstrap --json
+d5 training walk-forward --json
+d5 training review --json
+d5 training loop --max-iterations 1 --json
+d5 training status --json
+
 # live intraday training cycle for paper trading
 d5 run-live-regime-cycle
 
@@ -128,6 +135,11 @@ d5 run-paper-close <session_key> --quote-snapshot-id <quote_snapshot_id> --reaso
 | `d5 run-strategy-eval <strategy-eval>` | Run the bounded named strategy challenger loop |
 | `d5 run-paper-close <session_key> --quote-snapshot-id <id> --reason <reason>` | Close one open paper session from an explicit exit quote |
 | `d5 run-paper-practice-bootstrap` | Build the bounded historical bootstrap for autonomous paper practice |
+| `d5 training bootstrap` | Run the repo-owned training bootstrap wrapper and return machine-readable receipts |
+| `d5 training walk-forward` | Run the repo-owned adaptive historical replay wrapper |
+| `d5 training review` | Render the latest bounded training review packet from existing receipts |
+| `d5 training loop` | Run the repo-owned training loop wrapper for bounded autonomous practice iterations |
+| `d5 training status` | Show the repo-owned training workspace status and latest active revision |
 | `d5 run-paper-practice-loop` | Run the autonomous paper-only practice loop |
 | `d5 paper-practice-status` | Show the active paper-practice profile and latest loop state |
 | `d5 review-proposal <proposal_id>` | Run the bounded advisory proposal-review workflow and write review truth plus QMD evidence |
@@ -214,6 +226,12 @@ Current `run-shadow` values:
   - advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots without promoting research outputs into runtime authority
 
 Runtime-adjacent model helpers live under `src/d5_trading_engine/models/`, while shadow-only registries remain explicitly advisory.
+
+The persistent training surface now lives under `training/`, where the repo keeps
+vendored autoresearch references, `codex --exec`-friendly watcher adapters,
+source-set configs, rubrics, and bounded prompt templates. SQL remains
+canonical truth and QMD remains the evidence surface those training wrappers
+point back to.
 
 These surfaces remain non-promoting at runtime. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one bounded execution-intent owner, one quote-backed paper settlement owner, one settlement-owned spot-first backtest replay ledger, one bounded shadow evaluation lane, one bounded canonical label-program loop, one bounded strategy challenger loop, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have runtime model promotion, fully accepted canonical label truth, fully accepted strategy-family governance, or derivative widening.
 

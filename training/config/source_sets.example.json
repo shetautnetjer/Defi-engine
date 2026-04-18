@@ -1,0 +1,29 @@
+{
+  "historical_backbone": {
+    "provider": "massive",
+    "mode": "full_free_tier",
+    "lookback_days": 730,
+    "tickers": ["X:SOLUSD", "X:BTCUSD", "X:ETHUSD"]
+  },
+  "execution": {
+    "provider": "jupiter",
+    "instrument_pair": "SOL/USDC",
+    "mode": "paper_only"
+  },
+  "chain_context": {
+    "provider": "helius",
+    "tracked_scope": "configured_addresses"
+  },
+  "market_context": {
+    "provider": "coinbase",
+    "spot_symbols": ["SOL", "BTC", "ETH", "XRP", "PAXG"],
+    "context_only_symbols": ["GOLD", "CRUDEOIL"],
+    "product_classes": ["spot", "future", "perpetual"]
+  },
+  "feature_sets": ["global-regime-inputs-15m-v1", "spot-chain-macro-v1"],
+  "timeframes": {
+    "training_window": "12m",
+    "walk_forward_window": "3m",
+    "cadence": "15m"
+  }
+}

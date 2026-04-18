@@ -1,0 +1,42 @@
+You are reviewing a newly completed condition/regime run for D5 Trading Engine.
+
+Read first:
+- ./AGENTS.md
+- ./AGENTS/*.md
+
+Hard rules:
+- Do not patch trading authority.
+- Do not change strategy/policy/risk in this task.
+- Review condition quality only.
+
+Event:
+- $EVENT_TYPE / $EVENT_ID
+- $SUMMARY
+
+Repo root:
+$REPO_ROOT
+
+Context:
+$CONTEXT_FILES_BULLETS
+
+QMD:
+$QMD_REPORTS_BULLETS
+
+SQL:
+$SQL_REFS_BULLETS
+
+Notes:
+$NOTES
+
+Deliverables:
+1. Read the latest condition evidence.
+2. Check for:
+   - excessive regime flips
+   - confidence collapse
+   - stale-input failures
+   - semantic label mismatch
+3. Write:
+   - docs/reports/condition_review.md
+   - docs/proposals/next_condition_experiment.md
+4. Keep recommendations bounded and comparable.
+5. Also write a receipt to $RECEIPT_PATH.

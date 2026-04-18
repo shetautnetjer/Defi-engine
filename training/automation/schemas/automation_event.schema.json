@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AutomationEvent",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "created_at_utc"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "created_at_utc": {
+      "type": "string"
+    },
+    "repo_root": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "qmd_reports": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sql_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "log_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "extra": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

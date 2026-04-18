@@ -1,0 +1,24 @@
+{
+  "name": "paper_practice_default_v1",
+  "objective": "Improve bounded paper-practice quality one accepted change at a time.",
+  "dimensions": [
+    {"metric": "expectancy_per_session", "weight": 0.24, "direction": "higher"},
+    {"metric": "realized_pnl_usdc", "weight": 0.16, "direction": "higher"},
+    {"metric": "max_drawdown_usdc", "weight": 0.14, "direction": "lower"},
+    {"metric": "win_rate", "weight": 0.08, "direction": "higher"},
+    {"metric": "payoff_ratio", "weight": 0.08, "direction": "higher"},
+    {"metric": "regime_alignment_accuracy", "weight": 0.12, "direction": "higher"},
+    {"metric": "policy_veto_count", "weight": 0.05, "direction": "lower"},
+    {"metric": "risk_veto_count", "weight": 0.05, "direction": "lower"},
+    {"metric": "data_coverage", "weight": 0.08, "direction": "higher"}
+  ],
+  "revert_thresholds": {
+    "expectancy_per_session_drop_pct": 10.0,
+    "max_drawdown_increase_pct": 15.0,
+    "regime_alignment_accuracy_drop_pct": 5.0
+  },
+  "notes": [
+    "Compare against the immediately previous active paper-practice revision.",
+    "Only accepted, selected, allowed-key profile patches may advance."
+  ]
+}

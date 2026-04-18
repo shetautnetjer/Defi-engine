@@ -1,0 +1,13 @@
+[Unit]
+Description=Codex event watcher for D5/DeFi engine
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/defi-engine
+ExecStart=/usr/bin/env python automation/bin/codex_event_watcher.py --queue automation/state/events.jsonl --rules automation/config/automation_rules.json --receipts-dir automation/receipts
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
