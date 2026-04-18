@@ -8,7 +8,7 @@ policy/risk/settlement governance, and widen into Jupiter perps and Coinbase
 futures only through governed capability stages.
 
 The current repo truth is a paper-first evidence engine with bounded downstream layers:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one explicit execution-intent owner (`ExecutionIntentOwner` -> `execution_intent_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), one settlement-owned spot-first backtest replay owner (`BacktestTruthOwner` -> `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, `backtest_session_report_v1`), one bounded shadow lane (`intraday_meta_stack_v1`), one canonical label-program lane (`label_program_v1`), one governed strategy challenger lane (`strategy_eval_v1`), one centralized reporting layer (`reporting/`), proposal truth tables (`artifact_reference`, `improvement_proposal_v1`), and first-pass Massive reference plus historical minute-aggregate capture
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one explicit execution-intent owner (`ExecutionIntentOwner` -> `execution_intent_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), one settlement-owned spot-first backtest replay owner (`BacktestTruthOwner` -> `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, `backtest_session_report_v1`), one bounded shadow lane (`intraday_meta_stack_v1`), one canonical label-program lane (`label_program_v1`), one governed strategy challenger lane (`strategy_eval_v1`), one centralized reporting layer (`reporting/`), proposal truth tables (`artifact_reference`, `improvement_proposal_v1`), proposal review/comparison truth (`proposal_review_v1`, `proposal_comparison_v1`, `proposal_comparison_item_v1`, `proposal_supersession_v1`), and first-pass Massive reference plus historical minute-aggregate capture
 - active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, Coinbase market-data capture, and point-in-time-safe regime history for shadow evaluation
 - still deferred: canonical label/regime truth, strategy registry and challenger governance, governed model promotion, deep Helius decoding, and broader Massive entitlement coverage
 
@@ -34,6 +34,11 @@ DuckDB sync on demand + research artifacts
 
 See [docs/README.md](docs/README.md) for the full docs map, [docs/prd/crypto_backtesting_mission.md](docs/prd/crypto_backtesting_mission.md) for the north-star product target, [docs/plans/strategy_descent_and_instrument_scope.md](docs/plans/strategy_descent_and_instrument_scope.md) for the widening ladder, [docs/math/market_regime_forecast_and_labeling_program.md](docs/math/market_regime_forecast_and_labeling_program.md) for the future math program, [docs/policy/runtime_authority_and_promotion_ladder.md](docs/policy/runtime_authority_and_promotion_ladder.md) for promotion doctrine, [docs/policy/writer_story_promotion_rubric.md](docs/policy/writer_story_promotion_rubric.md) for writer-owned story curation, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded current modeling contract, and [docs/runbooks/ralph_tmux_swarm.md](docs/runbooks/ralph_tmux_swarm.md) for the repo-local four-lane orchestration workflow.
 
+Project Notion surfaces:
+
+- [Defi-engine project hub](https://www.notion.so/Defi-engine-342936b02c2580bc8062f70287d6919c?source=copy_link)
+- [CLI Ideas review page](https://www.notion.so/CLI-Ideas-346936b02c258037a00ffdcc53f4693a?source=copy_link)
+
 ## Tracked Universe
 
 The current mint-locked Solana spot universe is:
@@ -58,7 +63,9 @@ pip install -e ".[dev]"
 cp .env.example .env
 # fill in the provider keys you plan to use
 # set HELIUS_TRACKED_ADDRESSES for Helius capture
-# optionally point COINBASE_SECRETS_FILE at a local secrets file
+# optionally point COINBASE_SECRETS_FILE at either:
+# - a legacy Coinbase Exchange KEY/SECRET/PASSPHRASE env file, or
+# - a Coinbase CDP/Coinbase App key export with the API key name + ECDSA private key
 
 d5 init
 d5 status
@@ -72,6 +79,7 @@ d5 capture coinbase-products
 d5 capture fred-observations
 d5 capture massive-crypto
 d5 capture massive-minute-aggs --date 2026-04-16
+d5 capture massive-minute-aggs --full-free-tier
 
 # first bounded post-ingest feature lane
 d5 materialize-features spot-chain-macro-v1
@@ -85,6 +93,18 @@ d5 run-shadow intraday-meta-stack-v1
 
 # bounded shadow regime-model comparison lane
 d5 run-shadow regime-model-compare-v1
+
+# live intraday training cycle for paper trading
+d5 run-live-regime-cycle
+
+# explicit paper cycle from the live-cycle paper-ready receipt
+d5 run-paper-cycle <quote_snapshot_id> --condition-run-id <condition_run_id> --strategy-report <path>
+
+# bounded autonomous paper-practice ladder
+d5 run-paper-practice-bootstrap
+d5 run-paper-practice-loop --max-iterations 1
+d5 paper-practice-status
+d5 run-paper-close <session_key> --quote-snapshot-id <quote_snapshot_id> --reason take_profit
 
 # optional: sync canonical tables into DuckDB
   d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
@@ -106,20 +126,23 @@ d5 run-shadow regime-model-compare-v1
 | `d5 run-shadow <shadow-run>` | Run a bounded shadow-only ML evaluation lane |
 | `d5 run-label-program <label-program>` | Run the bounded canonical label-program scoring loop |
 | `d5 run-strategy-eval <strategy-eval>` | Run the bounded named strategy challenger loop |
+| `d5 run-paper-close <session_key> --quote-snapshot-id <id> --reason <reason>` | Close one open paper session from an explicit exit quote |
+| `d5 run-paper-practice-bootstrap` | Build the bounded historical bootstrap for autonomous paper practice |
+| `d5 run-paper-practice-loop` | Run the autonomous paper-only practice loop |
+| `d5 paper-practice-status` | Show the active paper-practice profile and latest loop state |
+| `d5 review-proposal <proposal_id>` | Run the bounded advisory proposal-review workflow and write review truth plus QMD evidence |
+| `d5 compare-proposals` | Rank bounded proposals, optionally select the next experiment, and write comparison/supersession truth |
+| `d5 run-live-regime-cycle` | Run the live intraday capture -> feature -> regime -> comparison ladder and emit a paper-ready receipt |
 | `d5 status` | Show recent ingest runs, latest provider health events, per-lane capture freshness, and the latest condition run |
 | `d5 sync-duckdb [tables...]` | Copy selected SQLite truth tables into DuckDB |
 
+Coinbase credential note:
+- current capture lanes use Coinbase public market-data endpoints only
+- if you later add private Coinbase App / Advanced Trade endpoints, use CDP/Coinbase App JWT auth with an **ECDSA / ES256** key, not Exchange passphrase auth
+- if you use `COINBASE_SECRETS_FILE`, the settings layer now understands both the legacy Exchange env-file shape and the simpler CDP/Coinbase App export shape
+
 Current `capture` provider values:
 - `jupiter-tokens`
-
-Current `run-shadow` values:
-- `intraday-meta-stack-v1`
-- `regime-model-compare-v1`
-  - compares the existing 15-minute feature truth against HMM, GMM, and an
-    optional `statsmodels` candidate
-  - writes experiment truth, QMD evidence, and an advisory-only
-    `regime_model_compare_follow_on` proposal
-  - does not widen policy, risk, execution, settlement, or runtime authority
 - `jupiter-prices`
 - `jupiter-quotes`
 - `helius-transactions`
@@ -135,26 +158,58 @@ Current `run-shadow` values:
 - `massive-minute-aggs`
 - `all`
 
+`massive-minute-aggs` supports three bounded historical modes:
+- `--date YYYY-MM-DD`
+- `--from YYYY-MM-DD --to YYYY-MM-DD`
+- `--full-free-tier`
+
+Current `run-shadow` values:
+- `intraday-meta-stack-v1`
+- `regime-model-compare-v1`
+  - compares the canonical 15-minute feature truth against HMM, GMM, and an
+    optional `statsmodels` candidate
+  - supports bounded historical windows via `--history-start` and
+    `--history-end`
+  - can include or exclude Massive-backed feature rows via
+    `--use-massive-context/--no-use-massive-context`
+  - writes experiment truth, QMD evidence, and an advisory-only
+    `regime_model_compare_follow_on` proposal
+  - does not widen policy, risk, execution, settlement, or runtime authority
+
 ## Source Status
 
 | Provider | Status | Notes |
 |----------|--------|-------|
 | Jupiter | implemented | spot-only token list, prices, and two-sided quote capture with default `2.0s` throttling |
 | Helius | partial | tracked-address discovery, enhanced transaction capture, bounded `solana_transfer_event` projection, and hardened raw websocket capture with reconnect / heartbeat |
-| Coinbase | partial | public product, candle, trade, and L2 book capture with separate raw DB and canonical market-data tables |
+| Coinbase | partial | public product discovery now merges default spot inventory with filtered futures and perpetual inventories for the bounded context set; some non-crypto contracts may expose trades/candles without an L2 book |
 | FRED | implemented | series and observation capture/normalization |
-| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization; wider entitlement coverage still deferred |
+| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization; the free-tier historical ladder is currently bounded to a 2-year minute window |
 
 ## Bounded Model Surfaces
 
 - `spot_chain_macro_v1`
   - minute-by-mint feature lane from canonical spot, market-structure, chain, and macro truth
 - `global_regime_inputs_15m_v1`
-  - market-wide 15-minute feature lane built from Coinbase proxy products plus captured-at-safe macro context
+  - market-wide 15-minute feature lane built from Coinbase **spot** proxy products plus captured-at-safe macro context
+  - Coinbase futures/perps and non-crypto contracts are ingested as context-only evidence for later use and do not currently widen the runtime feature owner
 - `global_regime_v1`
   - bounded regime scorer with a four-state Gaussian HMM when `hmmlearn` is installed and a Gaussian-mixture fallback when it is not
 - `intraday_meta_stack_v1`
   - shadow-only evaluation lane with walk-forward regime history, ATR-style triple-barrier labels, `IsolationForest`, `RandomForest`, `XGBoost`, optional Chronos-2 summaries, Monte Carlo summaries, and Fibonacci annotations as research-only evidence
+- `run-live-regime-cycle`
+  - bounded live intraday training lane that captures Jupiter, Helius, and
+    Coinbase data, rematerializes canonical feature truth, reruns
+    `global_regime_v1`, reruns `regime-model-compare-v1`, evaluates policy and
+    risk, and emits a paper-ready receipt
+  - keeps execution explicit by requiring a separate `d5 run-paper-cycle ...`
+    invocation instead of auto-running paper settlement
+- `run-paper-practice-loop`
+  - autonomous paper-only operator loop layered on top of the live regime cycle
+  - may auto-open and auto-close one bounded `SOL/USDC` paper session at a time
+  - adapts only through the SQL-backed paper-practice profile overlay
+  - writes JSON/QMD receipts instead of mutating YAML policy, risk code, or
+    live execution authority
 - `experiment_realized_feedback_v1`
   - advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots without promoting research outputs into runtime authority
 

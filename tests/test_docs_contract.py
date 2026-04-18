@@ -14,6 +14,7 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "plans" / "source_expansion_preconditions.md",
     REPO_ROOT / "docs" / "plans" / "historical_research_protocol.md",
     REPO_ROOT / "docs" / "plans" / "strategy_descent_and_instrument_scope.md",
+    REPO_ROOT / "docs" / "plans" / "autonomous_paper_practice_loop.md",
     REPO_ROOT / "docs" / "task" / "bootstrap_truth_sync.md",
     REPO_ROOT / "docs" / "architecture" / "bootstrap_architecture.md",
     REPO_ROOT / "docs" / "architecture" / "backtest_truth_contract.md",
@@ -188,6 +189,8 @@ def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_la
     assert "research_proposal_review_receipt.json" in runtime_truth
     assert "research_proposal_priority_receipt.json" in runtime_truth
     assert "regime-model-compare-v1" in runtime_truth
+    assert "run-paper-practice-loop" in runtime_truth
+    assert "paper_practice_profile_v1" in runtime_truth
     assert "watcher" in runtime_truth.lower()
     assert "Stage 1" in runtime_truth
     assert "current truth consolidation" in runtime_truth

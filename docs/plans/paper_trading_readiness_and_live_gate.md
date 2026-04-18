@@ -10,6 +10,9 @@ This plan makes the near-term product target explicit:
 The repo should optimize for credible paper trading first, not for early live
 execution.
 
+The next concrete implementation descent for that paper-first target is tracked
+in [Autonomous Paper Practice Loop](autonomous_paper_practice_loop.md).
+
 ## Current truthful base
 
 Already real in repo truth:
@@ -24,6 +27,8 @@ Already real in repo truth:
 - explicit spot-first backtest replay truth
 - advisory shadow evaluation plus realized-feedback comparison
 - bounded label-program and strategy-eval research loops
+- bounded regime-model comparison on canonical 15-minute truth
+- bounded live intraday regime cycle with paper-ready receipts
 
 The current paper-runtime and backtest foundation is strong enough that the
 remaining work is no longer “basic trading engine plumbing.” The remaining work
@@ -121,6 +126,10 @@ The remaining readiness work is real-data depth and selection quality:
   truth without threshold weakening
 - label and strategy outputs still need sustained real-data evidence before the
   paper loop can be described as routinely operator-ready
+- the historical ladder should now use the bounded Massive free-tier minute
+  window first, then append live Jupiter/Helius/Coinbase context intraday
+- the paper operator should keep using explicit paper-ready receipts rather than
+  hidden auto-execution
 
 ### 4. Keep documenting evidence in QMD and SQL
 

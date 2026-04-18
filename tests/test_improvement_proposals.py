@@ -8,6 +8,7 @@ from d5_trading_engine.reporting.artifacts import write_json_artifact
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
 from d5_trading_engine.research_loop.proposal_comparison import ProposalComparator
 from d5_trading_engine.research_loop.proposal_review import ProposalReviewer
+from d5_trading_engine.settlement.paper import PaperSettlement
 from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
 from d5_trading_engine.storage.truth.models import (
     ArtifactReference,
@@ -21,6 +22,12 @@ from d5_trading_engine.storage.truth.models import (
     ProposalComparisonV1,
     ProposalReviewV1,
     ProposalSupersessionV1,
+)
+from tests.test_settlement_paper import (
+    _seed_allowed_risk_verdict,
+    _seed_execution_intent,
+    _seed_quote_snapshot,
+    _tracked_mint,
 )
 
 
@@ -613,3 +620,140 @@ def test_compare_proposals_prefers_paper_over_earlier_stage_evidence(settings) -
     assert comparison_payload["ranked_items"][0]["proposal_id"] == paper_proposal["proposal_id"]
     assert comparison_payload["ranked_items"][1]["proposal_id"] == strategy_proposal["proposal_id"]
     assert comparison_payload["ranked_items"][2]["proposal_id"] == label_proposal["proposal_id"]
+
+
+def test_proposal_review_accepts_bounded_paper_profile_adjustment(settings) -> None:
+    run_migrations_to_head(settings)
+    usdc_mint = _tracked_mint(settings, "USDC")
+    sol_mint = _tracked_mint(settings, "SOL")
+    risk_verdict_id = _seed_allowed_risk_verdict(
+        settings,
+        run_id="paper_profile_adjustment",
+        semantic_regime="long_friendly",
+    )
+    quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="paper_profile_adjustment_entry",
+        request_direction="usdc_to_token",
+        input_mint=usdc_mint,
+        output_mint=sol_mint,
+        input_amount="10000000",
+        output_amount="100000000",
+    )
+    execution_intent = _seed_execution_intent(
+        settings,
+        risk_verdict_id=risk_verdict_id,
+        quote_snapshot_id=quote_snapshot_id,
+    )
+    settlement = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
+    )
+    session_key = str(settlement["session_key"])
+    artifact_dir = settings.data_dir / "paper_runtime" / "cycles" / session_key
+    write_json_artifact(
+        artifact_dir / "paper_profile_adjustment_summary.json",
+        {
+            "artifact_type": "paper_profile_adjustment_summary",
+            "story_id": "PAPER-001",
+            "stage": "paper_practice",
+            "paper_session_key": session_key,
+            "close_reason": "take_profit",
+            "patch_keys": ["minimum_condition_confidence", "cooldown_bars"],
+            "profile_patch": {
+                "minimum_condition_confidence": 0.62,
+                "cooldown_bars": 5,
+            },
+            "summary": "Raise confidence slightly and extend cooldown after a bounded review.",
+        },
+        owner_type="paper_session",
+        owner_key=session_key,
+        artifact_type="paper_profile_adjustment_summary",
+        settings=settings,
+    )
+    proposal = create_improvement_proposal(
+        artifact_dir=artifact_dir,
+        proposal_kind="paper_profile_adjustment_follow_on",
+        source_owner_type="paper_session",
+        source_owner_key=session_key,
+        governance_scope="paper_practice",
+        title="Review one bounded paper-only profile adjustment before the next session",
+        summary="The paper-only profile patch stays inside the allowed SQL-backed overlay keys.",
+        hypothesis="A bounded profile adjustment should improve the next paper session.",
+        next_test="Review and, if accepted, apply the paper-only patch before the next loop.",
+        metrics={"patch_size": 2.0, "realized_pnl_bps": 125.0},
+        reason_codes=["paper_only_profile_mutation"],
+        settings=settings,
+    )
+
+    review = ProposalReviewer(settings).review_proposal(proposal["proposal_id"])
+    comparison = ProposalComparator(settings).compare_proposals(
+        proposal_ids=[proposal["proposal_id"]],
+        choose_top=True,
+    )
+
+    assert review["decision"] == "reviewed_accept"
+    assert comparison["selected_proposal_id"] == proposal["proposal_id"]
+
+
+def test_proposal_review_rejects_disallowed_paper_profile_patch(settings) -> None:
+    run_migrations_to_head(settings)
+    usdc_mint = _tracked_mint(settings, "USDC")
+    sol_mint = _tracked_mint(settings, "SOL")
+    risk_verdict_id = _seed_allowed_risk_verdict(
+        settings,
+        run_id="paper_profile_adjustment_reject",
+        semantic_regime="long_friendly",
+    )
+    quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="paper_profile_adjustment_reject_entry",
+        request_direction="usdc_to_token",
+        input_mint=usdc_mint,
+        output_mint=sol_mint,
+        input_amount="10000000",
+        output_amount="100000000",
+    )
+    execution_intent = _seed_execution_intent(
+        settings,
+        risk_verdict_id=risk_verdict_id,
+        quote_snapshot_id=quote_snapshot_id,
+    )
+    settlement = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
+    )
+    session_key = str(settlement["session_key"])
+    artifact_dir = settings.data_dir / "paper_runtime" / "cycles" / session_key
+    write_json_artifact(
+        artifact_dir / "paper_profile_adjustment_summary.json",
+        {
+            "artifact_type": "paper_profile_adjustment_summary",
+            "story_id": "PAPER-001",
+            "stage": "paper_practice",
+            "paper_session_key": session_key,
+            "patch_keys": ["regime_allowlist"],
+            "profile_patch": {"regime_allowlist": ["risk_off"]},
+            "summary": "This patch tries to mutate a disallowed key.",
+        },
+        owner_type="paper_session",
+        owner_key=session_key,
+        artifact_type="paper_profile_adjustment_summary",
+        settings=settings,
+    )
+    proposal = create_improvement_proposal(
+        artifact_dir=artifact_dir,
+        proposal_kind="paper_profile_adjustment_follow_on",
+        source_owner_type="paper_session",
+        source_owner_key=session_key,
+        governance_scope="paper_practice",
+        title="Unsafe paper profile patch",
+        summary="This proposal touches a disallowed paper-practice key.",
+        hypothesis="Disallowed patch keys must be rejected.",
+        next_test="Reject the patch and request a narrower paper-only profile update.",
+        metrics={"patch_size": 1.0},
+        reason_codes=["paper_only_profile_mutation"],
+        settings=settings,
+    )
+
+    review = ProposalReviewer(settings).review_proposal(proposal["proposal_id"])
+
+    assert review["decision"] == "reviewed_reject"

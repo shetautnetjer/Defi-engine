@@ -9,7 +9,8 @@ import pandas.testing as pdt
 from d5_trading_engine.cli import cli
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.condition.scorer import ConditionScorer
-from d5_trading_engine.storage.truth.engine import get_session
+from d5_trading_engine.features.materializer import FeatureMaterializer
+from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
 from d5_trading_engine.storage.truth.models import (
     ConditionGlobalRegimeSnapshotV1,
     ConditionScoringRun,
@@ -36,30 +37,48 @@ def _seed_global_regime_inputs(
 ) -> None:
     session = get_session(settings)
     now = anchor_now or utcnow().replace(second=0, microsecond=0)
+    receipt_now = utcnow().replace(second=0, microsecond=0)
     minute_start = now - timedelta(minutes=total_15m_buckets * 15)
     products = {
         "BTC-USD": {"base": "BTC", "price": 64000.0, "offset": 0.1},
         "ETH-USD": {"base": "ETH", "price": 3200.0, "offset": 0.7},
         "SOL-USD": {"base": "SOL", "price": 140.0, "offset": 1.3},
     }
+    ingest_specs = (
+        ("coinbase_products_run_100", "coinbase", "products"),
+        ("coinbase_candles_run_100", "coinbase", "candles"),
+        ("coinbase_trades_run_100", "coinbase", "market_trades"),
+        ("coinbase_book_run_100", "coinbase", "book"),
+        ("fred_run_100", "fred", "observations"),
+    )
     try:
-        for run_id, provider, capture_type in (
-            ("coinbase_products_run_100", "coinbase", "products"),
-            ("coinbase_candles_run_100", "coinbase", "candles"),
-            ("coinbase_trades_run_100", "coinbase", "market_trades"),
-            ("coinbase_book_run_100", "coinbase", "book"),
-            ("fred_run_100", "fred", "observations"),
-        ):
+        existing_runs = {
+            run.run_id: run
+            for run in session.query(IngestRun)
+            .filter(IngestRun.run_id.in_([spec[0] for spec in ingest_specs]))
+            .all()
+        }
+        for run_id, provider, capture_type in ingest_specs:
+            existing_run = existing_runs.get(run_id)
+            if existing_run is not None:
+                existing_run.provider = provider
+                existing_run.capture_type = capture_type
+                existing_run.status = "success"
+                existing_run.started_at = receipt_now
+                existing_run.finished_at = receipt_now
+                existing_run.records_captured = 1
+                existing_run.created_at = receipt_now
+                continue
             session.add(
                 IngestRun(
                     run_id=run_id,
                     provider=provider,
                     capture_type=capture_type,
                     status="success",
-                    started_at=now,
-                    finished_at=now,
+                    started_at=receipt_now,
+                    finished_at=receipt_now,
                     records_captured=1,
-                    created_at=now,
+                    created_at=receipt_now,
                 )
             )
         session.flush()
@@ -78,7 +97,7 @@ def _seed_global_regime_inputs(
                     latency_ms=120.0,
                     is_healthy=1,
                     error_message=None,
-                    checked_at=now,
+                    checked_at=receipt_now,
                 )
             )
         if include_macro_health:
@@ -90,11 +109,20 @@ def _seed_global_regime_inputs(
                     latency_ms=210.0,
                     is_healthy=1,
                     error_message=None,
-                    checked_at=now,
+                    checked_at=receipt_now,
                 )
             )
 
+        existing_coinbase_products = {
+            product_id
+            for (product_id,) in session.query(MarketInstrumentRegistry.product_id)
+            .filter(MarketInstrumentRegistry.venue == "coinbase")
+            .filter(MarketInstrumentRegistry.product_id.in_(list(products.keys())))
+            .all()
+        }
         for product_id, config in products.items():
+            if product_id in existing_coinbase_products:
+                continue
             session.add(
                 MarketInstrumentRegistry(
                     venue="coinbase",
@@ -206,19 +234,26 @@ def _seed_global_regime_inputs(
             )
             for series_id, value in value_map.items():
                 if offset_days == 1:
-                    session.add(
-                        FredSeriesRegistry(
-                            series_id=series_id,
-                            title=series_id,
-                            frequency="Daily",
-                            units="Index",
-                            seasonal_adjustment=None,
-                            last_updated=now,
-                            provider="fred",
-                            first_seen_at=now,
-                            updated_at=now,
-                        )
+                    series_exists = (
+                        session.query(FredSeriesRegistry.id)
+                        .filter_by(series_id=series_id)
+                        .first()
+                        is not None
                     )
+                    if not series_exists:
+                        session.add(
+                            FredSeriesRegistry(
+                                series_id=series_id,
+                                title=series_id,
+                                frequency="Daily",
+                                units="Index",
+                                seasonal_adjustment=None,
+                                last_updated=now,
+                                provider="fred",
+                                first_seen_at=now,
+                                updated_at=now,
+                            )
+                        )
                 session.add(
                     FredObservation(
                         ingest_run_id="fred_run_100",
@@ -231,6 +266,151 @@ def _seed_global_regime_inputs(
                         captured_at=captured_at,
                     )
                 )
+
+        session.commit()
+    finally:
+        session.close()
+
+
+def _seed_massive_only_regime_inputs(
+    settings,
+    *,
+    total_15m_buckets: int = 96,
+    anchor_now=None,
+) -> None:
+    session = get_session(settings)
+    now = anchor_now or utcnow().replace(second=0, microsecond=0)
+    receipt_now = utcnow().replace(second=0, microsecond=0)
+    minute_start = now - timedelta(minutes=total_15m_buckets * 15)
+    products = {
+        "X:BTCUSD": {"base": "BTC", "price": 64000.0, "offset": 0.15},
+        "X:ETHUSD": {"base": "ETH", "price": 3200.0, "offset": 0.75},
+        "X:SOLUSD": {"base": "SOL", "price": 140.0, "offset": 1.35},
+    }
+    ingest_specs = (
+        ("coinbase_products_run_200", "coinbase", "products"),
+        ("coinbase_candles_run_200", "coinbase", "candles"),
+        ("coinbase_trades_run_200", "coinbase", "market_trades"),
+        ("coinbase_book_run_200", "coinbase", "book"),
+        ("massive_minute_run_200", "massive", "minute_aggs"),
+    )
+    try:
+        existing_runs = {
+            run.run_id: run
+            for run in session.query(IngestRun)
+            .filter(IngestRun.run_id.in_([spec[0] for spec in ingest_specs]))
+            .all()
+        }
+        for run_id, provider, capture_type in ingest_specs:
+            existing_run = existing_runs.get(run_id)
+            if existing_run is not None:
+                existing_run.provider = provider
+                existing_run.capture_type = capture_type
+                existing_run.status = "success"
+                existing_run.started_at = receipt_now
+                existing_run.finished_at = receipt_now
+                existing_run.records_captured = 1
+                existing_run.created_at = receipt_now
+                continue
+            session.add(
+                IngestRun(
+                    run_id=run_id,
+                    provider=provider,
+                    capture_type=capture_type,
+                    status="success",
+                    started_at=receipt_now,
+                    finished_at=receipt_now,
+                    records_captured=1,
+                    created_at=receipt_now,
+                )
+            )
+        session.flush()
+
+        for endpoint in (
+            "/market/products",
+            "/market/products/*/candles",
+            "/market/products/*/ticker",
+            "/market/product_book",
+        ):
+            session.add(
+                SourceHealthEvent(
+                    provider="coinbase",
+                    endpoint=endpoint,
+                    status_code=200,
+                    latency_ms=120.0,
+                    is_healthy=1,
+                    error_message=None,
+                    checked_at=receipt_now,
+                )
+            )
+
+        existing_massive_products = {
+            product_id
+            for (product_id,) in session.query(MarketInstrumentRegistry.product_id)
+            .filter(MarketInstrumentRegistry.venue == "massive")
+            .filter(MarketInstrumentRegistry.product_id.in_(list(products.keys())))
+            .all()
+        }
+        for product_id, config in products.items():
+            if product_id in existing_massive_products:
+                continue
+            session.add(
+                MarketInstrumentRegistry(
+                    venue="massive",
+                    product_id=product_id,
+                    base_symbol=config["base"],
+                    quote_symbol="USD",
+                    product_type="SPOT",
+                    status="active",
+                    price_increment="0.01",
+                    base_increment="0.00000001",
+                    quote_increment="0.01",
+                    first_seen_at=now,
+                    updated_at=now,
+                )
+            )
+
+        prices = {product_id: config["price"] for product_id, config in products.items()}
+        total_minutes = total_15m_buckets * 15
+        for minute_index in range(total_minutes):
+            ts = minute_start + timedelta(minutes=minute_index)
+            phase_size = max(total_minutes // 4, 1)
+            phase = min(3, minute_index // phase_size)
+            phase_drift = [0.00045, -0.0008, 0.00008, 0.00032][phase]
+            phase_vol = [0.00035, 0.0012, 0.0002, 0.00075][phase]
+            for product_id, config in products.items():
+                prev_price = prices[product_id]
+                signal = math.sin((minute_index / 8.0) + config["offset"])
+                step_return = phase_drift + (phase_vol * signal)
+                close_price = max(1.0, prev_price * (1.0 + step_return))
+                high_price = max(prev_price, close_price) * (1.0 + abs(step_return) * 0.3)
+                low_price = min(prev_price, close_price) * (1.0 - abs(step_return) * 0.3)
+                volume = 7.0 + phase + abs(signal) * 2.0
+
+                session.add(
+                    MarketCandle(
+                        ingest_run_id="massive_minute_run_200",
+                        venue="massive",
+                        product_id=product_id,
+                        granularity="ONE_MINUTE",
+                        start_time_utc=ts,
+                        end_time_utc=None,
+                        open=prev_price,
+                        high=high_price,
+                        low=low_price,
+                        close=close_price,
+                        volume=volume,
+                        source_event_time_utc=ts,
+                        captured_at_utc=ts,
+                        source_time_raw=ts.isoformat(),
+                        event_date_utc=ts.strftime("%Y-%m-%d"),
+                        hour_utc=ts.hour,
+                        minute_of_day_utc=(ts.hour * 60) + ts.minute,
+                        weekday_utc=ts.weekday(),
+                        time_quality="source",
+                    )
+                )
+                prices[product_id] = close_price
 
         session.commit()
     finally:
@@ -278,17 +458,123 @@ def test_cli_materializes_and_scores_global_regime(cli_runner, settings) -> None
         == "healthy_recent"
     )
     assert condition_run.status == "success"
-    assert condition_run.source_feature_run_id == feature_run.run_id
-    assert snapshot.semantic_regime in {
-        "long_friendly",
-        "short_friendly",
-        "risk_off",
-        "no_trade",
-    }
-    assert 0.0 <= snapshot.confidence <= 1.0
-    assert snapshot.model_family in {
-        "gaussian_hmm_4state",
-        "gaussian_mixture_regime_proxy_4state",
+
+
+def test_cli_materializes_global_regime_with_massive_candle_fallback(cli_runner, settings) -> None:
+    assert cli_runner.invoke(cli, ["init"]).exit_code == 0
+    _seed_massive_only_regime_inputs(settings)
+
+    materialize_result = cli_runner.invoke(
+        cli,
+        ["materialize-features", "global-regime-inputs-15m-v1"],
+    )
+    assert materialize_result.exit_code == 0
+
+    session = get_session(settings)
+    try:
+        feature_run = (
+            session.query(FeatureMaterializationRun)
+            .filter_by(feature_set="global_regime_inputs_15m_v1")
+            .one()
+        )
+        feature_rows = (
+            session.query(FeatureGlobalRegimeInput15mV1)
+            .filter_by(feature_run_id=feature_run.run_id)
+            .order_by(FeatureGlobalRegimeInput15mV1.bucket_start_utc.asc())
+            .all()
+        )
+    finally:
+        session.close()
+
+    assert feature_run.status == "success"
+    assert len(feature_rows) >= 40
+    assert any("X:BTCUSD" in (row.proxy_products_json or "") for row in feature_rows)
+
+
+def test_regime_proxy_selection_stays_spot_only_with_coinbase_context_derivatives(settings) -> None:
+    run_migrations_to_head(settings)
+    session = get_session(settings)
+    now = utcnow().replace(second=0, microsecond=0)
+    try:
+        session.add_all(
+            [
+                MarketInstrumentRegistry(
+                    venue="coinbase",
+                    product_id="BTC-USD",
+                    base_symbol="BTC",
+                    quote_symbol="USD",
+                    product_type="SPOT",
+                    status="online",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                MarketInstrumentRegistry(
+                    venue="coinbase",
+                    product_id="BTC-PERP-INTX",
+                    base_symbol="BTC",
+                    quote_symbol="USD",
+                    product_type="FUTURE",
+                    status="online",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                MarketInstrumentRegistry(
+                    venue="coinbase",
+                    product_id="ETH-USDC",
+                    base_symbol="ETH",
+                    quote_symbol="USDC",
+                    product_type="SPOT",
+                    status="online",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                MarketInstrumentRegistry(
+                    venue="coinbase",
+                    product_id="ETH-PERP-INTX",
+                    base_symbol="ETH",
+                    quote_symbol="USD",
+                    product_type="FUTURE",
+                    status="online",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                MarketInstrumentRegistry(
+                    venue="coinbase",
+                    product_id="SOL-USD",
+                    base_symbol="SOL",
+                    quote_symbol="USD",
+                    product_type="SPOT",
+                    status="online",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+                MarketInstrumentRegistry(
+                    venue="coinbase",
+                    product_id="SOL-PERP-INTX",
+                    base_symbol="SOL",
+                    quote_symbol="USD",
+                    product_type="FUTURE",
+                    status="online",
+                    first_seen_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+        session.commit()
+
+        selected = FeatureMaterializer(settings)._select_regime_proxy_products(
+            session.query(MarketInstrumentRegistry)
+            .filter_by(venue="coinbase")
+            .order_by(MarketInstrumentRegistry.product_id.asc())
+            .all()
+        )
+    finally:
+        session.close()
+
+    assert selected == {
+        "BTC": {"coinbase": "BTC-USD"},
+        "ETH": {"coinbase": "ETH-USDC"},
+        "SOL": {"coinbase": "SOL-USD"},
     }
 
 

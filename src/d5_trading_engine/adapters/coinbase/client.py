@@ -65,10 +65,29 @@ class CoinbaseClient:
         except httpx.RequestError as e:
             raise AdapterError("coinbase", f"Request failed for {path}: {e}") from e
 
-    async def list_public_products(self) -> list[dict[str, Any]]:
+    async def list_public_products(
+        self,
+        *,
+        product_type: str | None = None,
+        contract_expiry_type: str | None = None,
+        futures_underlying_type: str | None = None,
+        limit: int | None = None,
+        get_all_products: bool | None = None,
+    ) -> list[dict[str, Any]]:
         """List public Advanced Trade products."""
-        log.info("coinbase_list_public_products")
-        data = await self._request("/market/products")
+        params = {
+            key: value
+            for key, value in {
+                "product_type": product_type,
+                "contract_expiry_type": contract_expiry_type,
+                "futures_underlying_type": futures_underlying_type,
+                "limit": limit,
+                "get_all_products": get_all_products,
+            }.items()
+            if value is not None
+        }
+        log.info("coinbase_list_public_products", params=params)
+        data = await self._request("/market/products", params=params or None)
         products = data.get("products", [])
         log.info("coinbase_list_public_products_complete", count=len(products))
         return products if isinstance(products, list) else []

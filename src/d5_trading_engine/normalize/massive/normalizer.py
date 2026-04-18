@@ -184,11 +184,17 @@ class MassiveNormalizer:
         ingest_run_id: str,
         *,
         venue: str = "massive",
+        allowed_tickers: list[str] | None = None,
     ) -> int:
         """Normalize Massive minute-aggregate rows into market_candle."""
         if not rows:
             return 0
 
+        allowed_ticker_set = {
+            str(ticker).upper()
+            for ticker in (allowed_tickers or self.settings.massive_default_tickers)
+            if str(ticker).strip()
+        }
         session = get_session(self.settings)
         captured_at = utcnow()
         count = 0
@@ -196,6 +202,8 @@ class MassiveNormalizer:
             for row in rows:
                 product_id = str(row.get("ticker") or row.get("T") or "").strip()
                 if not product_id:
+                    continue
+                if allowed_ticker_set and product_id.upper() not in allowed_ticker_set:
                     continue
                 start_time = _parse_epoch_any(
                     row.get("window_start")

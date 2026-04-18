@@ -54,6 +54,8 @@ class RawStore:
         capture_type: str,
         records: list[dict],
         ingest_run_id: str | None = None,
+        *,
+        partition: str | None = None,
     ) -> Path:
         """Write records to a JSONL file atomically.
 
@@ -79,7 +81,7 @@ class RawStore:
             log.warning("raw_store_empty", provider=provider, capture_type=capture_type)
             return Path()
 
-        partition_dir = self._partition_dir(provider)
+        partition_dir = self._partition_dir(provider, partition=partition)
         now = utcnow()
         filename = f"{capture_type}_{now.strftime('%H%M%S')}_{os.getpid()}.jsonl"
         target = partition_dir / filename
@@ -120,6 +122,8 @@ class RawStore:
         capture_type: str,
         payload: dict,
         ingest_run_id: str | None = None,
+        *,
+        partition: str | None = None,
     ) -> Path:
         """Write a single payload record.
 
@@ -134,7 +138,13 @@ class RawStore:
         Returns:
             Path to the written file.
         """
-        return self.write_jsonl(provider, capture_type, [payload], ingest_run_id)
+        return self.write_jsonl(
+            provider,
+            capture_type,
+            [payload],
+            ingest_run_id,
+            partition=partition,
+        )
 
     def write_bytes(
         self,
@@ -143,13 +153,14 @@ class RawStore:
         content: bytes,
         *,
         suffix: str,
+        partition: str | None = None,
     ) -> Path:
         """Write raw bytes atomically for replayable flat-file captures."""
         if not content:
             log.warning("raw_store_bytes_empty", provider=provider, capture_type=capture_type)
             return Path()
 
-        partition_dir = self._partition_dir(provider)
+        partition_dir = self._partition_dir(provider, partition=partition)
         now = utcnow()
         filename = f"{capture_type}_{now.strftime('%H%M%S')}_{os.getpid()}{suffix}"
         target = partition_dir / filename

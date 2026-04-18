@@ -271,6 +271,7 @@ class ConditionScorer:
                 {
                     "bucket_start_utc": ensure_utc(row.bucket_start_utc),
                     "macro_context_available": int(row.macro_context_available or 0),
+                    "proxy_products_json": row.proxy_products_json,
                     **{
                         column: getattr(row, column)
                         for column in _NUMERIC_FEATURE_COLUMNS

@@ -139,32 +139,35 @@ def _seed_quote_snapshot(
                 created_at=now - timedelta(seconds=2),
             )
         )
-        session.add(
-            TokenRegistry(
-                mint=input_mint,
-                symbol="USDC" if input_mint.endswith("TDt1v") else "SOL",
-                name="Input token",
-                decimals=6 if input_mint.endswith("TDt1v") else 9,
-                logo_uri=None,
-                tags=None,
-                provider="jupiter",
-                first_seen_at=now,
-                updated_at=now,
-            )
-        )
-        session.add(
-            TokenRegistry(
-                mint=output_mint,
-                symbol="USDC" if output_mint.endswith("TDt1v") else "SOL",
-                name="Output token",
-                decimals=6 if output_mint.endswith("TDt1v") else 9,
-                logo_uri=None,
-                tags=None,
-                provider="jupiter",
-                first_seen_at=now,
-                updated_at=now,
-            )
-        )
+        for mint, symbol, name, decimals in (
+            (
+                input_mint,
+                "USDC" if input_mint.endswith("TDt1v") else "SOL",
+                "Input token",
+                6 if input_mint.endswith("TDt1v") else 9,
+            ),
+            (
+                output_mint,
+                "USDC" if output_mint.endswith("TDt1v") else "SOL",
+                "Output token",
+                6 if output_mint.endswith("TDt1v") else 9,
+            ),
+        ):
+            existing = session.query(TokenRegistry).filter_by(mint=mint).first()
+            if existing is None:
+                session.add(
+                    TokenRegistry(
+                        mint=mint,
+                        symbol=symbol,
+                        name=name,
+                        decimals=decimals,
+                        logo_uri=None,
+                        tags=None,
+                        provider="jupiter",
+                        first_seen_at=now,
+                        updated_at=now,
+                    )
+                )
         session.flush()
         row = QuoteSnapshot(
             ingest_run_id=run_id,
@@ -290,6 +293,96 @@ def test_paper_settlement_creates_quote_backed_fill_and_report(settings) -> None
     assert paper_report.report_type == "session_snapshot"
     assert paper_report.mark_method == "fill_quote"
     assert paper_report.equity_usdc == 10.0
+
+
+def test_paper_settlement_can_close_an_open_session_from_exit_quote(settings) -> None:
+    run_migrations_to_head(settings)
+    usdc_mint = _tracked_mint(settings, "USDC")
+    sol_mint = _tracked_mint(settings, "SOL")
+    risk_verdict_id = _seed_allowed_risk_verdict(
+        settings,
+        run_id="settlement_close_allowed",
+        semantic_regime="long_friendly",
+    )
+    entry_quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="quote_close_entry",
+        request_direction="usdc_to_token",
+        input_mint=usdc_mint,
+        output_mint=sol_mint,
+        input_amount="10000000",
+        output_amount="100000000",
+    )
+    execution_intent = _seed_execution_intent(
+        settings,
+        risk_verdict_id=risk_verdict_id,
+        quote_snapshot_id=entry_quote_snapshot_id,
+    )
+    opened = PaperSettlement(settings).simulate_fill(
+        execution_intent_id=execution_intent["execution_intent_id"],
+    )
+
+    close_quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="quote_close_exit",
+        request_direction="token_to_usdc",
+        input_mint=sol_mint,
+        output_mint=usdc_mint,
+        input_amount="100000000",
+        output_amount="10500000",
+    )
+    policy_trace_id = _seed_policy_trace(
+        settings,
+        run_id="condition_close_allowed",
+        semantic_regime="long_friendly",
+    )
+
+    session = get_session(settings)
+    try:
+        latest_fill = session.query(PaperFill).order_by(PaperFill.id.desc()).first()
+    finally:
+        session.close()
+    assert latest_fill is not None
+
+    result = PaperSettlement(settings).simulate_close(
+        session_key=str(opened["session_key"]),
+        quote_snapshot_id=close_quote_snapshot_id,
+        policy_trace_id=policy_trace_id,
+        risk_verdict_id=risk_verdict_id,
+        condition_snapshot_id=int(latest_fill.condition_snapshot_id),
+        source_feature_run_id=str(latest_fill.source_feature_run_id),
+        policy_state="eligible_long",
+        risk_state="allowed",
+        close_reason="take_profit",
+    )
+
+    assert result["closed"] is True
+    assert result["session_status"] == "closed"
+    assert result["realized_pnl_usdc"] == 0.5
+    assert result["reason_codes"] == ["close_reason:take_profit"]
+
+    portfolio = PaperSettlement(settings).get_portfolio_state(str(opened["session_key"]))
+    assert portfolio["session_status"] == "closed"
+    assert portfolio["cash_usdc"] == 10.5
+    assert portfolio["position_value_usdc"] == 0.0
+    assert portfolio["total_value_usdc"] == 10.5
+
+    session = get_session(settings)
+    try:
+        paper_session = session.query(PaperSession).one()
+        fills = session.query(PaperFill).order_by(PaperFill.id.asc()).all()
+        paper_position = session.query(PaperPosition).one()
+        reports = session.query(PaperSessionReport).order_by(PaperSessionReport.id.asc()).all()
+    finally:
+        session.close()
+
+    assert paper_session.status == "closed"
+    assert len(fills) == 2
+    assert fills[-1].fill_role == "exit"
+    assert paper_position.net_quantity == 0.0
+    assert paper_position.realized_pnl_usdc == 0.5
+    assert reports[-1].report_type == "session_close"
+    assert reports[-1].realized_pnl_usdc == 0.5
 
 
 def test_paper_settlement_skips_non_allowed_risk_verdict(settings) -> None:

@@ -7,11 +7,19 @@ Commands:
 - d5 materialize-features : Materialize deterministic feature tables
 - d5 score-conditions : Score bounded market conditions
 - d5 run-shadow   : Run shadow ML evaluation lanes
+- d5 run-live-regime-cycle : Refresh live intraday training inputs and emit a paper-ready receipt
 - d5 run-label-program : Run canonical label-program scoring
 - d5 run-strategy-eval : Run governed strategy challenger scoring
 - d5 run-paper-cycle : Run one bounded paper-trading cycle
+- d5 run-paper-close : Close one open paper session from an explicit exit quote
+- d5 run-paper-practice-bootstrap : Build the bounded historical practice ladder
+- d5 run-backtest-walk-forward : Replay the adaptive historical ladder over 3-month windows
+- d5 run-paper-practice-loop : Run the autonomous paper-only practice loop
+- d5 paper-practice-status : Show the active paper-practice profile and loop state
 - d5 compare-proposals : Rank reviewed proposals and optionally choose the next bounded experiment
-- d5 capture massive-minute-aggs --date YYYY-MM-DD : Replay historical Massive minute bars
+- d5 capture massive-minute-aggs --date YYYY-MM-DD : Replay one historical Massive day
+- d5 capture massive-minute-aggs --from YYYY-MM-DD --to YYYY-MM-DD : Replay a bounded Massive history range
+- d5 capture massive-minute-aggs --full-free-tier : Replay the bounded two-year Massive free-tier window
 - d5 status       : Show engine health and ingest run stats
 - d5 sync-duckdb  : Sync canonical truth tables to DuckDB mirror
 """
@@ -19,10 +27,12 @@ Commands:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sys
 from pathlib import Path
 
 import click
+import orjson
 
 from d5_trading_engine.common.logging import get_logger, setup_logging
 from d5_trading_engine.config.settings import get_settings
@@ -66,6 +76,23 @@ _STRATEGY_EVAL_CHOICES = [
 ]
 
 
+def _emit_cli_result(payload: dict[str, object], *, json_output: bool, text: str) -> None:
+    """Render one CLI result in either machine or human form."""
+
+    if json_output:
+        click.echo(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode())
+        return
+    click.echo(text)
+
+
+def _resolve_async_result(result_or_awaitable):
+    """Allow async command owners to be monkeypatched with sync fakes in tests."""
+
+    if inspect.isawaitable(result_or_awaitable):
+        return asyncio.run(result_or_awaitable)
+    return result_or_awaitable
+
+
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug logging.")
 def cli(verbose: bool) -> None:
@@ -98,12 +125,34 @@ def init() -> None:
     default=None,
     help="Optional UTC date for historical flat-file capture, in YYYY-MM-DD format.",
 )
-def capture(provider: str, date_str: str | None) -> None:
+@click.option("--from", "from_date", default=None, help="Inclusive UTC start date for range replay.")
+@click.option("--to", "to_date", default=None, help="Inclusive UTC end date for range replay.")
+@click.option(
+    "--full-free-tier",
+    is_flag=True,
+    default=False,
+    help="Replay the bounded two-year Massive crypto free-tier history window.",
+)
+@click.option(
+    "--resume/--no-resume",
+    default=True,
+    help="Skip historical Massive days that already have raw files and normalized SQL rows.",
+)
+def capture(
+    provider: str,
+    date_str: str | None,
+    from_date: str | None,
+    to_date: str | None,
+    full_free_tier: bool,
+    resume: bool,
+) -> None:
     """Run data capture for a specific provider or all."""
+    from d5_trading_engine.capture.massive_backfill import MassiveMinuteAggsBackfill
     from d5_trading_engine.capture.runner import CaptureRunner
 
     settings = get_settings()
     runner = CaptureRunner(settings)
+    backfill_runner = MassiveMinuteAggsBackfill(settings, runner=runner)
 
     async def _run() -> None:
         try:
@@ -172,11 +221,40 @@ def capture(provider: str, date_str: str | None) -> None:
                 runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Massive crypto: {run_id}")
 
-            if provider == "massive-minute-aggs" or (provider == "all" and date_str):
-                if provider == "massive-minute-aggs" and not date_str:
+            if provider == "massive-minute-aggs":
+                mode_count = int(bool(date_str)) + int(bool(from_date or to_date)) + int(bool(full_free_tier))
+                if mode_count != 1:
                     raise click.ClickException(
-                        "--date YYYY-MM-DD is required for massive-minute-aggs capture."
+                        "Choose exactly one Massive history mode: --date, --from/--to, or --full-free-tier."
                     )
+                if date_str:
+                    run_id = await runner.capture_massive_minute_aggs(date_str)
+                    runner.write_capture_receipts(
+                        run_id,
+                        context={"requested_provider": provider, "date": date_str},
+                    )
+                    click.echo(f"  ✓ Massive minute aggs: {run_id}")
+                elif full_free_tier:
+                    payload = await backfill_runner.backfill_full_free_tier(resume=resume)
+                    click.echo(
+                        "  ✓ Massive minute aggs backfill: "
+                        f"{payload['batch_id']} captured={payload['days']['captured_count']} "
+                        f"skipped={payload['days']['skipped_count']}"
+                    )
+                else:
+                    if not from_date or not to_date:
+                        raise click.ClickException("--from and --to are both required for range replay.")
+                    payload = await backfill_runner.backfill_range(
+                        start_date=from_date,
+                        end_date=to_date,
+                        resume=resume,
+                    )
+                    click.echo(
+                        "  ✓ Massive minute aggs backfill: "
+                        f"{payload['batch_id']} captured={payload['days']['captured_count']} "
+                        f"skipped={payload['days']['skipped_count']}"
+                    )
+            elif provider == "all" and date_str:
                 run_id = await runner.capture_massive_minute_aggs(date_str)
                 runner.write_capture_receipts(
                     run_id,
@@ -194,7 +272,8 @@ def capture(provider: str, date_str: str | None) -> None:
 
 @cli.command("materialize-features")
 @click.argument("feature_set", type=click.Choice(_FEATURE_SET_CHOICES, case_sensitive=False))
-def materialize_features(feature_set: str) -> None:
+@click.option("--json", "json_output", is_flag=True, default=False)
+def materialize_features(feature_set: str, json_output: bool) -> None:
     """Materialize a deterministic feature set from canonical truth."""
     from d5_trading_engine.features.materializer import FeatureMaterializer
 
@@ -203,11 +282,29 @@ def materialize_features(feature_set: str) -> None:
     try:
         if feature_set == "global-regime-inputs-15m-v1":
             run_id, row_count = materializer.materialize_global_regime_inputs_15m_v1()
-            click.echo(f"✓ global_regime_inputs_15m_v1: {run_id} rows={row_count}")
+            _emit_cli_result(
+                {
+                    "status": "completed",
+                    "feature_set": "global_regime_inputs_15m_v1",
+                    "feature_run_id": run_id,
+                    "row_count": row_count,
+                },
+                json_output=json_output,
+                text=f"✓ global_regime_inputs_15m_v1: {run_id} rows={row_count}",
+            )
             return
         if feature_set == "spot-chain-macro-v1":
             run_id, row_count = materializer.materialize_spot_chain_macro_v1()
-            click.echo(f"✓ spot_chain_macro_v1: {run_id} rows={row_count}")
+            _emit_cli_result(
+                {
+                    "status": "completed",
+                    "feature_set": "spot_chain_macro_v1",
+                    "feature_run_id": run_id,
+                    "row_count": row_count,
+                },
+                json_output=json_output,
+                text=f"✓ spot_chain_macro_v1: {run_id} rows={row_count}",
+            )
             return
         raise click.ClickException(f"Unsupported feature set: {feature_set}")
     except Exception as exc:
@@ -217,7 +314,8 @@ def materialize_features(feature_set: str) -> None:
 
 @cli.command("score-conditions")
 @click.argument("condition_set", type=click.Choice(_CONDITION_SET_CHOICES, case_sensitive=False))
-def score_conditions(condition_set: str) -> None:
+@click.option("--json", "json_output", is_flag=True, default=False)
+def score_conditions(condition_set: str, json_output: bool) -> None:
     """Score a bounded condition set from deterministic feature inputs."""
     from d5_trading_engine.condition.scorer import ConditionScorer
 
@@ -227,10 +325,14 @@ def score_conditions(condition_set: str) -> None:
         if condition_set == "global-regime-v1":
             result = scorer.score_global_regime_v1()
             latest = result["latest_snapshot"]
-            click.echo(
-                "✓ global_regime_v1: "
-                f"{result['run_id']} regime={latest['semantic_regime']} "
-                f"confidence={latest['confidence']:.3f} model={result['model_family']}"
+            _emit_cli_result(
+                result,
+                json_output=json_output,
+                text=(
+                    "✓ global_regime_v1: "
+                    f"{result['run_id']} regime={latest['semantic_regime']} "
+                    f"confidence={latest['confidence']:.3f} model={result['model_family']}"
+                ),
             )
             return
         raise click.ClickException(f"Unsupported condition set: {condition_set}")
@@ -241,7 +343,29 @@ def score_conditions(condition_set: str) -> None:
 
 @cli.command("run-shadow")
 @click.argument("shadow_run", type=click.Choice(_SHADOW_RUN_CHOICES, case_sensitive=False))
-def run_shadow(shadow_run: str) -> None:
+@click.option("--history-start", default=None, help="Inclusive UTC start date for bounded shadow history.")
+@click.option("--history-end", default=None, help="Inclusive UTC end date for bounded shadow history.")
+@click.option(
+    "--use-massive-context/--no-use-massive-context",
+    default=True,
+    help="Keep or filter out Massive-backed feature buckets during the shadow comparison.",
+)
+@click.option(
+    "--refit-cadence-buckets",
+    default=4,
+    type=int,
+    show_default=True,
+    help="Refit cadence for walk-forward shadow regime comparison.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_shadow(
+    shadow_run: str,
+    history_start: str | None,
+    history_end: str | None,
+    use_massive_context: bool,
+    refit_cadence_buckets: int,
+    json_output: bool,
+) -> None:
     """Run a bounded shadow ML evaluation lane."""
     from d5_trading_engine.research_loop.regime_model_compare import (
         RegimeModelComparator,
@@ -254,24 +378,70 @@ def run_shadow(shadow_run: str) -> None:
     try:
         if shadow_run == "intraday-meta-stack-v1":
             result = runner.run_intraday_meta_stack_v1()
-            click.echo(
-                "✓ intraday_meta_stack_v1: "
-                f"{result['run_id']} artifacts={result['artifact_dir']} "
-                f"chronos={result['chronos_status']}"
+            _emit_cli_result(
+                result,
+                json_output=json_output,
+                text=(
+                    "✓ intraday_meta_stack_v1: "
+                    f"{result['run_id']} artifacts={result['artifact_dir']} "
+                    f"chronos={result['chronos_status']}"
+                ),
             )
             return
         if shadow_run == "regime-model-compare-v1":
-            result = comparator.run_regime_model_compare_v1()
-            click.echo(
-                "✓ regime_model_compare_v1: "
-                f"{result['run_id']} artifacts={result['artifact_dir']} "
-                f"recommended={result['recommended_candidate']} "
-                f"proposal={result['proposal_status']}"
+            result = comparator.run_regime_model_compare_v1(
+                history_start=history_start,
+                history_end=history_end,
+                use_massive_context=use_massive_context,
+                refit_cadence_buckets=refit_cadence_buckets,
+            )
+            _emit_cli_result(
+                result,
+                json_output=json_output,
+                text=(
+                    "✓ regime_model_compare_v1: "
+                    f"{result['run_id']} artifacts={result['artifact_dir']} "
+                    f"recommended={result['recommended_candidate']} "
+                    f"proposal={result['proposal_status']}"
+                ),
             )
             return
         raise click.ClickException(f"Unsupported shadow run: {shadow_run}")
     except Exception as exc:
         click.echo(f"✗ Shadow run failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-live-regime-cycle")
+@click.option(
+    "--with-helius-ws",
+    is_flag=True,
+    default=False,
+    help="Include one bounded Helius websocket burst in the live intraday training cycle.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_live_regime_cycle(with_helius_ws: bool, json_output: bool) -> None:
+    """Refresh live intraday inputs and emit a paper-ready receipt without auto-trading."""
+    from d5_trading_engine.research_loop.live_regime_cycle import LiveRegimeCycleRunner
+
+    runner = LiveRegimeCycleRunner(get_settings())
+
+    try:
+        result = _resolve_async_result(
+            runner.run_live_regime_cycle(with_helius_ws=with_helius_ws)
+        )
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ live_regime_cycle: "
+                f"{result['cycle_id']} quote_snapshot={result['quote_snapshot_id']} "
+                f"ready_for_paper_cycle={result['ready_for_paper_cycle']} "
+                f"proposal={result['proposal_status']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Live regime cycle failed: {exc}", err=True)
         sys.exit(1)
 
 
@@ -338,10 +508,12 @@ def run_strategy_eval(strategy_eval: str) -> None:
         ".ai/dropbox/research/STRAT-001__strategy_challenger_report.json."
     ),
 )
+@click.option("--json", "json_output", is_flag=True, default=False)
 def run_paper_cycle(
     quote_snapshot_id: int,
     condition_run_id: str | None,
     strategy_report: Path | None,
+    json_output: bool,
 ) -> None:
     """Run one bounded paper-trading cycle from advisory strategy to settlement."""
     from d5_trading_engine.paper_runtime.operator import PaperTradeOperator
@@ -354,15 +526,179 @@ def run_paper_cycle(
             strategy_report_path=strategy_report,
             condition_run_id=condition_run_id,
         )
-        click.echo(
-            "✓ paper_cycle: "
-            f"{result['session_key']} status={result['session_status']} "
-            f"filled={result['filled']} "
-            f"top_family={result['strategy_selection']['top_family']} "
-            f"artifacts={result['artifact_dir']}"
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ paper_cycle: "
+                f"{result['session_key']} status={result['session_status']} "
+                f"filled={result['filled']} "
+                f"top_family={result['strategy_selection']['top_family']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
         )
     except Exception as exc:
         click.echo(f"✗ Paper cycle failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-paper-close")
+@click.argument("session_key")
+@click.option("--quote-snapshot-id", required=True, type=int)
+@click.option("--reason", "close_reason", required=True)
+@click.option(
+    "--condition-run-id",
+    default=None,
+    help="Optional condition run id to replay a specific close-time regime receipt.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_paper_close(
+    session_key: str,
+    quote_snapshot_id: int,
+    close_reason: str,
+    condition_run_id: str | None,
+    json_output: bool,
+) -> None:
+    """Close one open paper session from an explicit exit quote."""
+    from d5_trading_engine.paper_runtime.operator import PaperTradeOperator
+
+    operator = PaperTradeOperator(get_settings())
+
+    try:
+        result = operator.close_cycle(
+            session_key=session_key,
+            quote_snapshot_id=quote_snapshot_id,
+            close_reason=close_reason,
+            condition_run_id=condition_run_id,
+        )
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ paper_close: "
+                f"{result['session_key']} status={result['settlement_result']['session_status']} "
+                f"realized_pnl_usdc={result['settlement_result']['realized_pnl_usdc']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Paper close failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-paper-practice-bootstrap")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_paper_practice_bootstrap(json_output: bool) -> None:
+    """Run the bounded historical bootstrap for autonomous paper practice."""
+    from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+
+    runtime = PaperPracticeRuntime(get_settings())
+
+    try:
+        result = runtime.run_bootstrap()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ paper_practice_bootstrap: "
+                f"{result['bootstrap_id']} profile={result['profile_id']} "
+                f"feature_run={result['feature_run_id']} "
+                f"comparison={result['comparison_result']['run_id']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Paper practice bootstrap failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-backtest-walk-forward")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_backtest_walk_forward(json_output: bool) -> None:
+    """Run the adaptive historical walk-forward replay ladder.""" 
+    from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+
+    runtime = PaperPracticeRuntime(get_settings())
+
+    try:
+        result = runtime.run_backtest_walk_forward()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ backtest_walk_forward: "
+                f"{result['run_id']} status={result['status']} "
+                f"windows={result['window_count']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Backtest walk-forward failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-paper-practice-loop")
+@click.option(
+    "--with-helius-ws",
+    is_flag=True,
+    default=False,
+    help="Include one bounded Helius websocket burst in each live regime cycle.",
+)
+@click.option("--max-iterations", type=int, default=None)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_paper_practice_loop(
+    with_helius_ws: bool,
+    max_iterations: int | None,
+    json_output: bool,
+) -> None:
+    """Run the autonomous paper-only practice loop."""
+    from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+
+    runtime = PaperPracticeRuntime(get_settings())
+
+    try:
+        result = runtime.run_loop(
+            with_helius_ws=with_helius_ws,
+            max_iterations=max_iterations,
+        )
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ paper_practice_loop: "
+                f"{result['loop_run_id']} status={result['status']} "
+                f"iterations={result['iterations_completed']} "
+                f"profile={result['active_profile_id']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Paper practice loop failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("paper-practice-status")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def paper_practice_status(json_output: bool) -> None:
+    """Show the active paper-practice profile and latest loop state."""
+    from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+
+    runtime = PaperPracticeRuntime(get_settings())
+
+    try:
+        result = runtime.get_status()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ paper_practice_status: "
+                f"profile={result['active_profile_id']} "
+                f"revision={result['active_revision_id']} "
+                f"open_session={result['open_session_key'] or 'none'} "
+                f"loop_status={result['latest_loop_status'] or 'none'}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Paper practice status failed: {exc}", err=True)
         sys.exit(1)
 
 
@@ -620,6 +956,10 @@ def sync_duckdb(tables: tuple[str, ...]) -> None:
         "proposal_comparison_v1",
         "proposal_comparison_item_v1",
         "proposal_supersession_v1",
+        "paper_practice_profile_v1",
+        "paper_practice_profile_revision_v1",
+        "paper_practice_loop_run_v1",
+        "paper_practice_decision_v1",
     ]
 
     tables_to_sync = list(tables) if tables else default_tables

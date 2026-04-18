@@ -44,6 +44,8 @@ Current concrete surfaces include:
 - `backtest_session_report_v1`
 - `experiment_realized_feedback_v1`
 - `intraday_meta_stack_v1`
+- `regime_model_compare_v1`
+- `live_regime_cycle`
 
 ## Next governed gaps
 
@@ -69,6 +71,8 @@ The next governed product gaps are now:
 - strategy registry and challenger governance
 - real-data paper-trading readiness, including enough governed regime history to
   run paper cycles on live repo truth
+- a repeatable historical-to-live Solana paper ladder grounded in the bounded
+  Massive free-tier minute window and live Jupiter/Helius/Coinbase receipts
 - bounded AI-reviewed research proposal packets between `LABEL-001` and
   `STRAT-001` are now allowed as long as the result stays advisory
 
@@ -164,3 +168,56 @@ comparison:
 - artifact evidence under `data/research/regime_model_compare/<run_id>/`
 - advisory-only `regime_model_compare_follow_on` proposal packets
 - no widening of policy, risk, execution, settlement, or runtime authority
+
+The current paper-training surface also includes a bounded live-cycle owner:
+
+- `d5 run-live-regime-cycle`
+- bounded live capture order:
+  - Jupiter prices
+  - Jupiter quotes
+  - Helius transactions
+  - Coinbase candles for bounded spot/futures/perp context products after
+    merging default spot inventory with filtered futures and perpetual product
+    discovery
+  - Coinbase book when the product exposes a public pricebook
+  - Coinbase market trades
+- rematerializes:
+  - `spot_chain_macro_v1`
+  - `global_regime_inputs_15m_v1`
+- reruns:
+  - `global_regime_v1`
+  - `regime_model_compare_v1`
+- evaluates:
+  - `policy_global_regime_trace_v1`
+  - `risk_global_regime_gate_v1`
+- writes a paper-ready receipt with the freshest eligible `SOL/USDC` quote
+  snapshot and the latest condition/policy/risk ids
+- keeps the current regime/materialization path spot-only even though Coinbase
+  now also ingests context-only futures, perp, gold, and crude-oil products
+- does not auto-run settlement and does not widen runtime authority
+
+The current paper-runtime stack now also includes a bounded autonomous
+paper-practice overlay:
+
+- `d5 run-paper-practice-bootstrap`
+- `d5 run-paper-practice-loop`
+- `d5 paper-practice-status`
+- `d5 run-paper-close`
+- SQL-backed profile overlay truth in:
+  - `paper_practice_profile_v1`
+  - `paper_practice_profile_revision_v1`
+  - `paper_practice_loop_run_v1`
+  - `paper_practice_decision_v1`
+- automatic adaptation is limited to paper-only profile keys such as confidence,
+  stops, cooldown, and selected strategy family
+- no YAML policy mutation, no risk-gate code mutation, and no live execution
+  authority widening
+
+The current historical ladder is now bounded, explicit, and evidence-first:
+
+- `d5 capture massive-minute-aggs --full-free-tier`
+- uses the repo's Massive free-tier assumption of a 2-year minute-history window
+- preserves raw `.csv.gz` files for replay
+- normalizes only `X:SOLUSD`, `X:BTCUSD`, and `X:ETHUSD` into canonical SQL
+- feeds the canonical 15-minute regime feature lane rather than a separate
+  shadow-only store

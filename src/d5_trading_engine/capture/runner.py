@@ -19,7 +19,7 @@ from pathlib import Path
 
 import orjson
 
-from d5_trading_engine.common.errors import CaptureError
+from d5_trading_engine.common.errors import AdapterError, CaptureError
 from d5_trading_engine.common.logging import get_logger
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
@@ -254,29 +254,58 @@ class CaptureRunner:
     def _resolve_tracked_symbols(self) -> set[str]:
         """Resolve stable symbol hints from the pinned mint universe."""
         return {
-            self.settings.token_symbol_hints[mint]
+            self.settings.token_symbol_hints[mint].upper()
             for mint in self.settings.token_universe
             if mint in self.settings.token_symbol_hints
         }
 
+    def _resolve_coinbase_context_symbols(self) -> set[str]:
+        """Resolve the bounded Coinbase context symbol universe."""
+        return self._resolve_tracked_symbols() | {
+            symbol.upper() for symbol in self.settings.coinbase_context_symbols
+        }
+
     def _select_coinbase_products(self, products: list[dict]) -> list[dict]:
-        """Select Coinbase spot products that intersect the tracked mint universe."""
-        tracked_symbols = self._resolve_tracked_symbols()
+        """Select bounded Coinbase context products for spot, futures, and perps."""
+        from d5_trading_engine.normalize.coinbase.normalizer import derive_coinbase_product_metadata
+
+        tracked_symbols = self._resolve_coinbase_context_symbols()
         selected: list[dict] = []
         for product in products:
             if not isinstance(product, dict):
                 continue
-            base_symbol = product.get("base_display_symbol") or product.get("base_currency_id")
-            quote_symbol = product.get("quote_display_symbol") or product.get("quote_currency_id")
-            product_type = (product.get("product_type") or "").upper()
+            metadata = derive_coinbase_product_metadata(product)
+            base_symbol = (metadata["base_symbol"] or "").upper()
+            quote_symbol = (metadata["quote_symbol"] or "").upper()
+            product_type = (metadata["product_type"] or "").upper()
             if base_symbol not in tracked_symbols:
                 continue
-            if quote_symbol not in {"USD", "USDC"}:
+            if product_type == "SPOT" and quote_symbol in {"USD", "USDC"}:
+                selected.append(product)
                 continue
-            if product_type and product_type != "SPOT":
-                continue
-            selected.append(product)
+            if product_type == "FUTURE":
+                selected.append(product)
         return selected
+
+    async def _load_coinbase_context_products(self, client) -> list[dict]:
+        """Load the bounded Coinbase spot + futures/perp context inventory."""
+        merged_products: dict[str, dict] = {}
+        for params in (
+            {},
+            {"product_type": "FUTURE"},
+            {"product_type": "FUTURE", "contract_expiry_type": "PERPETUAL"},
+        ):
+            for product in await client.list_public_products(**params):
+                product_id = product.get("product_id") or product.get("productId")
+                if not product_id:
+                    continue
+                merged_products[product_id] = product
+        return self._select_coinbase_products(list(merged_products.values()))
+
+    @staticmethod
+    def _should_skip_coinbase_product_error(exc: Exception) -> bool:
+        """Return True when a per-product Coinbase market-data miss should not fail the lane."""
+        return isinstance(exc, AdapterError) and exc.status_code == 404
 
     async def capture_jupiter_tokens(self) -> str:
         """Capture Jupiter token metadata."""
@@ -446,6 +475,89 @@ class CaptureRunner:
             raise CaptureError(f"Jupiter quote capture failed: {exc}") from exc
 
         return run_id
+
+    async def capture_jupiter_exact_quote(
+        self,
+        *,
+        input_mint: str,
+        output_mint: str,
+        amount: int,
+        request_direction: str,
+    ) -> dict[str, object]:
+        """Capture one exact Jupiter quote and return the persisted snapshot id."""
+        from d5_trading_engine.adapters.jupiter.client import JupiterClient
+        from d5_trading_engine.normalize.jupiter.normalizer import JupiterNormalizer
+        from d5_trading_engine.storage.truth.models import QuoteSnapshot, RawJupiterQuoteResponse
+
+        run_id = self._start_ingest_run("jupiter", "quotes")
+        start = time.monotonic()
+        try:
+            client = JupiterClient(self.settings)
+            normalizer = JupiterNormalizer(self.settings)
+            try:
+                requested_at = utcnow()
+                request_start = time.monotonic()
+                quote = await client.fetch_quote(input_mint, output_mint, amount)
+                response_latency_ms = (time.monotonic() - request_start) * 1000
+                captured_at = utcnow()
+            finally:
+                await client.close()
+
+            self.raw_store.write_single("jupiter", "quote", quote, run_id)
+            self._write_raw_rows(
+                RawJupiterQuoteResponse,
+                [
+                    {
+                        "ingest_run_id": run_id,
+                        "provider": "jupiter",
+                        "input_mint": input_mint,
+                        "output_mint": output_mint,
+                        "amount": str(amount),
+                        "request_direction": request_direction,
+                        "requested_at": requested_at,
+                        "response_latency_ms": response_latency_ms,
+                        "source_event_time_utc": None,
+                        "source_time_raw": None,
+                        "payload": orjson.dumps(quote).decode(),
+                        "captured_at": captured_at,
+                    }
+                ],
+            )
+            normalizer.normalize_quote(
+                quote,
+                run_id,
+                request_direction=request_direction,
+                requested_at=requested_at,
+                response_latency_ms=response_latency_ms,
+                captured_at=captured_at,
+            )
+            self._log_health("jupiter", "/swap/v1/quote", True, (time.monotonic() - start) * 1000)
+            self._finish_ingest_run(run_id, "success", 1)
+
+            session = get_session(self.settings)
+            try:
+                snapshot = (
+                    session.query(QuoteSnapshot)
+                    .filter_by(ingest_run_id=run_id)
+                    .order_by(QuoteSnapshot.id.desc())
+                    .first()
+                )
+                if snapshot is None:
+                    raise RuntimeError(
+                        "Exact Jupiter quote capture finished without a persisted quote_snapshot row."
+                    )
+                return {
+                    "run_id": run_id,
+                    "quote_snapshot_id": int(snapshot.id),
+                    "request_direction": request_direction,
+                }
+            finally:
+                session.close()
+        except Exception as exc:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            self._log_health("jupiter", "/swap/v1/quote", False, elapsed_ms, error=str(exc))
+            self._finish_ingest_run(run_id, "failed", error=str(exc))
+            raise CaptureError(f"Jupiter exact quote capture failed: {exc}") from exc
 
     async def capture_helius_transactions(self, addresses: list[str] | None = None) -> str:
         """Capture Helius enhanced transactions for tracked addresses."""
@@ -628,7 +740,7 @@ class CaptureRunner:
         return run_id
 
     async def capture_coinbase_products(self) -> str:
-        """Capture tracked Coinbase spot products into raw and canonical stores."""
+        """Capture bounded Coinbase spot/futures/perp products into raw and canonical stores."""
         from d5_trading_engine.adapters.coinbase.client import CoinbaseClient
         from d5_trading_engine.normalize.coinbase.normalizer import CoinbaseNormalizer
         from d5_trading_engine.storage.coinbase_raw.engine import (
@@ -642,13 +754,12 @@ class CaptureRunner:
             initialize_coinbase_raw(self.settings)
             client = CoinbaseClient(self.settings)
             try:
-                products = await client.list_public_products()
+                products = await self._load_coinbase_context_products(client)
             finally:
                 await client.close()
 
-            selected_products = self._select_coinbase_products(products)
             captured_at = utcnow()
-            self.raw_store.write_jsonl("coinbase", "products", selected_products, run_id)
+            self.raw_store.write_jsonl("coinbase", "products", products, run_id)
             self._write_coinbase_raw_rows(
                 RawCoinbaseProduct,
                 [
@@ -658,12 +769,12 @@ class CaptureRunner:
                         "payload": orjson.dumps(product).decode(),
                         "captured_at": captured_at,
                     }
-                    for product in selected_products
+                    for product in products
                 ],
             )
 
             normalizer = CoinbaseNormalizer(self.settings)
-            total_records = normalizer.normalize_products(selected_products)
+            total_records = normalizer.normalize_products(products)
             elapsed_ms = (time.monotonic() - start) * 1000
             self._log_health("coinbase", "/market/products", True, elapsed_ms)
             self._finish_ingest_run(run_id, "success", total_records)
@@ -676,7 +787,7 @@ class CaptureRunner:
         return run_id
 
     async def capture_coinbase_candles(self) -> str:
-        """Capture Coinbase candles for the tracked spot products."""
+        """Capture Coinbase candles for the bounded context product set."""
         from d5_trading_engine.adapters.coinbase.client import CoinbaseClient
         from d5_trading_engine.normalize.coinbase.normalizer import CoinbaseNormalizer
         from d5_trading_engine.storage.coinbase_raw.engine import (
@@ -692,15 +803,25 @@ class CaptureRunner:
             client = CoinbaseClient(self.settings)
             normalizer = CoinbaseNormalizer(self.settings)
             try:
-                products = self._select_coinbase_products(await client.list_public_products())
+                products = await self._load_coinbase_context_products(client)
                 for product in products:
                     product_id = product.get("product_id") or product.get("productId")
                     if not product_id:
                         continue
-                    candles = await client.get_public_candles(
-                        product_id,
-                        limit=self.settings.coinbase_candle_history_minutes,
-                    )
+                    try:
+                        candles = await client.get_public_candles(
+                            product_id,
+                            limit=self.settings.coinbase_candle_history_minutes,
+                        )
+                    except Exception as exc:
+                        if self._should_skip_coinbase_product_error(exc):
+                            log.warning(
+                                "coinbase_candle_capture_skipped_product",
+                                product_id=product_id,
+                                reason=str(exc),
+                            )
+                            continue
+                        raise
                     if not candles:
                         continue
                     captured_at = utcnow()
@@ -740,7 +861,7 @@ class CaptureRunner:
         return run_id
 
     async def capture_coinbase_market_trades(self) -> str:
-        """Capture Coinbase recent trade prints for tracked spot products."""
+        """Capture Coinbase recent trade prints for the bounded context product set."""
         from d5_trading_engine.adapters.coinbase.client import CoinbaseClient
         from d5_trading_engine.normalize.coinbase.normalizer import CoinbaseNormalizer
         from d5_trading_engine.storage.coinbase_raw.engine import (
@@ -756,12 +877,22 @@ class CaptureRunner:
             client = CoinbaseClient(self.settings)
             normalizer = CoinbaseNormalizer(self.settings)
             try:
-                products = self._select_coinbase_products(await client.list_public_products())
+                products = await self._load_coinbase_context_products(client)
                 for product in products:
                     product_id = product.get("product_id") or product.get("productId")
                     if not product_id:
                         continue
-                    trades = await client.get_public_market_trades(product_id)
+                    try:
+                        trades = await client.get_public_market_trades(product_id)
+                    except Exception as exc:
+                        if self._should_skip_coinbase_product_error(exc):
+                            log.warning(
+                                "coinbase_trade_capture_skipped_product",
+                                product_id=product_id,
+                                reason=str(exc),
+                            )
+                            continue
+                        raise
                     if not trades:
                         continue
                     captured_at = utcnow()
@@ -809,7 +940,7 @@ class CaptureRunner:
         return run_id
 
     async def capture_coinbase_book(self) -> str:
-        """Capture Coinbase L2 book snapshots for tracked spot products."""
+        """Capture Coinbase L2 book snapshots for the bounded context product set."""
         from d5_trading_engine.adapters.coinbase.client import CoinbaseClient
         from d5_trading_engine.normalize.coinbase.normalizer import CoinbaseNormalizer
         from d5_trading_engine.storage.coinbase_raw.engine import (
@@ -825,12 +956,22 @@ class CaptureRunner:
             client = CoinbaseClient(self.settings)
             normalizer = CoinbaseNormalizer(self.settings)
             try:
-                products = self._select_coinbase_products(await client.list_public_products())
+                products = await self._load_coinbase_context_products(client)
                 for product in products:
                     product_id = product.get("product_id") or product.get("productId")
                     if not product_id:
                         continue
-                    book = await client.get_public_product_book(product_id)
+                    try:
+                        book = await client.get_public_product_book(product_id)
+                    except Exception as exc:
+                        if self._should_skip_coinbase_product_error(exc):
+                            log.warning(
+                                "coinbase_book_capture_skipped_product",
+                                product_id=product_id,
+                                reason=str(exc),
+                            )
+                            continue
+                        raise
                     if not book:
                         continue
                     captured_at = utcnow()
@@ -1022,7 +1163,13 @@ class CaptureRunner:
 
         return run_id
 
-    async def capture_massive_minute_aggs(self, date_str: str) -> str:
+    async def capture_massive_minute_aggs(
+        self,
+        date_str: str,
+        *,
+        allowed_tickers: list[str] | None = None,
+        partition: str | None = None,
+    ) -> str:
         """Capture a replayable Massive minute-aggregate flat file for one UTC date."""
         from d5_trading_engine.adapters.massive.client import MassiveClient
         from d5_trading_engine.normalize.massive.normalizer import MassiveNormalizer
@@ -1044,6 +1191,7 @@ class CaptureRunner:
                 f"minute_aggs_{date_str}",
                 raw_content,
                 suffix=".csv.gz",
+                partition=partition or date_str,
             )
             captured_at = utcnow()
             self._write_raw_rows(
@@ -1058,13 +1206,20 @@ class CaptureRunner:
                                 "date": date_str,
                                 "flatfile_path": str(raw_path),
                                 "row_count": len(rows),
+                                "normalized_tickers": list(
+                                    allowed_tickers or self.settings.massive_default_tickers
+                                ),
                             }
                         ).decode(),
                         "captured_at": captured_at,
                     }
                 ],
             )
-            count = MassiveNormalizer(self.settings).normalize_minute_aggs(rows, run_id)
+            count = MassiveNormalizer(self.settings).normalize_minute_aggs(
+                rows,
+                run_id,
+                allowed_tickers=allowed_tickers,
+            )
             elapsed_ms = (time.monotonic() - start) * 1000
             self._log_health("massive", "minute_aggs_flatfile", True, elapsed_ms)
             self._finish_ingest_run(run_id, "success", count)

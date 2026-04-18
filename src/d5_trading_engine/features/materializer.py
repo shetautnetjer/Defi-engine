@@ -84,6 +84,7 @@ _GLOBAL_REGIME_REQUIRED_LANES = (
 )
 _GLOBAL_REGIME_OPTIONAL_LANES = ("fred-observations",)
 _REGIME_PROXY_PREFERENCE = ("BTC", "ETH", "SOL")
+_REGIME_MARKET_VENUE_PREFERENCE = ("coinbase", "massive")
 _REGIME_BUCKET_MINUTES = 15
 _FOUR_HOUR_BUCKET_COUNT = 16
 
@@ -374,12 +375,15 @@ class FeatureMaterializer:
             for instrument in sorted(
                 instrument_rows,
                 key=lambda item: (
+                    0 if (item.product_type or "").upper() == "SPOT" else 1,
                     0 if (item.quote_symbol or "").upper() == "USD" else 1,
                     0 if (item.status or "").lower() == "online" else 1,
                     item.product_id,
                 ),
             ):
                 if not instrument.base_symbol or instrument.base_symbol in product_by_symbol:
+                    continue
+                if (instrument.product_type or "").upper() != "SPOT":
                     continue
                 if (instrument.quote_symbol or "").upper() not in {"USD", "USDC"}:
                     continue
@@ -564,13 +568,14 @@ class FeatureMaterializer:
         created_at = utcnow()
         try:
             proxy_products = self._select_regime_proxy_products(
-                session.query(MarketInstrumentRegistry).filter_by(venue="coinbase").all()
+                session.query(MarketInstrumentRegistry)
+                .filter(MarketInstrumentRegistry.venue.in_(list(_REGIME_MARKET_VENUE_PREFERENCE)))
+                .all()
             )
             if not proxy_products:
                 return []
 
-            product_ids = list(proxy_products.values())
-            bucket_stats = self._aggregate_regime_market_stats(session, product_ids)
+            bucket_stats = self._aggregate_regime_market_stats(session, proxy_products)
             if not bucket_stats:
                 return []
 
@@ -590,7 +595,7 @@ class FeatureMaterializer:
             sorted_buckets = sorted(
                 {
                     bucket
-                    for (_, bucket) in bucket_stats["candles"]
+                    for (_, _, bucket) in bucket_stats["candles"]
                 }
             )
             aggregate_returns: list[float] = []
@@ -603,23 +608,35 @@ class FeatureMaterializer:
                 spread_values: list[float] = []
                 included_products: list[str] = []
 
-                for product_id in product_ids:
-                    candle_entry = bucket_stats["candles"].get((product_id, bucket))
+                for symbol, venue_products in proxy_products.items():
+                    candle_entry = None
+                    selected_product_id = None
+                    for venue in _REGIME_MARKET_VENUE_PREFERENCE:
+                        product_id = venue_products.get(venue)
+                        if product_id is None:
+                            continue
+                        candidate = bucket_stats["candles"].get((symbol, venue, bucket))
+                        if candidate is None or candidate["close"] is None:
+                            continue
+                        candle_entry = candidate
+                        selected_product_id = product_id
+                        break
                     if candle_entry is None or candle_entry["close"] is None:
                         continue
-                    included_products.append(product_id)
+                    assert selected_product_id is not None
+                    included_products.append(selected_product_id)
                     if candle_entry["return_15m"] is not None:
                         product_returns.append(float(candle_entry["return_15m"]))
                     if candle_entry["realized_vol_15m"] is not None:
                         product_realized_vols.append(float(candle_entry["realized_vol_15m"]))
                     product_volumes.append(float(candle_entry["volume_sum"]))
 
-                    trade_entry = bucket_stats["trades"].get((product_id, bucket))
+                    trade_entry = bucket_stats["trades"].get((symbol, bucket))
                     if trade_entry is not None:
                         trade_counts.append(int(trade_entry["count"]))
                         trade_sizes.append(float(trade_entry["size_sum"]))
 
-                    book_entry = bucket_stats["books"].get((product_id, bucket))
+                    book_entry = bucket_stats["books"].get((symbol, bucket))
                     if book_entry is not None and book_entry["spread_mean"] is not None:
                         spread_values.append(float(book_entry["spread_mean"]))
 
@@ -688,9 +705,23 @@ class FeatureMaterializer:
     def _aggregate_regime_market_stats(
         self,
         session,
-        product_ids: list[str],
+        proxy_products: dict[str, dict[str, str]],
     ) -> dict[str, dict[tuple[str, datetime], dict[str, float | int | None]]]:
-        candle_buckets: dict[tuple[str, datetime], dict[str, object]] = defaultdict(
+        candle_products = {
+            (venue, product_id): symbol
+            for symbol, venue_products in proxy_products.items()
+            for venue, product_id in venue_products.items()
+            if product_id
+        }
+        candle_product_ids = [product_id for (_, product_id) in candle_products]
+        trade_products = {
+            product_id: symbol
+            for symbol, venue_products in proxy_products.items()
+            for venue, product_id in venue_products.items()
+            if venue == "coinbase" and product_id
+        }
+
+        candle_buckets: dict[tuple[str, str, datetime], dict[str, object]] = defaultdict(
             lambda: {
                 "open": None,
                 "close": None,
@@ -701,16 +732,20 @@ class FeatureMaterializer:
         )
         for row in (
             session.query(MarketCandle)
-            .filter(MarketCandle.product_id.in_(product_ids))
-            .order_by(MarketCandle.product_id.asc(), MarketCandle.start_time_utc.asc())
+            .filter(MarketCandle.product_id.in_(candle_product_ids))
+            .filter(MarketCandle.venue.in_(list(_REGIME_MARKET_VENUE_PREFERENCE)))
+            .order_by(MarketCandle.venue.asc(), MarketCandle.product_id.asc(), MarketCandle.start_time_utc.asc())
             .all()
         ):
             if row.granularity not in {"ONE_MINUTE", "60", "60s"}:
                 continue
+            symbol = candle_products.get((row.venue, row.product_id))
+            if symbol is None:
+                continue
             bucket = _bucket_start(row.start_time_utc, _REGIME_BUCKET_MINUTES)
             if bucket is None:
                 continue
-            key = (row.product_id, bucket)
+            key = (symbol, row.venue, bucket)
             stats = candle_buckets[key]
             open_value = float(row.open or row.close or 0.0)
             close_value = float(row.close or row.open or 0.0)
@@ -723,7 +758,7 @@ class FeatureMaterializer:
             stats["close"] = close_value
             stats["volume_sum"] += float(row.volume or 0.0)
 
-        finalized_candles: dict[tuple[str, datetime], dict[str, float | None]] = {}
+        finalized_candles: dict[tuple[str, str, datetime], dict[str, float | None]] = {}
         for key, stats in candle_buckets.items():
             open_value = stats["open"]
             close_value = stats["close"]
@@ -742,16 +777,20 @@ class FeatureMaterializer:
         )
         for row in (
             session.query(MarketTradeEvent)
-            .filter(MarketTradeEvent.product_id.in_(product_ids))
+            .filter(MarketTradeEvent.product_id.in_(list(trade_products)))
+            .filter(MarketTradeEvent.venue == "coinbase")
             .all()
         ):
+            symbol = trade_products.get(row.product_id)
+            if symbol is None:
+                continue
             bucket = _bucket_start(
                 row.source_event_time_utc or row.captured_at_utc,
                 _REGIME_BUCKET_MINUTES,
             )
             if bucket is None:
                 continue
-            entry = trade_buckets[(row.product_id, bucket)]
+            entry = trade_buckets[(symbol, bucket)]
             entry["count"] += 1
             entry["size_sum"] += float(row.size or 0.0)
 
@@ -760,16 +799,20 @@ class FeatureMaterializer:
         )
         for row in (
             session.query(OrderBookL2Event)
-            .filter(OrderBookL2Event.product_id.in_(product_ids))
+            .filter(OrderBookL2Event.product_id.in_(list(trade_products)))
+            .filter(OrderBookL2Event.venue == "coinbase")
             .all()
         ):
+            symbol = trade_products.get(row.product_id)
+            if symbol is None:
+                continue
             bucket = _bucket_start(
                 row.source_event_time_utc or row.captured_at_utc,
                 _REGIME_BUCKET_MINUTES,
             )
             if bucket is None:
                 continue
-            entry = book_buckets[(row.product_id, bucket)]
+            entry = book_buckets[(symbol, bucket)]
             if row.spread_bps is not None:
                 entry["spread_sum"] += float(row.spread_bps)
                 entry["count"] += 1
@@ -789,11 +832,15 @@ class FeatureMaterializer:
     def _select_regime_proxy_products(
         self,
         instruments: list[MarketInstrumentRegistry],
-    ) -> dict[str, str]:
-        product_by_symbol: dict[str, str] = {}
+    ) -> dict[str, dict[str, str]]:
+        product_by_symbol: dict[str, dict[str, str]] = {}
         for instrument in sorted(
             instruments,
             key=lambda item: (
+                _REGIME_MARKET_VENUE_PREFERENCE.index(item.venue)
+                if item.venue in _REGIME_MARKET_VENUE_PREFERENCE
+                else len(_REGIME_MARKET_VENUE_PREFERENCE),
+                0 if (item.product_type or "").upper() == "SPOT" else 1,
                 0 if (item.quote_symbol or "").upper() == "USD" else 1,
                 0 if (item.status or "").lower() == "online" else 1,
                 item.product_id,
@@ -801,13 +848,19 @@ class FeatureMaterializer:
         ):
             base_symbol = (instrument.base_symbol or "").upper()
             quote_symbol = (instrument.quote_symbol or "").upper()
-            if not base_symbol or base_symbol in product_by_symbol:
+            venue = (instrument.venue or "").lower()
+            if not base_symbol or venue not in _REGIME_MARKET_VENUE_PREFERENCE:
+                continue
+            if (instrument.product_type or "").upper() != "SPOT":
                 continue
             if quote_symbol not in {"USD", "USDC"}:
                 continue
-            product_by_symbol[base_symbol] = instrument.product_id
+            venue_products = product_by_symbol.setdefault(base_symbol, {})
+            if venue in venue_products:
+                continue
+            venue_products[venue] = instrument.product_id
 
-        selected: dict[str, str] = {}
+        selected: dict[str, dict[str, str]] = {}
         for symbol in _REGIME_PROXY_PREFERENCE:
             if symbol in product_by_symbol:
                 selected[symbol] = product_by_symbol[symbol]

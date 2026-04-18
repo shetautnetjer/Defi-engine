@@ -11,8 +11,15 @@ from d5_trading_engine.adapters.fred.client import FredClient
 from d5_trading_engine.adapters.helius.client import HeliusClient
 from d5_trading_engine.adapters.jupiter.client import JupiterClient
 from d5_trading_engine.adapters.massive.client import MassiveClient
+from d5_trading_engine.capture.runner import CaptureRunner
 from d5_trading_engine.common.errors import AdapterError
 from d5_trading_engine.config.settings import Settings
+from d5_trading_engine.normalize.coinbase.normalizer import (
+    CoinbaseNormalizer,
+    derive_coinbase_product_metadata,
+)
+from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
+from d5_trading_engine.storage.truth.models import IngestRun, MarketInstrumentRegistry
 
 
 @pytest.mark.asyncio
@@ -211,6 +218,224 @@ async def test_coinbase_list_public_products_uses_market_products_path(httpx_moc
 
 
 @pytest.mark.asyncio
+async def test_coinbase_list_public_products_forwards_filter_params(httpx_mock) -> None:
+    httpx_mock.add_response(method="GET", json={"products": []})
+
+    client = CoinbaseClient(Settings(_env_file=None))
+    try:
+        await client.list_public_products(
+            product_type="FUTURE",
+            contract_expiry_type="PERPETUAL",
+            futures_underlying_type="FUTURES_UNDERLYING_TYPE_COMMOD",
+            limit=25,
+            get_all_products=True,
+        )
+    finally:
+        await client.close()
+
+    request = httpx_mock.get_requests()[0]
+    assert request.url.params["product_type"] == "FUTURE"
+    assert request.url.params["contract_expiry_type"] == "PERPETUAL"
+    assert request.url.params["futures_underlying_type"] == "FUTURES_UNDERLYING_TYPE_COMMOD"
+    assert request.url.params["limit"] == "25"
+    assert request.url.params["get_all_products"] == "true"
+
+
+def test_coinbase_context_selection_includes_spot_futures_and_perps() -> None:
+    runner = CaptureRunner(Settings(_env_file=None))
+
+    selected = runner._select_coinbase_products(
+        [
+            {
+                "product_id": "SOL-USD",
+                "product_type": "SPOT",
+                "base_currency_id": "SOL",
+                "quote_currency_id": "USD",
+                "status": "online",
+            },
+            {
+                "product_id": "SOL-PERP-INTX",
+                "product_type": "FUTURE",
+                "display_name": "SOL PERP",
+                "quote_currency_id": "USD",
+                "future_product_details": {
+                    "contract_expiry_type": "PERPETUAL",
+                    "contract_root_unit": "SOL",
+                    "futures_asset_type": "FUTURES_ASSET_TYPE_CRYPTO",
+                },
+            },
+            {
+                "product_id": "GOL-27MAY26-CDE",
+                "product_type": "FUTURE",
+                "display_name": "GLD 27 MAY 26",
+                "quote_currency_id": "USD",
+                "future_product_details": {
+                    "contract_expiry_type": "EXPIRING",
+                    "contract_root_unit": "CDEGLD",
+                    "contract_code": "GOL",
+                    "group_description": "Gold Futures",
+                    "futures_asset_type": "FUTURES_ASSET_TYPE_METALS",
+                },
+            },
+            {
+                "product_id": "NOL-20APR26-CDE",
+                "product_type": "FUTURE",
+                "display_name": "OIL 20 APR 26",
+                "quote_currency_id": "USD",
+                "future_product_details": {
+                    "contract_expiry_type": "EXPIRING",
+                    "contract_root_unit": "CDEOIL",
+                    "contract_code": "NOL",
+                    "group_description": "nano Crude Oil Futures",
+                    "futures_asset_type": "FUTURES_ASSET_TYPE_ENERGY",
+                },
+            },
+            {
+                "product_id": "ADA-PERP-INTX",
+                "product_type": "FUTURE",
+                "display_name": "ADA PERP",
+                "quote_currency_id": "USD",
+                "future_product_details": {
+                    "contract_expiry_type": "PERPETUAL",
+                    "contract_root_unit": "ADA",
+                    "futures_asset_type": "FUTURES_ASSET_TYPE_CRYPTO",
+                },
+            },
+        ]
+    )
+
+    assert [product["product_id"] for product in selected] == [
+        "SOL-USD",
+        "SOL-PERP-INTX",
+        "GOL-27MAY26-CDE",
+        "NOL-20APR26-CDE",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_coinbase_context_loader_merges_spot_future_and_perp_queries() -> None:
+    runner = CaptureRunner(Settings(_env_file=None))
+
+    class _FakeClient:
+        async def list_public_products(self, **params):
+            if params == {}:
+                return [
+                    {
+                        "product_id": "SOL-USD",
+                        "product_type": "SPOT",
+                        "base_currency_id": "SOL",
+                        "quote_currency_id": "USD",
+                        "status": "online",
+                    }
+                ]
+            if params == {"product_type": "FUTURE"}:
+                return [
+                    {
+                        "product_id": "GOL-27MAY26-CDE",
+                        "product_type": "FUTURE",
+                        "display_name": "GLD 27 MAY 26",
+                        "quote_currency_id": "USD",
+                        "future_product_details": {
+                            "contract_expiry_type": "EXPIRING",
+                            "contract_root_unit": "CDEGLD",
+                            "contract_code": "GOL",
+                            "group_description": "Gold Futures",
+                            "futures_asset_type": "FUTURES_ASSET_TYPE_METALS",
+                        },
+                    }
+                ]
+            if params == {"product_type": "FUTURE", "contract_expiry_type": "PERPETUAL"}:
+                return [
+                    {
+                        "product_id": "SOL-PERP-INTX",
+                        "product_type": "FUTURE",
+                        "display_name": "SOL PERP",
+                        "quote_currency_id": "USD",
+                        "future_product_details": {
+                            "contract_expiry_type": "PERPETUAL",
+                            "contract_root_unit": "SOL",
+                            "futures_asset_type": "FUTURES_ASSET_TYPE_CRYPTO",
+                        },
+                    }
+                ]
+            raise AssertionError(f"unexpected params: {params}")
+
+    products = await runner._load_coinbase_context_products(_FakeClient())
+
+    assert [product["product_id"] for product in products] == [
+        "SOL-USD",
+        "GOL-27MAY26-CDE",
+        "SOL-PERP-INTX",
+    ]
+
+
+def test_coinbase_product_metadata_derives_future_context_fields() -> None:
+    metadata = derive_coinbase_product_metadata(
+        {
+            "product_id": "PAXG-PERP-INTX",
+            "product_type": "FUTURE",
+            "display_name": "PAXG PERP",
+            "quote_currency_id": "USD",
+            "product_venue": "neptune",
+            "future_product_details": {
+                "contract_expiry_type": "PERPETUAL",
+                "contract_root_unit": "PAXG",
+                "futures_asset_type": "FUTURES_ASSET_TYPE_CRYPTO",
+                "venue": "intx",
+            },
+        }
+    )
+
+    assert metadata["base_symbol"] == "PAXG"
+    assert metadata["quote_symbol"] == "USD"
+    assert metadata["product_type"] == "FUTURE"
+    assert metadata["product_venue"] == "neptune"
+    assert metadata["contract_expiry_type"] == "PERPETUAL"
+    assert metadata["futures_asset_type"] == "FUTURES_ASSET_TYPE_CRYPTO"
+    assert metadata["contract_root_unit"] == "PAXG"
+
+
+def test_coinbase_normalize_products_stores_future_metadata(settings) -> None:
+    run_migrations_to_head(settings)
+    normalizer = CoinbaseNormalizer(settings)
+    count = normalizer.normalize_products(
+        [
+            {
+                "product_id": "GOL-27MAY26-CDE",
+                "product_type": "FUTURE",
+                "display_name": "GLD 27 MAY 26",
+                "quote_currency_id": "USD",
+                "status": "online",
+                "product_venue": "cde",
+                "future_product_details": {
+                    "contract_expiry_type": "EXPIRING",
+                    "contract_root_unit": "CDEGLD",
+                    "contract_code": "GOL",
+                    "group_description": "Gold Futures",
+                    "futures_asset_type": "FUTURES_ASSET_TYPE_METALS",
+                    "venue": "cde",
+                },
+            }
+        ]
+    )
+
+    assert count == 1
+
+    session = get_session(settings)
+    try:
+        row = session.query(MarketInstrumentRegistry).filter_by(product_id="GOL-27MAY26-CDE").one()
+        assert row.base_symbol == "GOLD"
+        assert row.quote_symbol == "USD"
+        assert row.product_type == "FUTURE"
+        assert row.product_venue == "cde"
+        assert row.contract_expiry_type == "EXPIRING"
+        assert row.futures_asset_type == "FUTURES_ASSET_TYPE_METALS"
+        assert row.contract_root_unit == "CDEGLD"
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
 async def test_coinbase_get_public_candles_chunks_large_history_requests(httpx_mock) -> None:
     httpx_mock.add_response(
         method="GET",
@@ -247,3 +472,80 @@ async def test_coinbase_get_public_candles_chunks_large_history_requests(httpx_m
     assert len(requests) == 2
     assert requests[0].url.path == "/api/v3/brokerage/market/products/SOL-USD/candles"
     assert requests[0].url.params["granularity"] == "ONE_MINUTE"
+
+
+@pytest.mark.asyncio
+async def test_capture_coinbase_book_skips_missing_pricebooks(settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_migrations_to_head(settings)
+
+    async def _fake_list_products(self, **params):
+        if params == {}:
+            return []
+        if params == {"product_type": "FUTURE"}:
+            return [
+                {
+                    "product_id": "GOL-27MAY26-CDE",
+                    "product_type": "FUTURE",
+                    "display_name": "GLD 27 MAY 26",
+                    "quote_currency_id": "USD",
+                    "future_product_details": {
+                        "contract_expiry_type": "EXPIRING",
+                        "contract_root_unit": "CDEGLD",
+                        "contract_code": "GOL",
+                        "group_description": "Gold Futures",
+                        "futures_asset_type": "FUTURES_ASSET_TYPE_METALS",
+                    },
+                },
+            ]
+        if params == {"product_type": "FUTURE", "contract_expiry_type": "PERPETUAL"}:
+            return [
+                {
+                    "product_id": "SOL-PERP-INTX",
+                    "product_type": "FUTURE",
+                    "display_name": "SOL PERP",
+                    "quote_currency_id": "USD",
+                    "future_product_details": {
+                        "contract_expiry_type": "PERPETUAL",
+                        "contract_root_unit": "SOL",
+                        "futures_asset_type": "FUTURES_ASSET_TYPE_CRYPTO",
+                    },
+                },
+            ]
+        raise AssertionError(f"unexpected params: {params}")
+
+    async def _fake_get_book(self, product_id: str, limit: int = 50):
+        if product_id == "GOL-27MAY26-CDE":
+            raise AdapterError("coinbase", "no pricebook found", status_code=404)
+        return {
+            "pricebook": {
+                "bids": [{"price": "100.0", "size": "1.0"}],
+                "asks": [{"price": "101.0", "size": "1.0"}],
+            }
+        }
+
+    async def _fake_close(self):
+        return None
+
+    monkeypatch.setattr(
+        "d5_trading_engine.storage.coinbase_raw.engine.initialize",
+        lambda _settings: None,
+    )
+    monkeypatch.setattr(CoinbaseClient, "list_public_products", _fake_list_products)
+    monkeypatch.setattr(CoinbaseClient, "get_public_product_book", _fake_get_book)
+    monkeypatch.setattr(CoinbaseClient, "close", _fake_close)
+    monkeypatch.setattr(
+        CaptureRunner,
+        "_write_coinbase_raw_rows",
+        lambda self, model_class, rows: len(rows),
+    )
+
+    runner = CaptureRunner(settings)
+    run_id = await runner.capture_coinbase_book()
+
+    session = get_session(settings)
+    try:
+        ingest_run = session.query(IngestRun).filter_by(run_id=run_id).one()
+        assert ingest_run.status == "success"
+        assert ingest_run.records_captured == 1
+    finally:
+        session.close()

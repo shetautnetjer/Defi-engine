@@ -18,6 +18,7 @@ from d5_trading_engine.storage.truth.models import (
     QuoteSnapshot,
     RiskGlobalRegimeGateV1,
 )
+from d5_trading_engine.paper_runtime.operator import PaperTradeOperator
 from tests.test_label_strategy_loop import _seed_research_repo_truth
 from tests.test_settlement_paper import (
     _freshness_snapshot,
@@ -241,3 +242,69 @@ def test_cli_run_paper_cycle_fails_closed_without_strategy_report(cli_runner, se
 
     assert result.exit_code == 1
     assert "Missing advisory strategy report" in result.output
+
+
+def test_paper_trade_operator_close_cycle_writes_close_artifacts(settings) -> None:
+    _seed_research_repo_truth(settings.repo_root)
+    run_migrations_to_head(settings)
+    condition_run_id = _seed_condition_run(
+        settings,
+        run_id="condition_close_operator",
+        semantic_regime="long_friendly",
+    )
+    usdc_mint = _tracked_mint(settings, "USDC")
+    sol_mint = _tracked_mint(settings, "SOL")
+    entry_quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="quote_operator_entry",
+        request_direction="usdc_to_token",
+        input_mint=usdc_mint,
+        output_mint=sol_mint,
+        input_amount="10000000",
+        output_amount="100000000",
+    )
+    _write_strategy_report(settings.repo_root)
+
+    opened = PaperTradeOperator(settings).run_cycle(
+        quote_snapshot_id=entry_quote_snapshot_id,
+        condition_run_id=condition_run_id,
+    )
+
+    close_quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="quote_operator_exit",
+        request_direction="token_to_usdc",
+        input_mint=sol_mint,
+        output_mint=usdc_mint,
+        input_amount="100000000",
+        output_amount="10300000",
+    )
+    closed = PaperTradeOperator(settings).close_cycle(
+        session_key=str(opened["session_key"]),
+        quote_snapshot_id=close_quote_snapshot_id,
+        close_reason="take_profit",
+        condition_run_id=condition_run_id,
+    )
+
+    assert closed["settlement_result"]["closed"] is True
+    assert closed["settlement_result"]["session_status"] == "closed"
+
+    artifact_dir = settings.data_dir / "paper_runtime" / "cycles" / str(opened["session_key"])
+    assert (artifact_dir / "close_summary.json").exists()
+    assert (artifact_dir / "close_report.qmd").exists()
+
+    session = get_session(settings)
+    try:
+        paper_session = session.query(PaperSession).one()
+        artifacts = (
+            session.query(ArtifactReference)
+            .filter_by(owner_type="paper_session", owner_key=str(opened["session_key"]))
+            .all()
+        )
+    finally:
+        session.close()
+
+    assert paper_session.status == "closed"
+    artifact_types = {artifact.artifact_type for artifact in artifacts}
+    assert "paper_close_summary" in artifact_types
+    assert "paper_close_report_qmd" in artifact_types

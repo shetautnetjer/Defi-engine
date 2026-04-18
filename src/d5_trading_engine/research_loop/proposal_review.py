@@ -16,6 +16,9 @@ from d5_trading_engine.reporting.qmd import render_qmd
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ArtifactReference,
+    BacktestFillV1,
+    BacktestSessionReportV1,
+    BacktestSessionV1,
     ConditionGlobalRegimeSnapshotV1,
     ExperimentMetric,
     ExperimentRun,
@@ -42,13 +45,24 @@ _UNSAFE_RUNTIME_PHRASES = (
     "auto-promote",
     "autopromotion",
 )
-_SUPPORTED_GOVERNANCE_SCOPES = {"research_loop", "paper_runtime"}
+_SUPPORTED_GOVERNANCE_SCOPES = {"research_loop", "paper_runtime", "paper_practice"}
 _SOURCE_ARTIFACT_PRIORITY = (
+    "paper_profile_adjustment_summary",
+    "live_regime_cycle_summary",
     "regime_model_compare_summary",
     "label_program_candidate",
     "strategy_challenger_report",
     "paper_cycle_summary",
 )
+_ALLOWED_PAPER_PROFILE_KEYS = {
+    "preferred_family",
+    "strategy_report_path",
+    "minimum_condition_confidence",
+    "stop_loss_bps",
+    "take_profit_bps",
+    "time_stop_bars",
+    "cooldown_bars",
+}
 _PROPOSAL_KIND_HINTS = {
     "regime_model_compare_follow_on": {
         "story_class": "regime_model_compare",
@@ -73,6 +87,18 @@ _PROPOSAL_KIND_HINTS = {
         "source_story_id": "",
         "target_story_id": "",
         "stage": "paper_runtime",
+    },
+    "live_regime_cycle_follow_on": {
+        "story_class": "live_regime_cycle",
+        "source_story_id": "LABEL-001",
+        "target_story_id": "",
+        "stage": "live_paper_training",
+    },
+    "paper_profile_adjustment_follow_on": {
+        "story_class": "paper_practice",
+        "source_story_id": "PAPER-001",
+        "target_story_id": "",
+        "stage": "paper_practice",
     },
 }
 
@@ -368,6 +394,48 @@ class ProposalReviewer:
                             ),
                         }
                     )
+        elif proposal.source_owner_type == "backtest_session":
+            backtest_session = (
+                session.query(BacktestSessionV1)
+                .filter_by(session_key=proposal.source_owner_key)
+                .one_or_none()
+            )
+            source_status = (
+                str(backtest_session.status) if backtest_session is not None else ""
+            )
+            if backtest_session is not None:
+                backtest_report = (
+                    session.query(BacktestSessionReportV1)
+                    .filter_by(session_id=backtest_session.id)
+                    .order_by(
+                        desc(BacktestSessionReportV1.created_at),
+                        desc(BacktestSessionReportV1.id),
+                    )
+                    .first()
+                )
+                latest_fill = (
+                    session.query(BacktestFillV1)
+                    .filter_by(session_id=backtest_session.id)
+                    .order_by(desc(BacktestFillV1.created_at), desc(BacktestFillV1.id))
+                    .first()
+                )
+                if backtest_report is not None:
+                    source_metrics.update(
+                        {
+                            "backtest_equity_usdc": backtest_report.equity_usdc,
+                            "backtest_cash_usdc": backtest_report.cash_usdc,
+                            "backtest_position_value_usdc": backtest_report.position_value_usdc,
+                            "backtest_realized_pnl_usdc": backtest_report.realized_pnl_usdc,
+                            "backtest_unrealized_pnl_usdc": backtest_report.unrealized_pnl_usdc,
+                        }
+                    )
+                if latest_fill is not None:
+                    source_metrics.update(
+                        {
+                            "backtest_fill_price_usdc": latest_fill.fill_price_usdc,
+                            "backtest_fill_slippage_bps": float(latest_fill.slippage_bps or 0),
+                        }
+                    )
 
         regime_scope = {
             "source": condition_source,
@@ -430,8 +498,29 @@ class ProposalReviewer:
             reject_codes.append("unsupported_governance_scope")
         if self._contains_unsafe_runtime_language(proposal):
             reject_codes.append("unsafe_runtime_widening_language")
-        if proposal.source_owner_type not in {"experiment_run", "paper_session"}:
+        if proposal.source_owner_type not in {
+            "experiment_run",
+            "paper_session",
+            "backtest_session",
+        }:
             reject_codes.append("unsupported_source_owner_type")
+
+        if proposal.proposal_kind == "paper_profile_adjustment_follow_on":
+            artifact_payload = source_context.get("source_artifact_payload") or {}
+            profile_patch = artifact_payload.get("profile_patch")
+            patch_keys = artifact_payload.get("patch_keys") or []
+            if not isinstance(profile_patch, dict) or not profile_patch:
+                hold_codes.append("missing_paper_profile_patch")
+            if not isinstance(patch_keys, list) or not patch_keys:
+                hold_codes.append("missing_paper_profile_patch_keys")
+            else:
+                disallowed = sorted(
+                    key for key in patch_keys if key not in _ALLOWED_PAPER_PROFILE_KEYS
+                )
+                if disallowed:
+                    reject_codes.append("paper_profile_patch_disallowed_keys")
+                    for key in disallowed:
+                        reject_codes.append(f"disallowed_patch_key:{key}")
 
         if not source_context["source_artifact_types"]:
             hold_codes.append("missing_source_artifacts")
@@ -445,9 +534,15 @@ class ProposalReviewer:
             and source_context["source_status"]
         ):
             hold_codes.append("source_run_not_success")
-        if source_context["regime_scope"].get("semantic_regime") in {None, ""}:
+        if (
+            proposal.proposal_kind != "paper_profile_adjustment_follow_on"
+            or proposal.source_owner_type != "backtest_session"
+        ) and source_context["regime_scope"].get("semantic_regime") in {None, ""}:
             hold_codes.append("missing_regime_context")
-        if source_context["condition_scope"].get("condition_run_id") in {None, ""}:
+        if (
+            proposal.proposal_kind != "paper_profile_adjustment_follow_on"
+            or proposal.source_owner_type != "backtest_session"
+        ) and source_context["condition_scope"].get("condition_run_id") in {None, ""}:
             hold_codes.append("missing_condition_context")
 
         reason_codes = [*proposal_reason_codes]
@@ -512,7 +607,7 @@ class ProposalReviewer:
         self,
         source_artifacts: list[ArtifactReference],
     ) -> dict[str, Any]:
-        hints = {
+        hints: dict[str, Any] = {
             "artifact_path": "",
             "story_class": "",
             "source_story_id": "",
@@ -527,6 +622,7 @@ class ProposalReviewer:
                 if not path.exists():
                     continue
                 payload = _loads_json(path.read_bytes().decode("utf-8"), {})
+                merged_payload = dict(payload) if isinstance(payload, dict) else {}
                 hints.update(
                     {
                         "artifact_path": str(path),
@@ -540,10 +636,15 @@ class ProposalReviewer:
                         "stage": str(payload.get("stage") or ""),
                     }
                 )
-                return hints
+                merged_payload.update(hints)
+                return merged_payload
         return hints
 
     def _proposal_kind_from_artifact_type(self, artifact_type: str) -> str:
+        if artifact_type == "live_regime_cycle_summary":
+            return "live_regime_cycle_follow_on"
+        if artifact_type == "paper_profile_adjustment_summary":
+            return "paper_profile_adjustment_follow_on"
         if artifact_type == "regime_model_compare_summary":
             return "regime_model_compare_follow_on"
         if artifact_type == "label_program_candidate":

@@ -45,8 +45,9 @@ def _candidate_runner(
     adjacent_flip_rate: float,
     log_likelihood: float | None = None,
 ):
-    def _run(self, history, macro_context_state):
+    def _run(self, history, macro_context_state, **kwargs):
         del macro_context_state
+        del kwargs
         scored_rows = []
         for index, bucket_start_utc in enumerate(history["bucket_start_utc"].iloc[63:]):
             scored_rows.append(

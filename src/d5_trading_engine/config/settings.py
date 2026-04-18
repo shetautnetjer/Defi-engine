@@ -36,6 +36,39 @@ def _parse_env_secrets_file(path: Path) -> dict[str, str]:
     return parsed
 
 
+def _parse_coinbase_cdp_secrets_file(path: Path) -> dict[str, str]:
+    """Read a Coinbase CDP/Coinbase App key export without exposing secrets."""
+    if not path.exists() or not path.is_file():
+        return {}
+
+    nonblank_lines = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(nonblank_lines) < 2:
+        return {}
+
+    key_name = nonblank_lines[0]
+    private_key = nonblank_lines[1]
+    client_api_key = nonblank_lines[2] if len(nonblank_lines) >= 3 else ""
+
+    if not key_name.startswith("organizations/") or "BEGIN EC PRIVATE KEY" not in private_key:
+        return {}
+
+    normalized_private_key = private_key.replace("\\n", "\n")
+    if not normalized_private_key.endswith("\n"):
+        normalized_private_key += "\n"
+
+    parsed = {
+        "COINBASE_CDP_API_KEY_NAME": key_name,
+        "COINBASE_CDP_API_PRIVATE_KEY": normalized_private_key,
+    }
+    if client_api_key:
+        parsed["COINBASE_CLIENT_API_KEY"] = client_api_key
+    return parsed
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment / .env file."""
 
@@ -76,6 +109,18 @@ class Settings(BaseSettings):
     coinbase_api_key: str = Field(default="", description="Coinbase API key")
     coinbase_api_secret: str = Field(default="", description="Coinbase API secret")
     coinbase_api_passphrase: str = Field(default="", description="Coinbase API passphrase")
+    coinbase_cdp_api_key_name: str = Field(
+        default="",
+        description="Coinbase CDP/Coinbase App API key name for JWT auth.",
+    )
+    coinbase_cdp_api_private_key: str = Field(
+        default="",
+        description="Coinbase CDP/Coinbase App ECDSA private key for JWT auth.",
+    )
+    coinbase_client_api_key: str = Field(
+        default="",
+        description="Optional Coinbase client/frontend API key.",
+    )
     coinbase_secrets_file: Path | None = Field(
         default=None,
         description="Optional local file containing Coinbase credentials.",
@@ -85,6 +130,13 @@ class Settings(BaseSettings):
         description=(
             "Bounded one-minute Coinbase candle history requested per product so regime "
             "scoring has enough closed 15-minute buckets for paper trading."
+        ),
+    )
+    coinbase_context_symbols: list[str] = Field(
+        default=["BTC", "ETH", "SOL", "XRP", "PAXG", "GOLD", "CRUDEOIL"],
+        description=(
+            "Coinbase spot and derivatives symbols to ingest as context-only market data "
+            "alongside the execution-focused Solana universe."
         ),
     )
 
@@ -97,6 +149,13 @@ class Settings(BaseSettings):
     massive_default_tickers: list[str] = Field(
         default=["X:SOLUSD", "X:BTCUSD", "X:ETHUSD"],
         description="Default Massive crypto tickers for bounded reference and snapshot capture.",
+    )
+    massive_free_tier_lookback_days: int = Field(
+        default=730,
+        description=(
+            "Bounded Massive free-tier crypto minute history window used for historical "
+            "range backfill."
+        ),
     )
 
     # --- FRED ---
@@ -197,6 +256,35 @@ class Settings(BaseSettings):
             "COINBASE_API_PASSPHRASE",
             "",
         )
+        self.coinbase_cdp_api_key_name = self.coinbase_cdp_api_key_name or parsed.get(
+            "COINBASE_CDP_API_KEY_NAME",
+            "",
+        )
+        self.coinbase_cdp_api_private_key = self.coinbase_cdp_api_private_key or parsed.get(
+            "COINBASE_CDP_API_PRIVATE_KEY",
+            "",
+        )
+        self.coinbase_client_api_key = self.coinbase_client_api_key or parsed.get(
+            "COINBASE_CLIENT_API_KEY",
+            "",
+        )
+
+        if self.coinbase_cdp_api_key_name and self.coinbase_cdp_api_private_key:
+            return self
+
+        cdp_parsed = _parse_coinbase_cdp_secrets_file(self.coinbase_secrets_file)
+        self.coinbase_cdp_api_key_name = self.coinbase_cdp_api_key_name or cdp_parsed.get(
+            "COINBASE_CDP_API_KEY_NAME",
+            "",
+        )
+        self.coinbase_cdp_api_private_key = (
+            self.coinbase_cdp_api_private_key
+            or cdp_parsed.get("COINBASE_CDP_API_PRIVATE_KEY", "")
+        )
+        self.coinbase_client_api_key = self.coinbase_client_api_key or cdp_parsed.get(
+            "COINBASE_CLIENT_API_KEY",
+            "",
+        )
         return self
 
     @property
@@ -238,6 +326,15 @@ class Settings(BaseSettings):
     def coinbase_api_base(self) -> str:
         """Coinbase Advanced Trade API base URL."""
         return "https://api.coinbase.com/api/v3/brokerage"
+
+    @property
+    def coinbase_auth_mode(self) -> str:
+        """Describe which Coinbase credential shape is configured."""
+        if self.coinbase_cdp_api_key_name and self.coinbase_cdp_api_private_key:
+            return "cdp_app_jwt"
+        if self.coinbase_api_key and self.coinbase_api_secret and self.coinbase_api_passphrase:
+            return "exchange_key"
+        return "public_only"
 
     @property
     def massive_api_base(self) -> str:

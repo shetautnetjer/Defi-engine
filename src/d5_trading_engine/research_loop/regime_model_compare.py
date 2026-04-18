@@ -109,9 +109,22 @@ class RegimeModelComparator:
         self.settings = settings or get_settings()
         self._scorer = ConditionScorer(self.settings)
 
-    def run_regime_model_compare_v1(self) -> dict[str, Any]:
+    def run_regime_model_compare_v1(
+        self,
+        *,
+        history_start: str | None = None,
+        history_end: str | None = None,
+        use_massive_context: bool = True,
+        refit_cadence_buckets: int = _REFIT_CADENCE_BUCKETS,
+    ) -> dict[str, Any]:
         feature_run = self._scorer._latest_feature_run()
         history = self._scorer._load_feature_history(feature_run.run_id)
+        history = self._filter_history(
+            history,
+            history_start=history_start,
+            history_end=history_end,
+            use_massive_context=use_massive_context,
+        )
         macro_context_state = self._scorer._macro_context_state(feature_run)
         history_inventory = self._build_history_inventory(feature_run.run_id, history)
 
@@ -127,7 +140,10 @@ class RegimeModelComparator:
             "feature_bucket_rows": int(len(history)),
             "min_compare_rows": _MIN_COMPARE_ROWS,
             "train_window_buckets": _TRAIN_WINDOW_BUCKETS,
-            "refit_cadence_buckets": _REFIT_CADENCE_BUCKETS,
+            "refit_cadence_buckets": refit_cadence_buckets,
+            "history_start": history_start,
+            "history_end": history_end,
+            "use_massive_context": bool(use_massive_context),
             "candidates": list(_CANDIDATE_ORDER),
             "artifact_dir": str(artifact_dir),
             "runtime_authority": "unchanged",
@@ -153,9 +169,21 @@ class RegimeModelComparator:
                 )
 
             candidate_results = {
-                "hmm": self._run_hmm_candidate(history, macro_context_state),
-                "gmm": self._run_gmm_candidate(history, macro_context_state),
-                "statsmodels": self._run_statsmodels_candidate(history, macro_context_state),
+                "hmm": self._run_hmm_candidate(
+                    history,
+                    macro_context_state,
+                    refit_cadence_buckets=refit_cadence_buckets,
+                ),
+                "gmm": self._run_gmm_candidate(
+                    history,
+                    macro_context_state,
+                    refit_cadence_buckets=refit_cadence_buckets,
+                ),
+                "statsmodels": self._run_statsmodels_candidate(
+                    history,
+                    macro_context_state,
+                    refit_cadence_buckets=refit_cadence_buckets,
+                ),
             }
             if not any(result.fit_success for result in candidate_results.values()):
                 raise RuntimeError("No regime candidates produced a successful shadow comparison.")
@@ -241,6 +269,8 @@ class RegimeModelComparator:
         self,
         history: pd.DataFrame,
         macro_context_state: str,
+        *,
+        refit_cadence_buckets: int,
     ) -> _CandidateOutcome:
         if not hmmlearn_available():
             return self._unavailable_candidate(
@@ -253,24 +283,30 @@ class RegimeModelComparator:
             history=history,
             macro_context_state=macro_context_state,
             fit_fn=fit_gaussian_hmm,
+            refit_cadence_buckets=refit_cadence_buckets,
         )
 
     def _run_gmm_candidate(
         self,
         history: pd.DataFrame,
         macro_context_state: str,
+        *,
+        refit_cadence_buckets: int,
     ) -> _CandidateOutcome:
         return self._run_feature_matrix_candidate(
             candidate_key="gmm",
             history=history,
             macro_context_state=macro_context_state,
             fit_fn=fit_gaussian_mixture_regime_proxy,
+            refit_cadence_buckets=refit_cadence_buckets,
         )
 
     def _run_statsmodels_candidate(
         self,
         history: pd.DataFrame,
         macro_context_state: str,
+        *,
+        refit_cadence_buckets: int,
     ) -> _CandidateOutcome:
         if not statsmodels_regime_available():
             return self._unavailable_candidate(
@@ -292,7 +328,7 @@ class RegimeModelComparator:
                     row_index - _TRAIN_WINDOW_BUCKETS + 1 : row_index + 1
                 ].copy()
 
-                if current_params is None or (scored_count % _REFIT_CADENCE_BUCKETS == 0):
+                if current_params is None or (scored_count % refit_cadence_buckets == 0):
                     start = time.perf_counter()
                     result, current_model_family = fit_markov_regression(
                         training_history["market_return_mean_15m"].to_numpy(dtype=float),
@@ -364,6 +400,7 @@ class RegimeModelComparator:
         history: pd.DataFrame,
         macro_context_state: str,
         fit_fn,
+        refit_cadence_buckets: int,
     ) -> _CandidateOutcome:
         fit_seconds: list[float] = []
         scored_rows: list[dict[str, Any]] = []
@@ -377,7 +414,7 @@ class RegimeModelComparator:
                 training_history = history.iloc[
                     row_index - _TRAIN_WINDOW_BUCKETS + 1 : row_index + 1
                 ].copy()
-                if current_model is None or (scored_count % _REFIT_CADENCE_BUCKETS == 0):
+                if current_model is None or (scored_count % refit_cadence_buckets == 0):
                     matrix = self._scorer._prepare_feature_matrix(training_history)
                     start = time.perf_counter()
                     current_model, current_model_family = fit_fn(
@@ -599,7 +636,7 @@ class RegimeModelComparator:
             next_test = (
                 "Backfill more canonical market history, rerun "
                 "`d5 materialize-features global-regime-inputs-15m-v1`, then rerun "
-                "`d5 run-shadow regime-model-compare-v1` before revisiting regime-owner "
+                "`d5 run-shadow regime-model-compare-v1 --use-massive-context` before revisiting regime-owner "
                 "dependencies."
             )
         elif best.key == "statsmodels":
@@ -702,6 +739,15 @@ class RegimeModelComparator:
                 "bucket_end_utc": history["bucket_start_utc"].iloc[-1].isoformat()
                 if not history.empty
                 else "",
+                "massive_backed_rows": int(
+                    history["proxy_products_json"]
+                    .fillna("")
+                    .astype(str)
+                    .str.contains("X:")
+                    .sum()
+                )
+                if "proxy_products_json" in history.columns
+                else 0,
             },
             "market_candle_inventory": market_inventory,
             "massive_history": {
@@ -910,6 +956,13 @@ class RegimeModelComparator:
                     metric_metadata=None,
                     recorded_at=now,
                 ),
+                ExperimentMetric(
+                    experiment_run_id=run_id,
+                    metric_name="massive_backed_feature_rows",
+                    metric_value=float(history_inventory["feature_history"]["massive_backed_rows"]),
+                    metric_metadata=None,
+                    recorded_at=now,
+                ),
             ]
             for key in _CANDIDATE_ORDER:
                 result = candidate_results.get(key)
@@ -929,6 +982,27 @@ class RegimeModelComparator:
             session.commit()
         finally:
             session.close()
+
+    def _filter_history(
+        self,
+        history: pd.DataFrame,
+        *,
+        history_start: str | None,
+        history_end: str | None,
+        use_massive_context: bool,
+    ) -> pd.DataFrame:
+        filtered = history.copy()
+        if history_start:
+            start_ts = pd.Timestamp(history_start, tz="UTC")
+            filtered = filtered.loc[filtered["bucket_start_utc"] >= start_ts]
+        if history_end:
+            end_ts = pd.Timestamp(history_end, tz="UTC")
+            filtered = filtered.loc[filtered["bucket_start_utc"] <= end_ts]
+        if not use_massive_context and "proxy_products_json" in filtered.columns:
+            filtered = filtered.loc[
+                ~filtered["proxy_products_json"].fillna("").astype(str).str.contains("X:")
+            ]
+        return filtered.reset_index(drop=True)
 
     def _start_experiment_run(
         self,

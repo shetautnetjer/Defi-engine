@@ -272,6 +272,162 @@ class PaperSettlement:
         finally:
             session.close()
 
+    def simulate_close(
+        self,
+        *,
+        session_key: str,
+        quote_snapshot_id: int,
+        policy_trace_id: int,
+        risk_verdict_id: int,
+        condition_snapshot_id: int,
+        source_feature_run_id: str,
+        policy_state: str,
+        risk_state: str,
+        close_reason: str,
+        settlement_attempted_at: datetime | None = None,
+    ) -> dict[str, object]:
+        """Close one open paper session from an explicit token-to-USDC quote."""
+
+        attempted_at = ensure_utc(settlement_attempted_at) or utcnow()
+        session = get_session(self.settings)
+        try:
+            paper_session = (
+                session.query(PaperSession)
+                .filter_by(session_key=session_key)
+                .first()
+            )
+            if paper_session is None:
+                raise RuntimeError(f"Unknown paper session: {session_key}")
+            if paper_session.status != "open":
+                raise RuntimeError(
+                    f"Paper session is not open and cannot be closed: {session_key}"
+                )
+
+            paper_position = (
+                session.query(PaperPosition)
+                .filter_by(session_id=paper_session.id)
+                .order_by(PaperPosition.id.desc())
+                .first()
+            )
+            if paper_position is None:
+                raise RuntimeError(
+                    f"Open paper session has no position to close: {session_key}"
+                )
+
+            quote_snapshot = session.query(QuoteSnapshot).filter_by(id=quote_snapshot_id).first()
+            reason_codes = self._validate_close_inputs(
+                paper_session=paper_session,
+                paper_position=paper_position,
+                quote_snapshot=quote_snapshot,
+                attempted_at=attempted_at,
+                close_reason=close_reason,
+                session=session,
+            )
+            if reason_codes:
+                raise RuntimeError(
+                    "Paper close rejected because the exit quote was incompatible: "
+                    + ", ".join(reason_codes)
+                )
+
+            asset_decimals = self._resolve_asset_decimals(
+                session=session,
+                mint=paper_position.mint,
+            )
+            if asset_decimals is None:
+                raise RuntimeError(
+                    f"Missing token decimals for open position mint: {paper_position.mint}"
+                )
+
+            close_metrics = self._build_close_metrics(
+                quote_snapshot=quote_snapshot,
+                asset_decimals=asset_decimals,
+                cost_basis_usdc=paper_position.cost_basis_usdc,
+            )
+            if close_metrics is None:
+                raise RuntimeError("Exit quote amounts were invalid for close settlement.")
+
+            paper_fill = PaperFill(
+                session_id=paper_session.id,
+                execution_intent_id=None,
+                risk_verdict_id=risk_verdict_id,
+                policy_trace_id=policy_trace_id,
+                condition_snapshot_id=condition_snapshot_id,
+                source_feature_run_id=source_feature_run_id,
+                quote_snapshot_id=quote_snapshot.id,
+                policy_state=policy_state,
+                risk_state=risk_state,
+                request_direction="token_to_usdc",
+                input_mint=quote_snapshot.input_mint,
+                output_mint=quote_snapshot.output_mint,
+                input_amount=str(quote_snapshot.input_amount),
+                output_amount=str(quote_snapshot.output_amount),
+                fill_price_usdc=close_metrics["fill_price_usdc"],
+                price_impact_pct=quote_snapshot.price_impact_pct,
+                slippage_bps=quote_snapshot.slippage_bps,
+                fill_side="sell",
+                fill_role="exit",
+                created_at=attempted_at,
+            )
+            session.add(paper_fill)
+            session.flush()
+
+            paper_position.net_quantity = 0.0
+            paper_position.realized_pnl_usdc = close_metrics["realized_pnl_usdc"]
+            paper_position.unrealized_pnl_usdc = 0.0
+            paper_position.last_fill_id = paper_fill.id
+            paper_position.last_mark_source = "close_quote"
+            paper_position.last_mark_quote_snapshot_id = quote_snapshot.id
+            paper_position.last_mark_price_usdc = close_metrics["fill_price_usdc"]
+            paper_position.last_marked_at = attempted_at
+            paper_position.updated_at = attempted_at
+
+            paper_session.status = "closed"
+            paper_session.closed_at = attempted_at
+            paper_session.ending_cash_usdc = close_metrics["cash_usdc"]
+            paper_session.reason_codes_json = self._encode_json(
+                [f"close_reason:{close_reason}"]
+            )
+
+            paper_report = PaperSessionReport(
+                session_id=paper_session.id,
+                report_type="session_close",
+                cash_usdc=close_metrics["cash_usdc"],
+                position_value_usdc=0.0,
+                equity_usdc=close_metrics["cash_usdc"],
+                realized_pnl_usdc=close_metrics["realized_pnl_usdc"],
+                unrealized_pnl_usdc=0.0,
+                mark_method="close_quote",
+                mark_inputs_json=self._encode_json(
+                    {
+                        "quote_snapshot_id": quote_snapshot.id,
+                        "close_reason": close_reason,
+                        "fill_price_usdc": close_metrics["fill_price_usdc"],
+                    }
+                ),
+                reason_codes_json=self._encode_json([f"close_reason:{close_reason}"]),
+                created_at=attempted_at,
+            )
+            session.add(paper_report)
+            session.commit()
+
+            return {
+                "closed": True,
+                "session_id": paper_session.id,
+                "session_key": paper_session.session_key,
+                "session_status": paper_session.status,
+                "fill_id": paper_fill.id,
+                "position_id": paper_position.id,
+                "report_id": paper_report.id,
+                "quote_snapshot_id": quote_snapshot.id,
+                "close_reason": close_reason,
+                "reason_codes": [f"close_reason:{close_reason}"],
+                "realized_pnl_usdc": close_metrics["realized_pnl_usdc"],
+                "ending_cash_usdc": close_metrics["cash_usdc"],
+                "is_scaffold": False,
+            }
+        finally:
+            session.close()
+
     def _validate_inputs(
         self,
         *,
@@ -421,6 +577,31 @@ class PaperSettlement:
             "fill_price_usdc": fill_price_usdc,
         }
 
+    def _build_close_metrics(
+        self,
+        *,
+        quote_snapshot: QuoteSnapshot,
+        asset_decimals: int,
+        cost_basis_usdc: float,
+    ) -> dict[str, float] | None:
+        input_amount = self._parse_int(quote_snapshot.input_amount)
+        output_amount = self._parse_int(quote_snapshot.output_amount)
+        if input_amount in (None, 0) or output_amount is None:
+            return None
+
+        net_quantity = input_amount / (10**asset_decimals)
+        if net_quantity <= 0:
+            return None
+        cash_usdc = output_amount / (10**_USDC_DECIMALS)
+        fill_price_usdc = cash_usdc / net_quantity
+        realized_pnl_usdc = cash_usdc - float(cost_basis_usdc)
+        return {
+            "cash_usdc": cash_usdc,
+            "net_quantity": net_quantity,
+            "fill_price_usdc": fill_price_usdc,
+            "realized_pnl_usdc": realized_pnl_usdc,
+        }
+
     def _resolve_asset_decimals(self, *, session, mint: str) -> int | None:
         registry_row = session.query(TokenRegistry).filter_by(mint=mint).first()
         if registry_row is not None and registry_row.decimals is not None:
@@ -435,6 +616,55 @@ class PaperSettlement:
         if metadata_row is not None and metadata_row.decimals is not None:
             return int(metadata_row.decimals)
         return None
+
+    def _validate_close_inputs(
+        self,
+        *,
+        paper_session: PaperSession,
+        paper_position: PaperPosition,
+        quote_snapshot: QuoteSnapshot | None,
+        attempted_at: datetime,
+        close_reason: str,
+        session,
+    ) -> list[str]:
+        reason_codes: list[str] = []
+        if not close_reason.strip():
+            reason_codes.append("close_reason_missing")
+        if paper_position.net_quantity <= 0:
+            reason_codes.append("paper_position_not_open")
+        if quote_snapshot is None:
+            reason_codes.append("close_quote_snapshot_missing")
+            return reason_codes
+
+        normalized_direction = self._normalize_direction(quote_snapshot.request_direction)
+        if normalized_direction != "token_to_usdc":
+            reason_codes.append(
+                f"close_quote_direction_unsupported:{quote_snapshot.request_direction}"
+            )
+        if quote_snapshot.input_mint != paper_position.mint:
+            reason_codes.append("close_quote_input_mint_mismatch")
+        if quote_snapshot.output_mint != self._usdc_mint():
+            reason_codes.append("close_quote_output_not_usdc")
+
+        asset_decimals = self._resolve_asset_decimals(session=session, mint=paper_position.mint)
+        if asset_decimals is None:
+            reason_codes.append("close_asset_decimals_missing")
+        else:
+            expected_amount = int(round(paper_position.net_quantity * (10**asset_decimals)))
+            if self._parse_int(quote_snapshot.input_amount) != expected_amount:
+                reason_codes.append("close_quote_size_mismatch")
+
+        quote_timestamp = ensure_utc(quote_snapshot.captured_at) or ensure_utc(
+            quote_snapshot.requested_at
+        )
+        if quote_timestamp is None:
+            reason_codes.append("close_quote_timestamp_missing")
+        else:
+            if quote_timestamp > attempted_at:
+                reason_codes.append("close_quote_after_attempt")
+            elif (attempted_at - quote_timestamp) > _SETTLEMENT_MAX_QUOTE_AGE:
+                reason_codes.append("close_quote_stale")
+        return reason_codes
 
     def _select_session(self, *, session, session_key: str | None) -> PaperSession | None:
         query = session.query(PaperSession)

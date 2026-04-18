@@ -35,3 +35,14 @@ def test_create_all_for_tests_only_stays_non_authoritative(settings) -> None:
 
     assert set(Base.metadata.tables).issubset(actual_tables)
     assert "alembic_version" not in actual_tables
+
+
+def test_market_instrument_registry_derivative_columns_exist_after_migration(settings) -> None:
+    run_migrations_to_head(settings)
+
+    inspector = inspect(create_engine(settings.db_url))
+    column_names = {
+        column["name"] for column in inspector.get_columns("market_instrument_registry")
+    }
+
+    assert {"product_venue", "contract_expiry_type", "futures_asset_type", "contract_root_unit"} <= column_names

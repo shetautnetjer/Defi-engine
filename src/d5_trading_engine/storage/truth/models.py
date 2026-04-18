@@ -405,6 +405,10 @@ class MarketInstrumentRegistry(Base):
     base_symbol = Column(String(32), nullable=True, index=True)
     quote_symbol = Column(String(32), nullable=True, index=True)
     product_type = Column(String(32), nullable=True)
+    product_venue = Column(String(32), nullable=True)
+    contract_expiry_type = Column(String(32), nullable=True)
+    futures_asset_type = Column(String(64), nullable=True)
+    contract_root_unit = Column(String(64), nullable=True)
     status = Column(String(32), nullable=True)
     price_increment = Column(String(32), nullable=True)
     base_increment = Column(String(32), nullable=True)
@@ -1357,5 +1361,151 @@ class ProposalSupersessionV1(Base):
             "selected_proposal_id",
             "superseded_proposal_id",
             name="uq_proposal_supersession_v1_edge",
+        ),
+    )
+
+
+class PaperPracticeProfileV1(Base):
+    """Paper-only practice profile with an active revision pointer."""
+
+    __tablename__ = "paper_practice_profile_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(String(128), nullable=False, unique=True, index=True)
+    status = Column(String(16), nullable=False, default="active", index=True)
+    active_revision_id = Column(String(128), nullable=True, index=True)
+    instrument_pair = Column(String(32), nullable=False)
+    context_anchors_json = Column(Text, nullable=False)
+    cadence_minutes = Column(Integer, nullable=False, default=15)
+    max_open_sessions = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+
+class PaperPracticeProfileRevisionV1(Base):
+    """Append-only paper-practice profile revisions."""
+
+    __tablename__ = "paper_practice_profile_revision_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    revision_id = Column(String(128), nullable=False, unique=True, index=True)
+    profile_id = Column(
+        String(128),
+        ForeignKey("paper_practice_profile_v1.profile_id"),
+        nullable=False,
+        index=True,
+    )
+    revision_index = Column(Integer, nullable=False)
+    status = Column(String(16), nullable=False, default="active", index=True)
+    mutation_source = Column(String(32), nullable=False)
+    source_proposal_id = Column(
+        String(128),
+        ForeignKey("improvement_proposal_v1.proposal_id"),
+        nullable=True,
+        index=True,
+    )
+    source_review_id = Column(
+        String(128),
+        ForeignKey("proposal_review_v1.review_id"),
+        nullable=True,
+        index=True,
+    )
+    source_comparison_id = Column(
+        String(128),
+        ForeignKey("proposal_comparison_v1.comparison_id"),
+        nullable=True,
+        index=True,
+    )
+    applied_parameter_json = Column(Text, nullable=False)
+    allowed_mutation_keys_json = Column(Text, nullable=False)
+    summary = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "profile_id",
+            "revision_index",
+            name="uq_paper_practice_profile_revision_v1_profile_revision",
+        ),
+    )
+
+
+class PaperPracticeLoopRunV1(Base):
+    """Long-running paper-practice loop run state."""
+
+    __tablename__ = "paper_practice_loop_run_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    loop_run_id = Column(String(128), nullable=False, unique=True, index=True)
+    mode = Column(String(32), nullable=False, index=True)
+    status = Column(String(16), nullable=False, default="running", index=True)
+    active_profile_id = Column(
+        String(128),
+        ForeignKey("paper_practice_profile_v1.profile_id"),
+        nullable=False,
+        index=True,
+    )
+    active_revision_id = Column(
+        String(128),
+        ForeignKey("paper_practice_profile_revision_v1.revision_id"),
+        nullable=False,
+        index=True,
+    )
+    with_helius_ws = Column(Integer, nullable=False, default=0)
+    max_iterations = Column(Integer, nullable=True)
+    iterations_completed = Column(Integer, nullable=False, default=0)
+    latest_decision_id = Column(String(128), nullable=True, index=True)
+    latest_session_key = Column(String(128), nullable=True, index=True)
+    last_cycle_id = Column(String(128), nullable=True, index=True)
+    started_at = Column(DateTime, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+
+class PaperPracticeDecisionV1(Base):
+    """Append-only paper-practice decisions across loop iterations."""
+
+    __tablename__ = "paper_practice_decision_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    decision_id = Column(String(128), nullable=False, unique=True, index=True)
+    loop_run_id = Column(
+        String(128),
+        ForeignKey("paper_practice_loop_run_v1.loop_run_id"),
+        nullable=False,
+        index=True,
+    )
+    profile_id = Column(
+        String(128),
+        ForeignKey("paper_practice_profile_v1.profile_id"),
+        nullable=False,
+        index=True,
+    )
+    profile_revision_id = Column(
+        String(128),
+        ForeignKey("paper_practice_profile_revision_v1.revision_id"),
+        nullable=False,
+        index=True,
+    )
+    decision_type = Column(String(32), nullable=False, index=True)
+    session_key = Column(String(128), nullable=True, index=True)
+    quote_snapshot_id = Column(
+        Integer,
+        ForeignKey("quote_snapshot.id"),
+        nullable=True,
+        index=True,
+    )
+    condition_run_id = Column(String(128), nullable=True, index=True)
+    policy_trace_id = Column(Integer, nullable=True, index=True)
+    risk_verdict_id = Column(Integer, nullable=True, index=True)
+    decision_payload_json = Column(Text, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_paper_practice_decision_v1_loop_created",
+            "loop_run_id",
+            "created_at",
         ),
     )

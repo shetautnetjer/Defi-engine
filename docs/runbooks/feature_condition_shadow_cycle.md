@@ -7,10 +7,12 @@ Operator path for the current downstream loop after source capture is already wo
 Run the bounded downstream stack in the intended order:
 
 1. verify source freshness
-2. materialize deterministic features
-3. score the bounded global regime
-4. run the bounded shadow-only ensemble
-5. inspect receipts and artifacts without widening runtime authority
+2. optionally backfill the bounded Massive historical ladder
+3. materialize deterministic features
+4. score the bounded global regime
+5. run the bounded shadow-only ensemble
+6. optionally run the live intraday regime cycle
+7. inspect receipts and artifacts without widening runtime authority
 
 ## Prerequisites
 
@@ -31,6 +33,14 @@ At minimum, the downstream loop depends on recent receipts for:
 - `fred-observations`
 
 The minute feature lane can also consume bounded Helius transfer context when it exists.
+
+For the historical ladder, the repo now also supports bounded Massive free-tier
+minute history:
+
+- `d5 capture massive-minute-aggs --full-free-tier`
+- the free-tier assumption is currently a 2-year minute-history window
+- only `X:SOLUSD`, `X:BTCUSD`, and `X:ETHUSD` are normalized into canonical SQL
+- raw `.csv.gz` files are preserved for replay
 
 ## Setup
 
@@ -67,6 +77,18 @@ d5 capture coinbase-book
 d5 capture fred-observations
 ```
 
+Optional bounded historical backfill before downstream scoring:
+
+```bash
+d5 capture massive-minute-aggs --full-free-tier
+```
+
+Or use an explicit historical range:
+
+```bash
+d5 capture massive-minute-aggs --from 2024-04-18 --to 2026-04-16
+```
+
 ## Step 2. Materialize Deterministic Features
 
 Run the minute execution-context lane first:
@@ -87,6 +109,8 @@ Expected outcome:
 - `spot_chain_macro_v1` writes rows into `feature_spot_chain_macro_minute_v1`
 - `global_regime_inputs_15m_v1` writes rows into `feature_global_regime_input_15m_v1`
 - `feature_materialization_run` records freshness snapshots and input windows
+- the regime lane prefers Coinbase candles when available and falls back to
+  Massive candles for the proxy symbols when Coinbase history is absent
 
 Quick verification:
 
@@ -132,6 +156,12 @@ d5 run-shadow intraday-meta-stack-v1
 d5 run-shadow regime-model-compare-v1
 ```
 
+Historical bounded comparison example:
+
+```bash
+d5 run-shadow regime-model-compare-v1 --history-start 2024-04-18 --history-end 2026-04-16 --use-massive-context
+```
+
 Expected outcome:
 
 - the command prints a success line with:
@@ -159,7 +189,40 @@ Notes:
   truth, then writes advisory-only proposal evidence instead of changing the
   regime owner
 
-## Step 5. Optional DuckDB Sync
+## Step 5. Optional Live Intraday Training Cycle
+
+```bash
+d5 run-live-regime-cycle
+```
+
+Optional bounded websocket burst:
+
+```bash
+d5 run-live-regime-cycle --with-helius-ws
+```
+
+Expected outcome:
+
+- live capture receipts are written for Jupiter, Helius, and Coinbase
+- `spot_chain_macro_v1` and `global_regime_inputs_15m_v1` are rematerialized
+- `global_regime_v1` is rescored
+- `regime-model-compare-v1` is rerun on the latest trailing window
+- policy and risk are re-evaluated
+- a paper-ready receipt is written under the live-cycle artifact directory
+
+Important:
+
+- this command does not place a paper trade by itself
+- it prepares the bounded evidence and freshest quote snapshot so the operator
+  can explicitly run the next paper cycle
+
+Typical explicit follow-up:
+
+```bash
+d5 run-paper-cycle <quote_snapshot_id> --condition-run-id <condition_run_id> --strategy-report <path>
+```
+
+## Step 6. Optional DuckDB Sync
 
 ```bash
 d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
@@ -232,6 +295,30 @@ Likely fix:
 - rerun `d5 run-shadow intraday-meta-stack-v1`
 - rerun `d5 run-shadow regime-model-compare-v1` only after the bounded feature
   history is deep enough for comparison
+
+### Live regime cycle fails
+
+Typical causes:
+
+- one of the live capture lanes is degraded or stale
+- no eligible `USDC -> SOL` Jupiter quote snapshot exists for the paper-ready
+  receipt
+- policy or risk is not in an eligible state
+
+What to inspect:
+
+```bash
+d5 status
+sqlite3 data/db/d5.db "SELECT run_id, provider, capture_type, status FROM ingest_run ORDER BY created_at DESC LIMIT 20;"
+find data/research/live_regime_cycle -maxdepth 2 -type f | sort
+```
+
+Likely fix:
+
+- refresh the failing capture lane explicitly
+- rerun `d5 run-live-regime-cycle`
+- only invoke `d5 run-paper-cycle ...` after the paper-ready receipt says the
+  quote/policy/risk tuple is ready
 
 ## Not Yet Safe To Claim
 

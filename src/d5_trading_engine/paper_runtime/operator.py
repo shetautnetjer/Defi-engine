@@ -39,12 +39,14 @@ class PaperTradeOperator:
         quote_snapshot_id: int,
         strategy_report_path: Path | None = None,
         condition_run_id: str | None = None,
+        preferred_family: str | None = None,
     ) -> dict[str, object]:
         """Run one bounded paper-trading cycle from advisory output to settlement."""
 
         cycle_started_at = utcnow()
         advisory_selection = self._load_advisory_strategy_selection(
-            strategy_report_path=strategy_report_path
+            strategy_report_path=strategy_report_path,
+            preferred_family=preferred_family,
         )
         quote_summary = self._load_quote_summary(quote_snapshot_id=quote_snapshot_id)
 
@@ -87,6 +89,7 @@ class PaperTradeOperator:
             "quote_snapshot_id": quote_snapshot_id,
             "condition_run_id": condition_run_id,
             "strategy_report_path": advisory_selection["report_path"],
+            "preferred_family": advisory_selection["top_family"],
             "artifact_dir": str(artifact_dir),
         }
         cycle_summary = {
@@ -248,10 +251,118 @@ class PaperTradeOperator:
 
         return cycle_summary
 
+    def close_cycle(
+        self,
+        *,
+        session_key: str,
+        quote_snapshot_id: int,
+        close_reason: str,
+        condition_run_id: str | None = None,
+    ) -> dict[str, object]:
+        """Close one open paper session from the latest bounded regime and risk view."""
+
+        cycle_started_at = utcnow()
+        policy_result = GlobalRegimePolicyEvaluator(self.settings).evaluate(
+            condition_run_id=condition_run_id
+        )
+        risk_result = RiskGate(self.settings).evaluate_global_regime_v1(
+            policy_trace_id=policy_result["trace_id"]
+        )
+        settlement_result = PaperSettlement(self.settings).simulate_close(
+            session_key=session_key,
+            quote_snapshot_id=quote_snapshot_id,
+            policy_trace_id=int(policy_result["trace_id"]),
+            risk_verdict_id=int(risk_result["risk_verdict_id"]),
+            condition_snapshot_id=int(policy_result["condition_snapshot_id"]),
+            source_feature_run_id=str(policy_result["source_feature_run_id"]),
+            policy_state=str(policy_result["policy_state"]),
+            risk_state=str(risk_result["risk_state"]),
+            close_reason=close_reason,
+            settlement_attempted_at=cycle_started_at,
+        )
+        portfolio_state = PaperSettlement(self.settings).get_portfolio_state(session_key)
+        quote_summary = self._load_quote_summary(quote_snapshot_id=quote_snapshot_id)
+
+        artifact_dir = self._artifact_dir(session_key)
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        owner_type = "paper_session"
+        owner_key = session_key
+
+        close_payload = {
+            "session_key": session_key,
+            "closed_at_utc": cycle_started_at.isoformat(),
+            "quote_snapshot_id": quote_snapshot_id,
+            "close_reason": close_reason,
+            "condition_run_id": policy_result["condition_run_id"],
+            "policy_result": policy_result,
+            "risk_result": risk_result,
+            "quote_summary": quote_summary,
+            "settlement_result": settlement_result,
+            "portfolio_state": portfolio_state,
+        }
+        write_json_artifact(
+            artifact_dir / "close_summary.json",
+            close_payload,
+            owner_type=owner_type,
+            owner_key=owner_key,
+            artifact_type="paper_close_summary",
+            settings=self.settings,
+        )
+        write_text_artifact(
+            artifact_dir / "close_report.qmd",
+            render_qmd(
+                "paper_cycle.qmd",
+                title=f"paper close: {session_key}",
+                summary_lines=[
+                    f"- session key: `{session_key}`",
+                    f"- close reason: `{close_reason}`",
+                    f"- quote snapshot id: `{quote_snapshot_id}`",
+                    f"- realized pnl usdc: `{settlement_result['realized_pnl_usdc']}`",
+                    f"- ending cash usdc: `{settlement_result['ending_cash_usdc']}`",
+                ],
+                sections=[
+                    (
+                        "Policy and Risk",
+                        [
+                            f"- policy state: `{policy_result['policy_state']}`",
+                            f"- risk state: `{risk_result['risk_state']}`",
+                            f"- condition run id: `{policy_result['condition_run_id']}`",
+                        ],
+                    ),
+                    (
+                        "Portfolio",
+                        [
+                            f"- session status: `{portfolio_state['session_status']}`",
+                            f"- cash usdc: `{portfolio_state['cash_usdc']}`",
+                            f"- total value usdc: `{portfolio_state['total_value_usdc']}`",
+                        ],
+                    ),
+                ],
+                generated_at=cycle_started_at,
+            ),
+            owner_type=owner_type,
+            owner_key=owner_key,
+            artifact_type="paper_close_report_qmd",
+            artifact_format="qmd",
+            settings=self.settings,
+        )
+        return {
+            "session_key": session_key,
+            "session_status": settlement_result["session_status"],
+            "quote_snapshot_id": quote_snapshot_id,
+            "close_reason": close_reason,
+            "artifact_dir": str(artifact_dir),
+            "policy_result": policy_result,
+            "risk_result": risk_result,
+            "settlement_result": settlement_result,
+            "portfolio_state": portfolio_state,
+        }
+
     def _load_advisory_strategy_selection(
         self,
         *,
         strategy_report_path: Path | None,
+        preferred_family: str | None = None,
     ) -> dict[str, object]:
         report_path = strategy_report_path or (self.settings.repo_root / _DEFAULT_STRATEGY_REPORT)
         if not report_path.exists():
@@ -261,18 +372,19 @@ class PaperTradeOperator:
         if not isinstance(payload, dict):
             raise RuntimeError(f"Advisory strategy report must decode to an object: {report_path}")
 
-        top_family = payload.get("top_family")
-        if not isinstance(top_family, str) or not top_family.strip():
+        reported_top_family = payload.get("top_family")
+        if not isinstance(reported_top_family, str) or not reported_top_family.strip():
             raise RuntimeError(
                 "Advisory strategy report does not contain a selected top_family."
             )
-        top_family = top_family.strip()
+        reported_top_family = reported_top_family.strip()
 
         families = payload.get("families")
         if not isinstance(families, dict):
             raise RuntimeError(
                 f"Advisory strategy report families payload is invalid: {report_path}"
             )
+        top_family = preferred_family.strip() if isinstance(preferred_family, str) and preferred_family.strip() else reported_top_family
         selected_metrics = families.get(top_family)
         if not isinstance(selected_metrics, dict):
             raise RuntimeError(
@@ -297,6 +409,7 @@ class PaperTradeOperator:
             "generated_at": payload.get("generated_at"),
             "auto_promotion_eligible": bool(payload.get("auto_promotion_eligible")),
             "top_family": top_family,
+            "reported_top_family": reported_top_family,
             "family_metrics": selected_metrics,
             "instrument_scope": family_config.get("instrument_scope"),
             "venue": family_config.get("venue"),

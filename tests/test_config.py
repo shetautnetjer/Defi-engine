@@ -87,6 +87,33 @@ def test_settings_load_coinbase_credentials_from_secrets_file(tmp_path: Path) ->
     assert settings.coinbase_api_key == "test-key"
     assert settings.coinbase_api_secret == "test-secret"
     assert settings.coinbase_api_passphrase == "test-passphrase"
+    assert settings.coinbase_auth_mode == "exchange_key"
+
+
+def test_settings_load_coinbase_cdp_credentials_from_simple_key_export(tmp_path: Path) -> None:
+    secrets_file = tmp_path / "coinbase-secrets"
+    secrets_file.write_text(
+        "\n".join(
+            [
+                "organizations/test-org/apiKeys/test-key",
+                "",
+                "-----BEGIN EC PRIVATE KEY-----\\nline-1\\nline-2\\n-----END EC PRIVATE KEY-----",
+                "",
+                "frontend-key-test",
+            ]
+        )
+    )
+
+    settings = Settings(
+        _env_file=None,
+        coinbase_secrets_file=str(secrets_file),
+    )
+
+    assert settings.coinbase_cdp_api_key_name == "organizations/test-org/apiKeys/test-key"
+    assert settings.coinbase_cdp_api_private_key.startswith("-----BEGIN EC PRIVATE KEY-----\n")
+    assert settings.coinbase_cdp_api_private_key.endswith("-----END EC PRIVATE KEY-----\n")
+    assert settings.coinbase_client_api_key == "frontend-key-test"
+    assert settings.coinbase_auth_mode == "cdp_app_jwt"
 
 
 def test_env_example_keys_map_to_settings_fields() -> None:
@@ -105,6 +132,9 @@ def test_env_example_keys_map_to_settings_fields() -> None:
         "COINBASE_API_KEY",
         "COINBASE_API_SECRET",
         "COINBASE_API_PASSPHRASE",
+        "COINBASE_CDP_API_KEY_NAME",
+        "COINBASE_CDP_API_PRIVATE_KEY",
+        "COINBASE_CLIENT_API_KEY",
         "COINBASE_SECRETS_FILE",
         "COINBASE_RAW_DB_PATH",
         "MASSIVE_API_KEY",

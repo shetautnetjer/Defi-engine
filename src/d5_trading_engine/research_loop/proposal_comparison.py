@@ -33,7 +33,9 @@ _REVIEW_DECISION_RANKS = {
 }
 _MATURITY_RANKS = {
     "paper_cycle_follow_on": 3,
+    "paper_profile_adjustment_follow_on": 3,
     "strategy_eval_follow_on": 2,
+    "live_regime_cycle_follow_on": 2,
     "regime_model_compare_follow_on": 2,
     "label_program_follow_on": 1,
 }
@@ -676,6 +678,82 @@ class ProposalComparator:
                 "best_adjacent_flip_rate": adjacent_flip_rate,
                 "feature_bucket_rows": feature_bucket_rows,
                 "recommended_is_statsmodels": recommended_is_statsmodels,
+            }
+
+        if proposal.proposal_kind == "live_regime_cycle_follow_on":
+            paper_ready = primary_artifact_payload.get("paper_ready_receipt", {})
+            source_metrics = source_context["source_metrics"]
+            quote_present = float(
+                paper_ready.get(
+                    "quote_snapshot_id",
+                    proposal_metrics.get("paper_ready_quote_present", 0.0),
+                )
+                is not None
+            )
+            policy_eligible = float(
+                paper_ready.get("policy_state", "") == "eligible_long"
+                or proposal_metrics.get("policy_eligible_long", 0.0)
+            )
+            risk_allowed = float(
+                paper_ready.get("risk_state", "") == "allowed"
+                or proposal_metrics.get("risk_allowed", 0.0)
+            )
+            global_feature_rows = float(
+                source_metrics.get(
+                    "global_feature_rows",
+                    proposal_metrics.get("global_feature_rows", 0.0),
+                )
+                or 0.0
+            )
+            evidence_tuple = (
+                quote_present,
+                policy_eligible,
+                risk_allowed,
+                global_feature_rows,
+            )
+            evidence_score = (
+                quote_present * 1000.0
+                + policy_eligible * 100.0
+                + risk_allowed * 10.0
+                + global_feature_rows
+            )
+            return evidence_tuple, evidence_score, {
+                "paper_ready_quote_present": quote_present,
+                "policy_eligible_long": policy_eligible,
+                "risk_allowed": risk_allowed,
+                "global_feature_rows": global_feature_rows,
+            }
+
+        if proposal.proposal_kind == "paper_profile_adjustment_follow_on":
+            source_metrics = source_context["source_metrics"]
+            patch_keys = primary_artifact_payload.get("patch_keys") or []
+            patch_size = float(len(patch_keys) or proposal_metrics.get("patch_size", 0.0) or 0.0)
+            realized_pnl_usdc = float(
+                source_metrics.get(
+                    "paper_realized_pnl_usdc",
+                    proposal_metrics.get("realized_pnl_usdc", 0.0),
+                )
+                or 0.0
+            )
+            realized_pnl_bps = float(proposal_metrics.get("realized_pnl_bps", 0.0) or 0.0)
+            bars_held = float(proposal_metrics.get("bars_held", 0.0) or 0.0)
+            evidence_tuple = (
+                realized_pnl_usdc,
+                realized_pnl_bps,
+                -patch_size,
+                -bars_held,
+            )
+            evidence_score = (
+                realized_pnl_usdc * 100.0
+                + realized_pnl_bps
+                - patch_size * 5.0
+                - bars_held * 0.1
+            )
+            return evidence_tuple, evidence_score, {
+                "realized_pnl_usdc": realized_pnl_usdc,
+                "realized_pnl_bps": realized_pnl_bps,
+                "patch_size": patch_size,
+                "bars_held": bars_held,
             }
 
         families = primary_artifact_payload.get("families")

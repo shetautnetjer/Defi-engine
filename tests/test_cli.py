@@ -371,6 +371,7 @@ def test_cli_help_lists_bootstrap_commands(cli_runner) -> None:
     assert "materialize-features" in result.output
     assert "score-conditions" in result.output
     assert "run-shadow" in result.output
+    assert "run-backtest-walk-forward" in result.output
     assert "run-label-program" in result.output
     assert "run-strategy-eval" in result.output
     assert "run-paper-cycle" in result.output
@@ -743,14 +744,14 @@ def test_cli_capture_massive_crypto_surfaces_fail_closed_error(
     assert "Massive crypto capture failed closed" in result.output
 
 
-def test_cli_capture_massive_minute_aggs_requires_date(cli_runner) -> None:
+def test_cli_capture_massive_minute_aggs_requires_one_history_mode(cli_runner) -> None:
     init_result = cli_runner.invoke(cli, ["init"])
     assert init_result.exit_code == 0
 
     result = cli_runner.invoke(cli, ["capture", "massive-minute-aggs"])
 
     assert result.exit_code == 1
-    assert "--date YYYY-MM-DD is required" in result.output
+    assert "Choose exactly one Massive history mode" in result.output
 
 
 def test_cli_capture_massive_minute_aggs_dispatches(
@@ -760,8 +761,9 @@ def test_cli_capture_massive_minute_aggs_dispatches(
     init_result = cli_runner.invoke(cli, ["init"])
     assert init_result.exit_code == 0
 
-    async def _fake_capture(self, date_str: str) -> str:
+    async def _fake_capture(self, date_str: str, **kwargs) -> str:
         assert date_str == "2026-04-16"
+        assert kwargs == {}
         return "massive_minute_aggs_test"
 
     monkeypatch.setattr(
@@ -776,3 +778,275 @@ def test_cli_capture_massive_minute_aggs_dispatches(
 
     assert result.exit_code == 0
     assert "✓ Massive minute aggs: massive_minute_aggs_test" in result.output
+
+
+def test_cli_capture_massive_minute_aggs_full_free_tier_dispatches(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    async def _fake_backfill(self, *, resume: bool = True):
+        assert resume is True
+        return {
+            "batch_id": "capture_batch_massive_free_tier",
+            "days": {"captured_count": 5, "skipped_count": 2},
+        }
+
+    monkeypatch.setattr(
+        "d5_trading_engine.capture.massive_backfill.MassiveMinuteAggsBackfill.backfill_full_free_tier",
+        _fake_backfill,
+    )
+
+    result = cli_runner.invoke(
+        cli,
+        ["capture", "massive-minute-aggs", "--full-free-tier"],
+    )
+
+    assert result.exit_code == 0
+    assert "capture_batch_massive_free_tier" in result.output
+
+
+def test_cli_run_live_regime_cycle_dispatches(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    async def _fake_live_cycle(self, *, with_helius_ws: bool = False):
+        assert with_helius_ws is True
+        return {
+            "cycle_id": "live_regime_cycle_test",
+            "quote_snapshot_id": 42,
+            "ready_for_paper_cycle": True,
+            "proposal_status": "proposed",
+        }
+
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.live_regime_cycle.LiveRegimeCycleRunner.run_live_regime_cycle",
+        _fake_live_cycle,
+    )
+
+    result = cli_runner.invoke(
+        cli,
+        ["run-live-regime-cycle", "--with-helius-ws"],
+    )
+
+    assert result.exit_code == 0
+    assert "live_regime_cycle_test" in result.output
+    assert "ready_for_paper_cycle=True" in result.output
+
+
+def test_cli_run_paper_close_dispatches_json(cli_runner, monkeypatch: pytest.MonkeyPatch) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.operator.PaperTradeOperator.close_cycle",
+        lambda self, **kwargs: {
+            "session_key": kwargs["session_key"],
+            "artifact_dir": "/tmp/paper-close",
+            "settlement_result": {
+                "session_status": "closed",
+                "realized_pnl_usdc": 0.5,
+            },
+        },
+    )
+
+    result = cli_runner.invoke(
+        cli,
+        [
+            "run-paper-close",
+            "paper_session_test",
+            "--quote-snapshot-id",
+            "99",
+            "--reason",
+            "take_profit",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["session_key"] == "paper_session_test"
+    assert payload["settlement_result"]["session_status"] == "closed"
+
+
+def test_cli_paper_practice_bootstrap_dispatches_json(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.practice.PaperPracticeRuntime.run_bootstrap",
+        lambda self: {
+            "bootstrap_id": "paper_practice_bootstrap_test",
+            "profile_id": "paper_profile_test",
+            "feature_run_id": "feature_test",
+            "artifact_dir": "/tmp/bootstrap",
+            "comparison_result": {"run_id": "comparison_test"},
+        },
+    )
+
+    result = cli_runner.invoke(cli, ["run-paper-practice-bootstrap", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["bootstrap_id"] == "paper_practice_bootstrap_test"
+
+
+def test_cli_paper_practice_loop_and_status_dispatch_json(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.practice.PaperPracticeRuntime.run_loop",
+        lambda self, **kwargs: {
+            "loop_run_id": "paper_practice_loop_test",
+            "status": "completed",
+            "iterations_completed": kwargs.get("max_iterations") or 0,
+            "active_profile_id": "paper_profile_test",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.practice.PaperPracticeRuntime.get_status",
+        lambda self: {
+            "active_profile_id": "paper_profile_test",
+            "active_revision_id": "paper_profile_revision_test",
+            "open_session_key": "",
+            "latest_loop_status": "completed",
+        },
+    )
+
+    loop_result = cli_runner.invoke(
+        cli,
+        ["run-paper-practice-loop", "--max-iterations", "1", "--json"],
+    )
+    assert loop_result.exit_code == 0
+    loop_payload = json.loads(loop_result.output)
+    assert loop_payload["loop_run_id"] == "paper_practice_loop_test"
+    assert loop_payload["iterations_completed"] == 1
+
+    status_result = cli_runner.invoke(cli, ["paper-practice-status", "--json"])
+    assert status_result.exit_code == 0
+    status_payload = json.loads(status_result.output)
+    assert status_payload["active_profile_id"] == "paper_profile_test"
+
+
+def test_cli_core_ladder_commands_dispatch_json(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    monkeypatch.setattr(
+        "d5_trading_engine.features.materializer.FeatureMaterializer.materialize_global_regime_inputs_15m_v1",
+        lambda self: ("feature_json_test", 128),
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.condition.scorer.ConditionScorer.score_global_regime_v1",
+        lambda self: {
+            "run_id": "condition_json_test",
+            "model_family": "stub_hmm",
+            "latest_snapshot": {
+                "semantic_regime": "long_friendly",
+                "confidence": 0.81,
+                "bucket_start_utc": "2026-04-18T00:00:00+00:00",
+                "blocking_reason": None,
+                "blocked": False,
+                "macro_context_state": "healthy_recent",
+            },
+            "history": [],
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.regime_model_compare.RegimeModelComparator.run_regime_model_compare_v1",
+        lambda self, **kwargs: {
+            "run_id": "comparison_json_test",
+            "artifact_dir": "/tmp/comparison",
+            "recommended_candidate": "hmm",
+            "proposal_status": "proposed",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.live_regime_cycle.LiveRegimeCycleRunner.run_live_regime_cycle",
+        lambda self, **kwargs: {
+            "cycle_id": "live_cycle_json_test",
+            "quote_snapshot_id": 42,
+            "condition_run_id": "condition_json_test",
+            "ready_for_paper_cycle": True,
+            "proposal_status": "proposed",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.operator.PaperTradeOperator.run_cycle",
+        lambda self, **kwargs: {
+            "session_key": "paper_session_json_test",
+            "session_status": "open",
+            "filled": True,
+            "artifact_dir": "/tmp/paper",
+            "strategy_selection": {"top_family": "trend_continuation_long_v1"},
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.practice.PaperPracticeRuntime.run_backtest_walk_forward",
+        lambda self: {
+            "run_id": "backtest_walk_forward_test",
+            "status": "completed",
+            "completed_ladder": True,
+            "window_count": 3,
+            "artifact_dir": "/tmp/backtest",
+            "active_revision_id": "paper_profile_revision_test",
+            "starting_revision_id": "paper_profile_revision_start",
+        },
+    )
+
+    materialize_result = cli_runner.invoke(
+        cli,
+        ["materialize-features", "global-regime-inputs-15m-v1", "--json"],
+    )
+    assert materialize_result.exit_code == 0
+    assert json.loads(materialize_result.output)["feature_run_id"] == "feature_json_test"
+
+    condition_result = cli_runner.invoke(
+        cli,
+        ["score-conditions", "global-regime-v1", "--json"],
+    )
+    assert condition_result.exit_code == 0
+    assert json.loads(condition_result.output)["run_id"] == "condition_json_test"
+
+    shadow_result = cli_runner.invoke(
+        cli,
+        ["run-shadow", "regime-model-compare-v1", "--json"],
+    )
+    assert shadow_result.exit_code == 0
+    assert json.loads(shadow_result.output)["run_id"] == "comparison_json_test"
+
+    live_result = cli_runner.invoke(
+        cli,
+        ["run-live-regime-cycle", "--json"],
+    )
+    assert live_result.exit_code == 0
+    assert json.loads(live_result.output)["cycle_id"] == "live_cycle_json_test"
+
+    paper_result = cli_runner.invoke(
+        cli,
+        ["run-paper-cycle", "42", "--json"],
+    )
+    assert paper_result.exit_code == 0
+    assert json.loads(paper_result.output)["session_key"] == "paper_session_json_test"
+
+    backtest_result = cli_runner.invoke(
+        cli,
+        ["run-backtest-walk-forward", "--json"],
+    )
+    assert backtest_result.exit_code == 0
+    assert json.loads(backtest_result.output)["run_id"] == "backtest_walk_forward_test"
