@@ -225,6 +225,27 @@ Run the continuous completion supervisor directly:
   --interval 60
 ```
 
+Run the standalone watcher adapter:
+
+```bash
+./scripts/agents/start_watch_adapter.sh \
+  --repo /home/netjer/Projects/AI-Frame/Brain/Defi-engine
+```
+
+Watcher status only:
+
+```bash
+./scripts/agents/status_watch_adapter.sh \
+  --repo /home/netjer/Projects/AI-Frame/Brain/Defi-engine
+```
+
+The watcher is advisory-only in v1. It is not a detached supervisor replacement,
+it does not own runtime truth, and it must not mutate repo-tracked docs, code,
+tests, `prd.json`, or `progress.txt`. It writes bounded review packets under
+`data/reports/watcher/`, keeps a single-run lock in
+`.ai/dropbox/state/watcher.lock`, and only runs bounded sandbox evals when
+explicitly started with `--sandbox-evals`.
+
 Launch one lane run:
 
 ```bash

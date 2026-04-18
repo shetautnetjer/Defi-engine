@@ -15,7 +15,7 @@ promotion before the next slice is treated as backlog truth.
 ## Current Documents
 
 - `project/bootstrap_inventory.md`
-  - stable snapshot of what is implemented, scaffolded, and missing
+  - stable snapshot of what is implemented, partially implemented, and missing
 - `project/current_runtime_truth.md`
   - compact current runtime-truth packet for the swarm
 - `prd/crypto_backtesting_mission.md`
@@ -42,6 +42,8 @@ promotion before the next slice is treated as backlog truth.
   - first post-ingest contract that defines which canonical truth the feature layer may consume
 - `task/global_regime_condition_and_shadow_stack.md`
   - first real condition scorer plus the bounded shadow-only meta-stack and experiment receipts
+- `task/reporting_and_proposals_v1.md`
+  - centralized QMD reporting, SQL artifact truth, and proposal-only research review flow
 - `plans/source_expansion_preconditions.md`
   - near-term sequencing for Jupiter → Helius → Coinbase source expansion
 - `plans/historical_research_protocol.md`
@@ -50,6 +52,8 @@ promotion before the next slice is treated as backlog truth.
   - bridge note from source-ingest bootstrap into downstream runtime layer ownership
 - `plans/advisory_shadow_loop_for_label_and_strategy_descent.md`
   - bounded no-HITL advisory loop for repeated backtest, walk-forward, and challenger scoring in support of `LABEL-001` and `STRAT-001`
+- `plans/paper_trading_readiness_and_live_gate.md`
+  - bounded path from today’s research/runtime truth to a credible Solana spot paper-trading app, plus the future live-trading gate
 - `plans/source_map_and_source_completeness.md`
   - provider-role map and source-completeness doctrine before downstream runtime dependence
 - `plans/strategy_descent_and_instrument_scope.md`
@@ -64,6 +68,8 @@ promotion before the next slice is treated as backlog truth.
   - canonical label and regime taxonomy work still missing
 - `gaps/strategy_registry_and_challenger_framework_gap.md`
   - strategy-family, metrics, and challenger work still missing
+- `gaps/paper_trading_readiness_gap.md`
+  - remaining gap between the current research/runtime engine and a credible paper-trading app
 - `gaps/codex_watcher_and_autoresearch_gap.md`
   - missing watcher contract and autoresearch adapter surfaces for safe upgrade suggestions
 - `gaps/execution_intent_gap.md`
@@ -88,10 +94,20 @@ promotion before the next slice is treated as backlog truth.
   - bounded mathematical and modeling contract for the current feature, regime, and shadow surfaces
 - `math/market_regime_forecast_and_labeling_program.md`
   - canonical regime, direction-label, horizon, and evaluation-metric doctrine for future strategy work
+- `math/strategy_family_registry.md`
+  - first bounded strategy-family registry for repeated advisory challenger work
 - `test/bootstrap_validation.md`
   - installed-deps validation commands, smoke procedures, and pytest coverage
+- `examples/capture_run_report_example.qmd`
+  - sample capture-run evidence packet
+- `examples/proposal_example.qmd`
+  - sample advisory improvement proposal packet
+- `handoff/README.md`
+  - doctrine for verbose human-readable continuation notes versus live `.ai/dropbox/` exchange
 - `handoff/2026-04-12_bootstrap_phase_1.md`
   - historical receipt for the initial bootstrap pass
+- `handoff/2026-04-18_agents_topology_and_handoff_doctrine.md`
+  - focused receipt for the folder-level AGENTS topology and handoff-routing cleanup
 
 ## Routing Rules
 
@@ -121,15 +137,26 @@ promotion before the next slice is treated as backlog truth.
   - detached supervisor lifecycle also lives there through `scripts/agents/start_supervisor.sh`, `stop_supervisor.sh`, and `supervisor_status.sh`
   - finder modes also live there through `.ai/templates/architecture_finder.md`, `.ai/templates/research_finder.md`, and `.ai/dropbox/state/{finder_state.json,finder_decision.json}`
   - policy-only machine-readable swarm law also lives there through `.ai/swarm/{swarm.yaml,lane_rules.yaml,promotion_ladder.yaml}`
+  - bounded research-stage machine law now also includes `.ai/swarm/{story_classes.yaml,metrics_registry.yaml,strategy_registry.yaml,instrument_scope.yaml}`
   - treat those as execution-control surfaces, not product or runtime authority
 - `docs/test/`
   - validation notes and smoke checks
 - `docs/handoff/`
-  - historical handoff and receipt surfaces
+  - verbose human continuation and operator handoff surfaces
+  - never canonical story truth; handoff notes must point back to code, config, tests, `prd.json`, `progress.txt`, and the stable docs packet
 
 Across all of these classes, writer should review the full docs surface on every
 accepted loop and update every affected file category needed to keep repo truth
 current.
+
+## Which Surface Do I Use?
+
+- Update `.ai/dropbox/` when the work needs live exchange, receipts, mailbox
+  state, or machine-visible lane output.
+- Update `docs/handoff/` when the slice needs a verbose human-readable resume
+  note, operator context, or a durable continuation narrative.
+- Update `prd.json`, `progress.txt`, code, config, schemas, tests, and the
+  stable docs packet when the current repo truth changes.
 
 ## Reserved But Intentionally Absent In This Phase
 

@@ -135,3 +135,40 @@ class RawStore:
             Path to the written file.
         """
         return self.write_jsonl(provider, capture_type, [payload], ingest_run_id)
+
+    def write_bytes(
+        self,
+        provider: str,
+        capture_type: str,
+        content: bytes,
+        *,
+        suffix: str,
+    ) -> Path:
+        """Write raw bytes atomically for replayable flat-file captures."""
+        if not content:
+            log.warning("raw_store_bytes_empty", provider=provider, capture_type=capture_type)
+            return Path()
+
+        partition_dir = self._partition_dir(provider)
+        now = utcnow()
+        filename = f"{capture_type}_{now.strftime('%H%M%S')}_{os.getpid()}{suffix}"
+        target = partition_dir / filename
+
+        fd, tmp_path = tempfile.mkstemp(dir=str(partition_dir), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(content)
+            os.rename(tmp_path, str(target))
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+        log.info(
+            "raw_store_bytes_written",
+            provider=provider,
+            capture_type=capture_type,
+            path=str(target),
+            size_bytes=len(content),
+        )
+        return target

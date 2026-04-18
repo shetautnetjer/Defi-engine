@@ -160,6 +160,34 @@ Model family contract:
 - bounded fallback:
   - four-component Gaussian mixture proxy when `hmmlearn` is unavailable
 
+### External `doc_ref`
+
+Current external dependency references for the bounded regime owner:
+
+- [`hmmlearn` tutorial](https://hmmlearn.readthedocs.io/en/latest/tutorial.html)
+  - current lightweight HMM surface that matches the repo's present
+    implementation shape
+- [`hmmlearn` README](https://github.com/hmmlearn/hmmlearn/blob/main/README.rst)
+  - primary-source maintenance note; the project explicitly says it is under
+    limited-maintenance mode
+- [`statsmodels` Markov switching dynamic regression models](https://www.statsmodels.org/dev/examples/notebooks/generated/markov_regression.html)
+  - strongest next evaluation candidate for a small bounded trading engine if
+    the repo later compares alternatives in shadow
+- [`pomegranate` Hidden Markov Models tutorial](https://pomegranate.readthedocs.io/en/latest/tutorials/B_Model_Tutorial_4_Hidden_Markov_Models.html)
+  - broader research-only HMM alternative, not the first next runtime
+    candidate
+
+Current posture:
+
+- keep `hmmlearn` plus the current GMM fallback as runtime-adjacent truth
+- treat `statsmodels` as the first shadow-only comparison candidate before any
+  dependency swap
+- keep `pomegranate` research-only unless the narrower `statsmodels` comparison
+  proves insufficient
+- execute that bounded comparison through
+  `d5 run-shadow regime-model-compare-v1`, which stays advisory-only and does
+  not change the regime owner by itself
+
 Semantic-state contract:
 
 - raw latent state ids are not the operator-facing truth

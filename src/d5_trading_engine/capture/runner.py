@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from pathlib import Path
 
 import orjson
 
@@ -22,6 +23,8 @@ from d5_trading_engine.common.errors import CaptureError
 from d5_trading_engine.common.logging import get_logger
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
+from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
+from d5_trading_engine.reporting.qmd import render_qmd
 from d5_trading_engine.storage.raw_store import RawStore
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import IngestRun, SourceHealthEvent
@@ -136,6 +139,117 @@ class CaptureRunner:
             return len(rows)
         finally:
             session.close()
+
+    def write_capture_receipts(
+        self,
+        run_id: str,
+        *,
+        context: dict[str, object] | None = None,
+    ) -> Path | None:
+        """Write capture summary artifacts plus SQL artifact receipts."""
+        session = get_session(self.settings)
+        try:
+            run = session.query(IngestRun).filter_by(run_id=run_id).first()
+            if run is None:
+                log.warning("capture_receipts_skipped_missing_run", run_id=run_id)
+                return None
+            health = (
+                session.query(SourceHealthEvent)
+                .filter_by(provider=run.provider)
+                .order_by(SourceHealthEvent.checked_at.desc())
+                .first()
+            )
+        finally:
+            session.close()
+
+        artifact_dir = self.settings.data_dir / "research" / "capture_runs" / run_id
+        owner_type = "capture_run"
+        owner_key = run_id
+        config_payload = {
+            "run_id": run.run_id,
+            "provider": run.provider,
+            "capture_type": run.capture_type,
+            "artifact_dir": str(artifact_dir),
+            "context": context or {},
+        }
+        summary_payload = {
+            "run_id": run.run_id,
+            "provider": run.provider,
+            "capture_type": run.capture_type,
+            "status": run.status,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "records_captured": run.records_captured,
+            "error_message": run.error_message,
+            "latest_health": {
+                "endpoint": health.endpoint if health else None,
+                "is_healthy": bool(health.is_healthy) if health else None,
+                "status_code": health.status_code if health else None,
+                "latency_ms": health.latency_ms if health else None,
+                "checked_at": health.checked_at.isoformat() if health and health.checked_at else None,
+                "error_message": health.error_message if health else None,
+            },
+        }
+
+        write_json_artifact(
+            artifact_dir / "config.json",
+            config_payload,
+            owner_type=owner_type,
+            owner_key=owner_key,
+            artifact_type="capture_config",
+            settings=self.settings,
+        )
+        write_json_artifact(
+            artifact_dir / "capture_summary.json",
+            summary_payload,
+            owner_type=owner_type,
+            owner_key=owner_key,
+            artifact_type="capture_summary",
+            settings=self.settings,
+        )
+        write_text_artifact(
+            artifact_dir / "report.qmd",
+            render_qmd(
+                "capture_run.qmd",
+                title=f"capture_{run.provider}_{run.capture_type}",
+                summary_lines=[
+                    f"- run id: `{run.run_id}`",
+                    f"- provider: `{run.provider}`",
+                    f"- capture type: `{run.capture_type}`",
+                    f"- status: `{run.status}`",
+                    f"- records captured: `{run.records_captured or 0}`",
+                ],
+                sections=[
+                    (
+                        "Timing",
+                        [
+                            f"- started at: `{summary_payload['started_at']}`",
+                            f"- finished at: `{summary_payload['finished_at']}`",
+                        ],
+                    ),
+                    (
+                        "Latest Health",
+                        [
+                            f"- endpoint: `{summary_payload['latest_health']['endpoint']}`",
+                            f"- healthy: `{summary_payload['latest_health']['is_healthy']}`",
+                            f"- status code: `{summary_payload['latest_health']['status_code']}`",
+                            f"- latency ms: `{summary_payload['latest_health']['latency_ms']}`",
+                        ],
+                    ),
+                    (
+                        "Context",
+                        [f"- `{key}`: `{value}`" for key, value in sorted((context or {}).items())]
+                        or ["- none"],
+                    ),
+                ],
+            ),
+            owner_type=owner_type,
+            owner_key=owner_key,
+            artifact_type="capture_report_qmd",
+            artifact_format="qmd",
+            settings=self.settings,
+        )
+        return artifact_dir
 
     def _resolve_tracked_symbols(self) -> set[str]:
         """Resolve stable symbol hints from the pinned mint universe."""
@@ -583,7 +697,10 @@ class CaptureRunner:
                     product_id = product.get("product_id") or product.get("productId")
                     if not product_id:
                         continue
-                    candles = await client.get_public_candles(product_id)
+                    candles = await client.get_public_candles(
+                        product_id,
+                        limit=self.settings.coinbase_candle_history_minutes,
+                    )
                     if not candles:
                         continue
                     captured_at = utcnow()
@@ -843,8 +960,9 @@ class CaptureRunner:
         return run_id
 
     async def capture_massive_crypto(self) -> str:
-        """Attempt Massive crypto data capture (fail closed)."""
+        """Capture Massive ticker reference rows plus bounded snapshots."""
         from d5_trading_engine.adapters.massive.client import MassiveClient
+        from d5_trading_engine.normalize.massive.normalizer import MassiveNormalizer
         from d5_trading_engine.storage.truth.models import RawMassiveCryptoEvent
 
         run_id = self._start_ingest_run("massive", "crypto_reference")
@@ -853,26 +971,44 @@ class CaptureRunner:
         try:
             client = MassiveClient(self.settings)
             try:
-                data = await client.fetch_crypto_reference()
+                bundle = await client.fetch_crypto_reference_bundle(
+                    list(self.settings.massive_default_tickers)
+                )
             finally:
                 await client.close()
 
             captured_at = utcnow()
-            rows = data if isinstance(data, list) else [data]
-            self.raw_store.write_jsonl("massive", "crypto_reference", rows, run_id)
-            count = self._write_raw_rows(
-                RawMassiveCryptoEvent,
-                [
-                    {
-                        "ingest_run_id": run_id,
-                        "provider": "massive",
-                        "event_type": "crypto_reference",
-                        "payload": orjson.dumps(row).decode(),
-                        "captured_at": captured_at,
-                    }
-                    for row in rows
-                ],
-            )
+            reference_rows = bundle.get("tickers", [])
+            snapshot_rows = bundle.get("snapshots", [])
+            if reference_rows:
+                self.raw_store.write_jsonl("massive", "crypto_reference", reference_rows, run_id)
+            if snapshot_rows:
+                self.raw_store.write_jsonl("massive", "crypto_snapshot", snapshot_rows, run_id)
+            raw_rows = [
+                {
+                    "ingest_run_id": run_id,
+                    "provider": "massive",
+                    "event_type": "crypto_reference",
+                    "payload": orjson.dumps(row).decode(),
+                    "captured_at": captured_at,
+                }
+                for row in reference_rows
+            ] + [
+                {
+                    "ingest_run_id": run_id,
+                    "provider": "massive",
+                    "event_type": "crypto_snapshot",
+                    "payload": orjson.dumps(row).decode(),
+                    "captured_at": captured_at,
+                }
+                for row in snapshot_rows
+            ]
+            self._write_raw_rows(RawMassiveCryptoEvent, raw_rows)
+
+            normalizer = MassiveNormalizer(self.settings)
+            count = normalizer.normalize_reference_tickers(reference_rows)
+            for snapshot in snapshot_rows:
+                count += normalizer.normalize_snapshot(snapshot, run_id)
 
             elapsed_ms = (time.monotonic() - start) * 1000
             self._log_health("massive", "crypto_reference", True, elapsed_ms)
@@ -883,5 +1019,60 @@ class CaptureRunner:
             self._finish_ingest_run(run_id, "failed", error=str(exc))
             log.error("massive_capture_failed_closed", error=str(exc))
             raise CaptureError(f"Massive crypto capture failed closed: {exc}") from exc
+
+        return run_id
+
+    async def capture_massive_minute_aggs(self, date_str: str) -> str:
+        """Capture a replayable Massive minute-aggregate flat file for one UTC date."""
+        from d5_trading_engine.adapters.massive.client import MassiveClient
+        from d5_trading_engine.normalize.massive.normalizer import MassiveNormalizer
+        from d5_trading_engine.storage.truth.models import RawMassiveCryptoEvent
+
+        run_id = self._start_ingest_run("massive", "minute_aggs")
+        start = time.monotonic()
+
+        try:
+            client = MassiveClient(self.settings)
+            try:
+                raw_content = await client.download_minute_aggs(date_str)
+                rows = client.parse_minute_aggs_csv(raw_content)
+            finally:
+                await client.close()
+
+            raw_path = self.raw_store.write_bytes(
+                "massive",
+                f"minute_aggs_{date_str}",
+                raw_content,
+                suffix=".csv.gz",
+            )
+            captured_at = utcnow()
+            self._write_raw_rows(
+                RawMassiveCryptoEvent,
+                [
+                    {
+                        "ingest_run_id": run_id,
+                        "provider": "massive",
+                        "event_type": "minute_aggs_flatfile",
+                        "payload": orjson.dumps(
+                            {
+                                "date": date_str,
+                                "flatfile_path": str(raw_path),
+                                "row_count": len(rows),
+                            }
+                        ).decode(),
+                        "captured_at": captured_at,
+                    }
+                ],
+            )
+            count = MassiveNormalizer(self.settings).normalize_minute_aggs(rows, run_id)
+            elapsed_ms = (time.monotonic() - start) * 1000
+            self._log_health("massive", "minute_aggs_flatfile", True, elapsed_ms)
+            self._finish_ingest_run(run_id, "success", count)
+        except Exception as exc:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            self._log_health("massive", "minute_aggs_flatfile", False, elapsed_ms, error=str(exc))
+            self._finish_ingest_run(run_id, "failed", error=str(exc))
+            log.error("massive_minute_aggs_failed_closed", error=str(exc), date=date_str)
+            raise CaptureError(f"Massive minute aggregates capture failed closed: {exc}") from exc
 
         return run_id

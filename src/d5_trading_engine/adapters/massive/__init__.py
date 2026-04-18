@@ -1,1 +1,1 @@
-"""Massive adapter — REST, WebSocket, and flat-file scaffold (entitlement-dependent)."""
+"""Massive adapter — bounded REST and flat-file capture helpers."""

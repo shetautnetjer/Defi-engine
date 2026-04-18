@@ -22,6 +22,7 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "runbooks" / "ralph_tmux_swarm.md",
     REPO_ROOT / "docs" / "math" / "regime_shadow_modeling_contracts.md",
     REPO_ROOT / "docs" / "math" / "market_regime_forecast_and_labeling_program.md",
+    REPO_ROOT / "docs" / "math" / "strategy_family_registry.md",
     REPO_ROOT / "docs" / "policy" / "runtime_authority_and_promotion_ladder.md",
     REPO_ROOT / "docs" / "policy" / "writer_story_promotion_rubric.md",
     REPO_ROOT / "docs" / "test" / "bootstrap_validation.md",
@@ -35,6 +36,7 @@ REQUIRED_DOCS = ACTIVE_DOCS + [
     REPO_ROOT / "docs" / "gaps" / "execution_intent_gap.md",
     REPO_ROOT / "docs" / "gaps" / "instrument_expansion_readiness_gap.md",
     REPO_ROOT / "docs" / "gaps" / "tmux_machine_law_and_packet_gap.md",
+    REPO_ROOT / "docs" / "handoff" / "README.md",
     REPO_ROOT / "docs" / "handoff" / "2026-04-12_bootstrap_phase_1.md",
 ]
 
@@ -49,6 +51,20 @@ def test_required_bootstrap_docs_exist() -> None:
     assert not missing
 
 
+def test_navigation_agents_exist_only_in_high_value_runtime_roots() -> None:
+    expected = [
+        REPO_ROOT / "src" / "d5_trading_engine" / "AGENTS.md",
+        REPO_ROOT / "src" / "d5_trading_engine" / "storage" / "AGENTS.md",
+        REPO_ROOT / "src" / "d5_trading_engine" / "research_loop" / "AGENTS.md",
+        REPO_ROOT / "src" / "d5_trading_engine" / "models" / "AGENTS.md",
+    ]
+    for path in expected:
+        assert path.exists(), f"missing navigation AGENTS file: {path}"
+
+    assert not (REPO_ROOT / "docs" / "AGENTS.md").exists()
+    assert not (REPO_ROOT / ".ai" / "AGENTS.md").exists()
+
+
 def test_active_docs_do_not_reference_stale_cli_strings() -> None:
     stale_strings = [
         "d5 init-db",
@@ -61,6 +77,22 @@ def test_active_docs_do_not_reference_stale_cli_strings() -> None:
         contents = path.read_text()
         for stale in stale_strings:
             assert stale not in contents, f"found stale text {stale!r} in {path}"
+
+
+def test_docs_do_not_reference_removed_autopromotion_flow() -> None:
+    stale_strings = [
+        "story_autopromotion",
+        "story_autopromotion_receipt.json",
+        "--auto-promote",
+    ]
+    doc_roots = [REPO_ROOT / "docs", REPO_ROOT / "AGENTS.md"]
+
+    for root in doc_roots:
+        paths = [root] if root.is_file() else list(root.rglob("*.md"))
+        for path in paths:
+            contents = path.read_text()
+            for stale in stale_strings:
+                assert stale not in contents, f"found stale text {stale!r} in {path}"
 
 
 def test_ralph_runbook_mentions_persistent_supervision() -> None:
@@ -91,6 +123,9 @@ def test_ralph_runbook_mentions_persistent_supervision() -> None:
     assert "audit_followons_present" in runbook
     assert ".ai/swarm/swarm.yaml" in runbook
     assert "policy-only" in runbook
+    assert "start_watch_adapter.sh" in runbook
+    assert "status_watch_adapter.sh" in runbook
+    assert "advisory-only" in runbook
 
 
 def test_north_star_docs_define_scope_and_governance() -> None:
@@ -103,6 +138,9 @@ def test_north_star_docs_define_scope_and_governance() -> None:
     ).read_text()
     math_program = (
         REPO_ROOT / "docs" / "math" / "market_regime_forecast_and_labeling_program.md"
+    ).read_text()
+    strategy_registry = (
+        REPO_ROOT / "docs" / "math" / "strategy_family_registry.md"
     ).read_text()
     authority = (
         REPO_ROOT / "docs" / "policy" / "runtime_authority_and_promotion_ladder.md"
@@ -122,17 +160,24 @@ def test_north_star_docs_define_scope_and_governance() -> None:
     assert "Chronos-2" in math_program
     assert "Monte Carlo" in math_program
     assert "Fibonacci" in math_program
+    assert "trend_continuation_long_v1" in strategy_registry
+    assert "RandomForestClassifier" in strategy_registry
+    assert "XGBClassifier" in strategy_registry
     assert "advisory" in authority
     assert "writer-integrator" in authority
+    assert "bounded research proposal review" in authority
     assert "docs/issues/" in writer_rubric
     assert "docs/gaps/" in writer_rubric
     assert "best next governed slice" in writer_rubric
+    assert "label_program" in writer_rubric
+    assert "strategy_eval" in writer_rubric
     assert "terminal_complete" in completion
 
 
 def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_law() -> None:
     runtime_truth = (REPO_ROOT / "docs" / "project" / "current_runtime_truth.md").read_text()
     ai_readme = (REPO_ROOT / ".ai" / "README.md").read_text()
+    dropbox_readme = (REPO_ROOT / ".ai" / "dropbox" / "README.md").read_text()
     repo_map = (REPO_ROOT / ".ai" / "index" / "current_repo_map.md").read_text()
     backtest_arch = (
         REPO_ROOT / "docs" / "architecture" / "backtest_truth_contract.md"
@@ -140,13 +185,59 @@ def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_la
 
     assert "execution intent" in runtime_truth.lower()
     assert "backtest" in runtime_truth.lower()
+    assert "research_proposal_review_receipt.json" in runtime_truth
+    assert "research_proposal_priority_receipt.json" in runtime_truth
+    assert "regime-model-compare-v1" in runtime_truth
+    assert "watcher" in runtime_truth.lower()
     assert "Stage 1" in runtime_truth
     assert "current truth consolidation" in runtime_truth
     assert ".ai/swarm/" in ai_readme
     assert "policy-only" in ai_readme
+    assert "story_classes.yaml" in ai_readme
+    assert "watcher.yaml" in ai_readme
+    assert "watcher.md" in ai_readme
+    assert "start_watch_adapter.sh" in ai_readme
+    assert "proposal_comparison_v1" in ai_readme
+    assert "proposal_supersession_v1" in ai_readme
+    assert "research_proposal_priority_receipt.json" in ai_readme
+    assert "regime-model-compare-v1" in ai_readme
+    assert "regime_model_compare_follow_on" in ai_readme
+    assert "docs/handoff/" in ai_readme
+    assert "prd.json" in ai_readme
+    assert "progress.txt" in ai_readme
+    assert "watcher_state.json" in dropbox_readme
+    assert "watcher_latest.json" in dropbox_readme
+    assert "watcher.lock" in dropbox_readme
+    assert "research_proposal_review_receipt.json" in dropbox_readme
+    assert "research_proposal_priority_receipt.json" in dropbox_readme
+    assert "data/archive/ai_dropbox/" in dropbox_readme
+    assert "docs/handoff/" in dropbox_readme
     assert ".ai/swarm/swarm.yaml" in repo_map
+    assert "label_program_v1" in repo_map
+    assert "strategy_eval_v1" in repo_map
+    assert "proposal_comparison_v1" in repo_map
+    assert "proposal_supersession_v1" in repo_map
+    assert "research_proposal_priority_receipt.json" in repo_map
+    assert "regime_model_compare_v1" in repo_map
+    assert "regime_model_compare_follow_on" in repo_map
     assert "BacktestTruthOwner" in backtest_arch
     assert "spot-first" in backtest_arch
+
+
+def test_docs_and_agents_route_handoff_vs_dropbox_cleanly() -> None:
+    root_agents = (REPO_ROOT / "AGENTS.md").read_text()
+    docs_index = (REPO_ROOT / "docs" / "README.md").read_text()
+    handoff_readme = (REPO_ROOT / "docs" / "handoff" / "README.md").read_text()
+
+    assert ".ai/dropbox/" in root_agents
+    assert "docs/handoff/" in root_agents
+    assert "prd.json" in root_agents
+    assert "progress.txt" in root_agents
+    assert ".ai/dropbox/" in docs_index
+    assert "docs/handoff/" in docs_index
+    assert "verbose human" in docs_index
+    assert ".ai/dropbox/" in handoff_readme
+    assert "durable human-readable continuation surface" in handoff_readme
 
 
 def test_stage_one_issue_and_gap_guides_exist_for_future_handoffs() -> None:

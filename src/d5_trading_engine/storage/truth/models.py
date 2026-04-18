@@ -1162,3 +1162,200 @@ class ExperimentRealizedFeedbackV1(Base):
             "comparison_state",
         ),
     )
+
+
+class ArtifactReference(Base):
+    """Canonical SQL receipt for evidence artifacts written to disk."""
+
+    __tablename__ = "artifact_reference"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    owner_type = Column(String(32), nullable=False, index=True)
+    owner_key = Column(String(128), nullable=False, index=True)
+    artifact_type = Column(String(64), nullable=False)
+    artifact_format = Column(String(16), nullable=False)
+    artifact_path = Column(Text, nullable=False)
+    content_sha256 = Column(String(64), nullable=False)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_artifact_reference_owner", "owner_type", "owner_key"),
+    )
+
+
+class ImprovementProposalV1(Base):
+    """Reviewable bounded-improvement proposal with no runtime authority."""
+
+    __tablename__ = "improvement_proposal_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    proposal_id = Column(String(128), nullable=False, unique=True, index=True)
+    proposal_kind = Column(String(64), nullable=False, index=True)
+    source_owner_type = Column(String(32), nullable=False, index=True)
+    source_owner_key = Column(String(128), nullable=False, index=True)
+    governance_scope = Column(String(64), nullable=False)
+    status = Column(String(16), nullable=False, default="proposed")
+    runtime_effect = Column(String(32), nullable=False, default="advisory_only")
+    title = Column(String(256), nullable=False)
+    summary = Column(Text, nullable=False)
+    hypothesis = Column(Text, nullable=False)
+    next_test = Column(Text, nullable=False)
+    metrics_json = Column(Text, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_improvement_proposal_v1_source_owner",
+            "source_owner_type",
+            "source_owner_key",
+        ),
+    )
+
+
+class ProposalReviewV1(Base):
+    """Deterministic review receipt over a bounded advisory proposal."""
+
+    __tablename__ = "proposal_review_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    review_id = Column(String(128), nullable=False, unique=True, index=True)
+    proposal_id = Column(
+        String(128),
+        ForeignKey("improvement_proposal_v1.proposal_id"),
+        nullable=False,
+        index=True,
+    )
+    decision = Column(String(16), nullable=False, index=True)
+    reviewer_kind = Column(String(32), nullable=False, default="ai_reviewer")
+    summary = Column(Text, nullable=False)
+    reason_codes_json = Column(Text, nullable=False)
+    regime_scope_json = Column(Text, nullable=False)
+    condition_scope_json = Column(Text, nullable=False)
+    recommended_next_test = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_proposal_review_v1_proposal_decision",
+            "proposal_id",
+            "decision",
+        ),
+    )
+
+
+class ProposalComparisonV1(Base):
+    """Comparison run over reviewed proposals."""
+
+    __tablename__ = "proposal_comparison_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    comparison_id = Column(String(128), nullable=False, unique=True, index=True)
+    reviewer_kind = Column(String(32), nullable=False, default="ai_reviewer")
+    selection_mode = Column(String(16), nullable=False, index=True)
+    comparison_scope_json = Column(Text, nullable=False)
+    selected_proposal_id = Column(
+        String(128),
+        ForeignKey("improvement_proposal_v1.proposal_id"),
+        nullable=True,
+        index=True,
+    )
+    selected_review_id = Column(
+        String(128),
+        ForeignKey("proposal_review_v1.review_id"),
+        nullable=True,
+        index=True,
+    )
+    selected_slice_key = Column(String(256), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False)
+
+
+class ProposalComparisonItemV1(Base):
+    """One ranked proposal candidate inside a comparison run."""
+
+    __tablename__ = "proposal_comparison_item_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    comparison_id = Column(
+        String(128),
+        ForeignKey("proposal_comparison_v1.comparison_id"),
+        nullable=False,
+        index=True,
+    )
+    proposal_id = Column(
+        String(128),
+        ForeignKey("improvement_proposal_v1.proposal_id"),
+        nullable=False,
+        index=True,
+    )
+    latest_review_id = Column(
+        String(128),
+        ForeignKey("proposal_review_v1.review_id"),
+        nullable=True,
+        index=True,
+    )
+    proposal_kind = Column(String(64), nullable=False, index=True)
+    story_class = Column(String(64), nullable=True, index=True)
+    stage = Column(String(64), nullable=True)
+    review_decision = Column(String(32), nullable=False, index=True)
+    slice_key = Column(String(256), nullable=False, index=True)
+    semantic_regime = Column(String(64), nullable=True, index=True)
+    macro_context_state = Column(String(64), nullable=True, index=True)
+    condition_run_id = Column(String(128), nullable=True, index=True)
+    maturity_rank = Column(Integer, nullable=False)
+    decision_rank = Column(Integer, nullable=False)
+    regime_fit_rank = Column(Integer, nullable=False)
+    evidence_score = Column(Float, nullable=False)
+    score_breakdown_json = Column(Text, nullable=False)
+    selected_flag = Column(Integer, nullable=False, default=0)
+    superseded_flag = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_proposal_comparison_item_v1_comparison_proposal",
+            "comparison_id",
+            "proposal_id",
+        ),
+    )
+
+
+class ProposalSupersessionV1(Base):
+    """Append-only supersession edge between selected and displaced proposals."""
+
+    __tablename__ = "proposal_supersession_v1"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    supersession_id = Column(String(128), nullable=False, unique=True, index=True)
+    comparison_id = Column(
+        String(128),
+        ForeignKey("proposal_comparison_v1.comparison_id"),
+        nullable=False,
+        index=True,
+    )
+    selected_proposal_id = Column(
+        String(128),
+        ForeignKey("improvement_proposal_v1.proposal_id"),
+        nullable=False,
+        index=True,
+    )
+    superseded_proposal_id = Column(
+        String(128),
+        ForeignKey("improvement_proposal_v1.proposal_id"),
+        nullable=False,
+        index=True,
+    )
+    proposal_kind = Column(String(64), nullable=False, index=True)
+    supersession_reason = Column(Text, nullable=False)
+    slice_key = Column(String(256), nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "comparison_id",
+            "selected_proposal_id",
+            "superseded_proposal_id",
+            name="uq_proposal_supersession_v1_edge",
+        ),
+    )

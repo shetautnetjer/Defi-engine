@@ -1,0 +1,26 @@
+version: 1
+
+classes:
+  label_program:
+    stages:
+      - regime_and_label_truth
+    proposal_review_enabled: true
+    create_allowed: true
+    activate_allowed: true
+    receipt_type: label_program_candidate
+  strategy_eval:
+    stages:
+      - strategy_research
+    proposal_review_enabled: true
+    create_allowed: true
+    activate_allowed: true
+    receipt_type: strategy_challenger_report
+  runtime_owner:
+    stages:
+      - current_truth_consolidation
+      - backtest_truth
+      - governed_promotion
+      - instrument_expansion
+    proposal_review_enabled: false
+    create_allowed: false
+    activate_allowed: false

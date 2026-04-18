@@ -74,6 +74,7 @@ d5 materialize-features spot-chain-macro-v1
 d5 materialize-features global-regime-inputs-15m-v1
 d5 score-conditions global-regime-v1
 d5 run-shadow intraday-meta-stack-v1
+d5 run-shadow regime-model-compare-v1
 d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot program_registry solana_address_registry solana_transfer_event feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 condition_scoring_run condition_global_regime_snapshot_v1 experiment_run experiment_metric
 
 sqlite3 data/db/d5.db ".tables"
@@ -91,6 +92,9 @@ These smoke checks prove:
 - the first bounded 15-minute market-wide regime lane can materialize `global_regime_inputs_15m_v1`
 - the first bounded `condition/` scorer can write `condition_scoring_run` and `condition_global_regime_snapshot_v1`
 - the first bounded `research_loop/` shadow lane can write `experiment_run`, `experiment_metric`, and QMD evidence artifacts
+- the bounded regime-model comparison lane can write experiment truth, history
+  inventory, comparison artifacts, and an advisory-only
+  `regime_model_compare_follow_on` proposal
 - `d5 materialize-features spot-chain-macro-v1` fails closed when required lane health receipts are missing
 - DuckDB can mirror selected canonical tables
 
@@ -104,5 +108,5 @@ Additional behavior checks:
 
 - live provider integration is not part of the default test pass or CI
 - Coinbase market-data coverage is currently public-market capture only
-- Massive capture remains a fail-closed readiness/probe surface
+- Massive capture now includes a first-pass reference lane and historical minute-aggregate replay lane, but live entitlement coverage is still not part of default CI
 - Helius websocket behavior is hardened for bounded raw capture, but it still has no durable resumability policy and no canonical websocket projection

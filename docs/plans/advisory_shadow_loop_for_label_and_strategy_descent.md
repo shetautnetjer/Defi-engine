@@ -24,8 +24,9 @@ For this repo, `no HITL` means:
   - widen scope into live execution
   - bless label or strategy promotion by itself
 
-Writer-integrator still owns promotion into backlog truth and runtime follow-on
-stories.
+Writer-integrator still owns runtime and non-research promotion. The loop may
+now activate the next bounded research-stage story automatically when the
+machine law, metrics registry, and proposal-review receipt agree.
 
 ## Current usable foundations
 

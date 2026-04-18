@@ -1,0 +1,27 @@
+---
+title: "proposal_strategy_eval_followup"
+format: gfm
+---
+
+# Summary
+
+- proposal id: `proposal_strategy_eval_followup_abc123`
+- source owner: `experiment_run:experiment_strategy_eval_example`
+- governance scope: `research_only`
+- runtime effect: `advisory_only`
+- status: `proposed`
+
+# Hypothesis
+
+Restricting the governed challenger comparison to long-friendly regimes will
+improve stability without widening runtime authority.
+
+# Metrics
+
+- `positive_expectancy`: `0.0`
+- `rows_test`: `16`
+
+# Next Test
+
+Run `governed_challengers_v1` against a long-friendly-only cohort and compare
+the resulting paper-cycle alignment packet.

@@ -1,1 +1,1 @@
-"""Massive normalizer — raw-only for now."""
+"""Massive normalizer for reference, snapshot, and minute-aggregate rows."""

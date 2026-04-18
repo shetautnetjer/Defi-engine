@@ -38,9 +38,11 @@ def test_docs_sync_fields_are_exposed_in_health_and_status_surfaces() -> None:
     assert "docsTruthReceiptId" in health_script
     assert "docs_truth_receipt" in health_script
     assert "storyPromotionReceiptId" in health_script
+    assert "researchProposalReviewReceiptId" in health_script
     assert "docs_sync_state=" in status_script
     assert "docs_truth_receipt=" in status_script
     assert "story_promotion_receipt=" in status_script
+    assert "research_proposal_review_receipt=" in status_script
     assert 'if [[ "$builder_status" == "completed" ]]; then' in relaunch_script
 
 

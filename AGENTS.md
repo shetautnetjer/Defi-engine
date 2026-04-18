@@ -1,10 +1,10 @@
-## Structural Workflow Default
+ ## Structural Workflow Default
 - For runtime seams, capture layout, packet/export changes, refactors, and
   multi-file implementation work, prefer `$jetbrains-skill` and
   `$jetbrains-mcp` before broad shell search.
 - Start or switch the headless JetBrains session first:
-  - `~/.config/agents/skills/jetbrains-mcp/scripts/mcp_start_headless.sh /home/netjer/Projects/AI-Frame/Brain/brain-observer-rs`
-  - `~/.config/agents/skills/jetbrains-mcp/scripts/mcp_status.sh /home/netjer/Projects/AI-Frame/Brain/brain-observer-rs`
+  - `~/.config/agents/skills/jetbrains-mcp/scripts/mcp_start_headless.sh /home/netjer/Projects/AI-Frame/Brain/Defi-engine`
+  - `~/.config/agents/skills/jetbrains-mcp/scripts/mcp_status.sh /home/netjer/Projects/AI-Frame/Brain/Defi-engine`
 - Prove the IDE bridge is live with:
   1. `mcp__idea__get_project_modules`
   2. `mcp__idea__get_repositories`
@@ -12,7 +12,7 @@
 - Use shell-first only for tiny local edits, README wording, or when JetBrains
   is unavailable after a normal retry.
 
-  ## Doc Routing and Planning Descent
+## Doc Routing and Planning Descent
 - `docs/plans/` = planning synthesis, roadmap bridges, crosswalks, and sequencing.
 - `docs/prd/` = product requirements and milestone intent.
 - `docs/sdd/` = software or system design surfaces.
@@ -28,6 +28,12 @@
 - Keep `SQL` as truth, `LanceDB` as retrieval memory, `YAML` as policy, and `QMD` as evidence.
 - Treat Hindsight as memory support, not runtime authority.
 
+## Repo Surface Quick Routing
+- `prd.json` and `progress.txt` = canonical story and carry-forward truth.
+- `.ai/dropbox/` = live working exchange, receipts, lane outputs, and machine-visible status.
+- `docs/handoff/` = verbose human-readable continuation notes after a bounded slice is complete.
+- `docs/` and repo code/config/tests = durable repo truth; handoff notes and dropbox receipts must point back here instead of replacing it.
+
 # AGENTS.md
 
 ## Mission
@@ -39,6 +45,8 @@
 - Paper trading only unless scope is explicitly widened by the operator.
 - No agent may place live trades, route live orders, or weaken risk controls by implication.
 - Models suggest; the engine decides; the risk gate is final.
+- Proposal truth and proposal-review truth are evidence surfaces only; they do not grant runtime authority by themselves.
+- Proposal-comparison truth and supersession truth are evidence surfaces only; they do not grant runtime authority by themselves.
 - Current repo truth comes from code, config, schemas, docs, and tests — not from memory tools or editor state.
 - Hindsight and other memory systems are support surfaces only; they never override repo truth.
 - JetBrains, MCP, indexes, and IDE context are navigation aids only; they are not authoritative by themselves.

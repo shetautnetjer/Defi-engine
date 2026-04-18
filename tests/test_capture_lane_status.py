@@ -78,7 +78,7 @@ def test_feature_lane_snapshot_uses_lane_specific_health_receipts(
     assert snapshot["blocking_lanes"] == ["jupiter-quotes=degraded"]
 
 
-def test_capture_lane_status_snapshot_reports_ws_receipts_and_readiness_only(
+def test_capture_lane_status_snapshot_reports_ws_receipts_and_massive_reference_lane(
     cli_runner, settings
 ) -> None:
     assert cli_runner.invoke(cli, ["init"]).exit_code == 0
@@ -120,5 +120,5 @@ def test_capture_lane_status_snapshot_reports_ws_receipts_and_readiness_only(
     assert ws_lane["latest_raw_receipt_at_utc"] is not None
 
     massive_lane = snapshot["lanes"]["massive-crypto"]
-    assert massive_lane["freshness_state"] == "readiness_only"
+    assert massive_lane["freshness_state"] == "never_started"
     assert massive_lane["downstream_eligible"] is False

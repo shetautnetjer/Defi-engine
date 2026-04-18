@@ -80,6 +80,13 @@ class Settings(BaseSettings):
         default=None,
         description="Optional local file containing Coinbase credentials.",
     )
+    coinbase_candle_history_minutes: int = Field(
+        default=600,
+        description=(
+            "Bounded one-minute Coinbase candle history requested per product so regime "
+            "scoring has enough closed 15-minute buckets for paper trading."
+        ),
+    )
 
     # --- Massive ---
     massive_api_key: str = Field(default="", description="Massive REST API key")
@@ -87,12 +94,20 @@ class Settings(BaseSettings):
         default="",
         description="Massive S3-compatible flat files key",
     )
+    massive_default_tickers: list[str] = Field(
+        default=["X:SOLUSD", "X:BTCUSD", "X:ETHUSD"],
+        description="Default Massive crypto tickers for bounded reference and snapshot capture.",
+    )
 
     # --- FRED ---
     fred_api_key: str = Field(default="", description="FRED API key")
 
     # --- Paths ---
     data_dir: Path = Field(default=_PROJECT_ROOT / "data", description="Root data directory")
+    repo_root: Path = Field(
+        default=_PROJECT_ROOT,
+        description="Repo root for swarm policy files, docs, and backlog truth.",
+    )
     db_path: Path = Field(
         default=_PROJECT_ROOT / "data" / "db" / "d5.db",
         description="SQLite database path",
@@ -223,6 +238,16 @@ class Settings(BaseSettings):
     def coinbase_api_base(self) -> str:
         """Coinbase Advanced Trade API base URL."""
         return "https://api.coinbase.com/api/v3/brokerage"
+
+    @property
+    def massive_api_base(self) -> str:
+        """Massive REST API base URL."""
+        return "https://api.massive.com"
+
+    @property
+    def massive_flatfiles_base(self) -> str:
+        """Massive flat-file host for daily downloadable crypto data."""
+        return "https://files.massive.com"
 
     @property
     def token_symbol_hints(self) -> dict[str, str]:

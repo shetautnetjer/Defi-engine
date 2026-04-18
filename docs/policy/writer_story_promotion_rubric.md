@@ -12,7 +12,8 @@ Writer is the governed curator that:
 - keeps the accepted docs surface current
 - records contradictions and missing capability as durable repo truth
 - updates `prd.json` and `progress.txt`
-- promotes only the best next bounded, receipt-backed work
+- promotes only the best next bounded, receipt-backed work outside the bounded
+  research proposal-review loop
 
 This means writer should always prefer the best next governed slice rather than
 the loudest or newest idea.
@@ -77,6 +78,21 @@ Receipt-backed findings should normalize into fields such as:
 - `derived_from_receipt_ids`
 
 Raw research output by itself is not enough to promote a story.
+
+The one narrow exception is bounded research proposal review for:
+
+- `label_program`
+- `strategy_eval`
+- `regime_model_compare`
+
+Those loops may recommend the next research-stage story only when the machine
+law, metrics registry, `improvement_proposal_v1`, `proposal_review_v1`, and the
+latest proposal-review receipt all agree that the result is still advisory and
+still inside the `LABEL-001` / `STRAT-001` ladder.
+
+`regime_model_compare_follow_on` findings may also queue the next bounded
+experiment or backlog note, but they may not be treated as runtime promotion or
+as authority to edit policy, risk, execution, or settlement behavior.
 
 ## Stage-Aware Prioritization
 
@@ -158,7 +174,7 @@ Each accepted writer pass should leave behind:
 
 Writer must not:
 
-- promote from raw research or vague opportunity
+- promote runtime-authority changes from raw research or vague opportunity
 - widen scope because the swarm is idle
 - bypass current-stage prerequisites
 - let docs drift after accepted code changes

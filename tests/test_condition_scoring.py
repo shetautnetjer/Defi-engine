@@ -398,7 +398,9 @@ def test_walk_forward_regime_history_refits_every_four_buckets(cli_runner, setti
 
 def test_global_regime_materialization_respects_fred_captured_at(cli_runner, settings) -> None:
     assert cli_runner.invoke(cli, ["init"]).exit_code == 0
-    anchor_now = utcnow().replace(second=0, microsecond=0)
+    # Pin the synthetic anchor away from midnight so the first same-day bucket
+    # still predates the same-day FRED capture timestamp.
+    anchor_now = utcnow().replace(hour=16, minute=0, second=0, microsecond=0)
     _seed_global_regime_inputs(
         settings,
         anchor_now=anchor_now,

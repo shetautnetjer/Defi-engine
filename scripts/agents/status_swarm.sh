@@ -54,6 +54,7 @@ mailbox_current_path="$(defi_swarm_mailbox_current_path "$repo_root")"
 finder_state_path="$(defi_swarm_finder_state_path "$repo_root")"
 performance_receipts_dir="$(defi_swarm_performance_receipts_dir "$repo_root")"
 story_promotion_receipt_path="$(defi_swarm_story_promotion_receipt_path "$repo_root")"
+research_proposal_review_receipt_path="$(defi_swarm_research_proposal_review_receipt_path "$repo_root")"
 
 printf 'repo: %s\n' "$repo_root"
 printf 'session: %s\n' "$session_name"
@@ -136,6 +137,8 @@ if [[ -f "$lane_health_json" ]]; then
         "story_promotion_receipt=" + (.storyPromotionReceiptId // "none"),
         "story_promotion_stage=" + (.storyPromotionStage // "none"),
         "story_promotion_owner_layer=" + (.storyPromotionOwnerLayer // "none"),
+        "research_proposal_review_receipt=" + (.researchProposalReviewReceiptId // "none"),
+        "research_proposal_review_status=" + (.researchProposalReviewStatus // "none"),
         "path_exhausted=" + ((.pathExhausted // false) | tostring),
         "next_eligible=" + (.nextEligibleStoryId // "none"),
         "last_completion_audit_receipt=" + (.lastCompletionAuditReceiptId // "none"),
@@ -170,6 +173,20 @@ if [[ -f "$story_promotion_receipt_path" ]]; then
   jq -r '.stories_updated[]? // empty' "$story_promotion_receipt_path" | sed 's/^/  - /'
   printf '%s\n' 'story_promotion_deferred:'
   jq -r '.deferred_items[]? // empty' "$story_promotion_receipt_path" | sed 's/^/  - /'
+fi
+if [[ -f "$research_proposal_review_receipt_path" ]]; then
+  printf '%s\n' 'research_proposal_review_summary:'
+  jq -r '
+    [
+      "receipt_id=" + (.receipt_id // "none"),
+      "source_story_id=" + (.source_story_id // "none"),
+      "target_story_id=" + (.target_story_id // "none"),
+      "proposal_id=" + (.proposal_id // "none"),
+      "status=" + (.status // "none"),
+      "story_class=" + (.story_class // "none"),
+      "stage=" + (.stage // "none"),
+      "summary=" + (.summary // "none")
+    ] | .[]' "$research_proposal_review_receipt_path" | sed 's/^/  /'
 fi
 if [[ -f "$mailbox_current_path" ]]; then
   active_story="$(jq -r '.activeStoryId // ""' "$lane_health_json" 2>/dev/null || true)"

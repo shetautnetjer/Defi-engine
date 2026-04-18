@@ -47,7 +47,7 @@ owning the continuous docs-sync closeout.
 | Helius adapter | partial | enhanced transaction REST, tracked-address discovery, and hardened raw websocket capture with reconnect / heartbeat exist |
 | Helius normalizer | partial | address/program registry population and `solana_transfer_event` exist; deeper program decoding is still deferred |
 | Coinbase adapter/normalizer | partial | public products, candles, trade prints, and L2 book capture exist; execution and fill modeling are deferred |
-| Massive adapter/normalizer | scaffolded | fail-closed readiness/probe path surfaces auth and entitlement failure explicitly |
+| Massive adapter/normalizer | partial | first-pass reference, snapshot, and historical minute-aggregate paths now normalize into canonical truth; wider entitlement coverage remains deferred |
 | Capture runner | implemented | ingest run bookkeeping, raw write, normalization, and health logging are wired across Jupiter, Helius, Coinbase, FRED, and Massive |
 | Capture lane status owner | implemented | `capture/lane_status.py` now owns the governed lane manifest, freshness-state derivation, readiness-only handling, and required-blocker reporting |
 | CLI | implemented | current commands are `init`, `capture`, `materialize-features`, `score-conditions`, `run-shadow`, `status`, and `sync-duckdb`; `d5 status` now includes a per-lane capture-freshness section |

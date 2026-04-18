@@ -7,6 +7,11 @@ Commands:
 - d5 materialize-features : Materialize deterministic feature tables
 - d5 score-conditions : Score bounded market conditions
 - d5 run-shadow   : Run shadow ML evaluation lanes
+- d5 run-label-program : Run canonical label-program scoring
+- d5 run-strategy-eval : Run governed strategy challenger scoring
+- d5 run-paper-cycle : Run one bounded paper-trading cycle
+- d5 compare-proposals : Rank reviewed proposals and optionally choose the next bounded experiment
+- d5 capture massive-minute-aggs --date YYYY-MM-DD : Replay historical Massive minute bars
 - d5 status       : Show engine health and ingest run stats
 - d5 sync-duckdb  : Sync canonical truth tables to DuckDB mirror
 """
@@ -15,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
 
 import click
 
@@ -37,6 +43,7 @@ _CAPTURE_CHOICES = [
     "fred-series",
     "fred-observations",
     "massive-crypto",
+    "massive-minute-aggs",
     "all",
 ]
 
@@ -49,6 +56,13 @@ _CONDITION_SET_CHOICES = [
 ]
 _SHADOW_RUN_CHOICES = [
     "intraday-meta-stack-v1",
+    "regime-model-compare-v1",
+]
+_LABEL_PROGRAM_CHOICES = [
+    "canonical-direction-v1",
+]
+_STRATEGY_EVAL_CHOICES = [
+    "governed-challengers-v1",
 ]
 
 
@@ -78,7 +92,13 @@ def init() -> None:
 
 @cli.command()
 @click.argument("provider", type=click.Choice(_CAPTURE_CHOICES, case_sensitive=False))
-def capture(provider: str) -> None:
+@click.option(
+    "--date",
+    "date_str",
+    default=None,
+    help="Optional UTC date for historical flat-file capture, in YYYY-MM-DD format.",
+)
+def capture(provider: str, date_str: str | None) -> None:
     """Run data capture for a specific provider or all."""
     from d5_trading_engine.capture.runner import CaptureRunner
 
@@ -89,55 +109,80 @@ def capture(provider: str) -> None:
         try:
             if provider in {"jupiter-tokens", "all"}:
                 run_id = await runner.capture_jupiter_tokens()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Jupiter tokens: {run_id}")
 
             if provider in {"jupiter-prices", "all"}:
                 run_id = await runner.capture_jupiter_prices()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Jupiter prices: {run_id}")
 
             if provider in {"jupiter-quotes", "all"}:
                 run_id = await runner.capture_jupiter_quotes()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Jupiter quotes: {run_id}")
 
             if provider in {"helius-transactions", "all"}:
                 run_id = await runner.capture_helius_transactions()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Helius transactions: {run_id}")
 
             if provider in {"helius-discovery", "all"}:
                 run_id = await runner.capture_helius_discovery()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Helius discovery: {run_id}")
 
             if provider in {"helius-ws-events"}:
                 run_id = await runner.capture_helius_ws_events()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Helius ws events: {run_id}")
 
             if provider in {"coinbase-products", "all"}:
                 run_id = await runner.capture_coinbase_products()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Coinbase products: {run_id}")
 
             if provider in {"coinbase-candles", "all"}:
                 run_id = await runner.capture_coinbase_candles()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Coinbase candles: {run_id}")
 
             if provider in {"coinbase-market-trades", "all"}:
                 run_id = await runner.capture_coinbase_market_trades()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Coinbase market trades: {run_id}")
 
             if provider in {"coinbase-book", "all"}:
                 run_id = await runner.capture_coinbase_book()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Coinbase book: {run_id}")
 
             if provider in {"fred-series", "all"}:
                 run_id = runner.capture_fred_series()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ FRED series: {run_id}")
 
             if provider in {"fred-observations", "all"}:
                 run_id = runner.capture_fred_observations()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ FRED observations: {run_id}")
 
             if provider in {"massive-crypto", "all"}:
                 run_id = await runner.capture_massive_crypto()
+                runner.write_capture_receipts(run_id, context={"requested_provider": provider})
                 click.echo(f"  ✓ Massive crypto: {run_id}")
+
+            if provider == "massive-minute-aggs" or (provider == "all" and date_str):
+                if provider == "massive-minute-aggs" and not date_str:
+                    raise click.ClickException(
+                        "--date YYYY-MM-DD is required for massive-minute-aggs capture."
+                    )
+                run_id = await runner.capture_massive_minute_aggs(date_str)
+                runner.write_capture_receipts(
+                    run_id,
+                    context={"requested_provider": provider, "date": date_str},
+                )
+                click.echo(f"  ✓ Massive minute aggs: {run_id}")
         except Exception as exc:
             click.echo(f"  ✗ Capture failed: {exc}", err=True)
             sys.exit(1)
@@ -198,9 +243,13 @@ def score_conditions(condition_set: str) -> None:
 @click.argument("shadow_run", type=click.Choice(_SHADOW_RUN_CHOICES, case_sensitive=False))
 def run_shadow(shadow_run: str) -> None:
     """Run a bounded shadow ML evaluation lane."""
+    from d5_trading_engine.research_loop.regime_model_compare import (
+        RegimeModelComparator,
+    )
     from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
 
     runner = ShadowRunner(get_settings())
+    comparator = RegimeModelComparator(get_settings())
 
     try:
         if shadow_run == "intraday-meta-stack-v1":
@@ -211,9 +260,187 @@ def run_shadow(shadow_run: str) -> None:
                 f"chronos={result['chronos_status']}"
             )
             return
+        if shadow_run == "regime-model-compare-v1":
+            result = comparator.run_regime_model_compare_v1()
+            click.echo(
+                "✓ regime_model_compare_v1: "
+                f"{result['run_id']} artifacts={result['artifact_dir']} "
+                f"recommended={result['recommended_candidate']} "
+                f"proposal={result['proposal_status']}"
+            )
+            return
         raise click.ClickException(f"Unsupported shadow run: {shadow_run}")
     except Exception as exc:
         click.echo(f"✗ Shadow run failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-label-program")
+@click.argument("label_program", type=click.Choice(_LABEL_PROGRAM_CHOICES, case_sensitive=False))
+def run_label_program(label_program: str) -> None:
+    """Run the bounded canonical label-program loop."""
+    from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
+
+    runner = ShadowRunner(get_settings())
+
+    try:
+        if label_program == "canonical-direction-v1":
+            result = runner.run_label_program_v1()
+            click.echo(
+                "✓ canonical_direction_v1: "
+                f"{result['run_id']} artifacts={result['artifact_dir']} "
+                f"proposal={result['proposal_status']}"
+            )
+            return
+        raise click.ClickException(f"Unsupported label program: {label_program}")
+    except Exception as exc:
+        click.echo(f"✗ Label program failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-strategy-eval")
+@click.argument("strategy_eval", type=click.Choice(_STRATEGY_EVAL_CHOICES, case_sensitive=False))
+def run_strategy_eval(strategy_eval: str) -> None:
+    """Run the bounded named strategy-family challenger loop."""
+    from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
+
+    runner = ShadowRunner(get_settings())
+
+    try:
+        if strategy_eval == "governed-challengers-v1":
+            result = runner.run_strategy_eval_v1()
+            click.echo(
+                "✓ governed_challengers_v1: "
+                f"{result['run_id']} artifacts={result['artifact_dir']} "
+                f"top_family={result['top_family'] or 'none'} "
+                f"proposal={result['proposal_status']}"
+            )
+            return
+        raise click.ClickException(f"Unsupported strategy eval: {strategy_eval}")
+    except Exception as exc:
+        click.echo(f"✗ Strategy evaluation failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("run-paper-cycle")
+@click.argument("quote_snapshot_id", type=int)
+@click.option(
+    "--condition-run-id",
+    default=None,
+    help="Optional condition run id to replay a specific regime receipt.",
+)
+@click.option(
+    "--strategy-report",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Optional advisory strategy report JSON. Defaults to "
+        ".ai/dropbox/research/STRAT-001__strategy_challenger_report.json."
+    ),
+)
+def run_paper_cycle(
+    quote_snapshot_id: int,
+    condition_run_id: str | None,
+    strategy_report: Path | None,
+) -> None:
+    """Run one bounded paper-trading cycle from advisory strategy to settlement."""
+    from d5_trading_engine.paper_runtime.operator import PaperTradeOperator
+
+    operator = PaperTradeOperator(get_settings())
+
+    try:
+        result = operator.run_cycle(
+            quote_snapshot_id=quote_snapshot_id,
+            strategy_report_path=strategy_report,
+            condition_run_id=condition_run_id,
+        )
+        click.echo(
+            "✓ paper_cycle: "
+            f"{result['session_key']} status={result['session_status']} "
+            f"filled={result['filled']} "
+            f"top_family={result['strategy_selection']['top_family']} "
+            f"artifacts={result['artifact_dir']}"
+        )
+    except Exception as exc:
+        click.echo(f"✗ Paper cycle failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("review-proposal")
+@click.argument("proposal_id")
+def review_proposal(proposal_id: str) -> None:
+    """Review one bounded advisory proposal and write review receipts."""
+    from d5_trading_engine.research_loop.proposal_review import ProposalReviewer
+
+    reviewer = ProposalReviewer(get_settings())
+
+    try:
+        result = reviewer.review_proposal(proposal_id)
+        click.echo(
+            "✓ review_proposal: "
+            f"{result['proposal_id']} decision={result['decision']} "
+            f"review_id={result['review_id']} artifacts={result['artifact_dir']}"
+        )
+    except Exception as exc:
+        click.echo(f"✗ Proposal review failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("compare-proposals")
+@click.option(
+    "--proposal-id",
+    "proposal_ids",
+    multiple=True,
+    help="Explicit proposal id to compare. Repeat to compare a bounded pool.",
+)
+@click.option(
+    "--proposal-kind",
+    default=None,
+    help="Optional proposal kind filter, e.g. label_program_follow_on.",
+)
+@click.option(
+    "--story-class",
+    default=None,
+    help="Optional story class filter, e.g. label_program or strategy_eval.",
+)
+@click.option(
+    "--semantic-regime",
+    default=None,
+    help="Optional semantic regime filter against latest review truth.",
+)
+@click.option(
+    "--choose-top",
+    is_flag=True,
+    help="Mark the highest-ranked same-scope proposal as selected_next and supersede lower-ranked same-kind competitors.",
+)
+def compare_proposals(
+    proposal_ids: tuple[str, ...],
+    proposal_kind: str | None,
+    story_class: str | None,
+    semantic_regime: str | None,
+    choose_top: bool,
+) -> None:
+    """Compare reviewed proposals and optionally choose the next bounded experiment."""
+    from d5_trading_engine.research_loop.proposal_comparison import ProposalComparator
+
+    comparator = ProposalComparator(get_settings())
+
+    try:
+        result = comparator.compare_proposals(
+            proposal_ids=list(proposal_ids),
+            proposal_kind=proposal_kind,
+            story_class=story_class,
+            semantic_regime=semantic_regime,
+            choose_top=choose_top,
+        )
+        click.echo(
+            "✓ compare_proposals: "
+            f"{result['comparison_id']} ranked={result['ranked_count']} "
+            f"selected={result['selected_proposal_id'] or 'none'} "
+            f"artifacts={result['artifact_dir']}"
+        )
+    except Exception as exc:
+        click.echo(f"✗ Proposal comparison failed: {exc}", err=True)
         sys.exit(1)
 
 
@@ -387,6 +614,12 @@ def sync_duckdb(tables: tuple[str, ...]) -> None:
         "condition_global_regime_snapshot_v1",
         "experiment_run",
         "experiment_metric",
+        "artifact_reference",
+        "improvement_proposal_v1",
+        "proposal_review_v1",
+        "proposal_comparison_v1",
+        "proposal_comparison_item_v1",
+        "proposal_supersession_v1",
     ]
 
     tables_to_sync = list(tables) if tables else default_tables

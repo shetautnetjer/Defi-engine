@@ -115,10 +115,9 @@ CAPTURE_LANE_RULES: dict[str, CaptureLaneRule] = {
     "massive-crypto": CaptureLaneRule(
         provider="massive",
         capture_type="crypto_reference",
-        expectation_class="readiness_only",
-        freshness_window=timedelta(0),
+        expectation_class="operator_reference_refresh",
+        freshness_window=timedelta(days=1),
         health_endpoint_suffixes=("crypto_reference",),
-        readiness_only=True,
     ),
 }
 

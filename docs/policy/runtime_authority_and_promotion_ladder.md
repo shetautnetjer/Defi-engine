@@ -56,13 +56,82 @@ Promotion must also state:
 
 Writer-integrator remains the only lane allowed to:
 
-- accept or reject promotion candidates
-- update `prd.json`
-- append `progress.txt`
-- convert audit findings into canonical backlog truth
-- treat a research result as a governed follow-on story
+- accept or reject runtime-authority promotion candidates
+- update accepted repo truth across the docs packet
+- append `progress.txt` for accepted runtime and governance slices
+- convert audit findings into canonical backlog truth outside the bounded
+  bounded research proposal review loop
+- treat a research result as a governed runtime or non-research follow-on story
 
-Builder, research, and architecture lanes may propose. They do not promote.
+Builder, research, and architecture lanes may propose. They do not promote
+runtime authority.
+
+## Bounded Research Proposal Review
+
+The repo now allows one narrow automation exception so `LABEL-*` and `STRAT-*`
+loops can keep running without per-run human gating.
+
+This bounded research proposal review loop is intentionally scoped to advisory
+research stories only.
+
+Automation may review the next advisory story candidate only when all of the
+following are true:
+
+- the source story is in `stage: regime_and_label_truth` or
+  `stage: strategy_research`
+- the story class is `label_program`, `strategy_eval`, or
+  `regime_model_compare`
+- the result is still advisory
+- the loop writes durable proposal truth in `improvement_proposal_v1`
+- the loop writes durable review truth in `proposal_review_v1`
+- `d5 review-proposal <proposal_id>` writes `review.json`, `review.qmd`, and
+  `research_proposal_review_receipt.json`
+- the next story stays inside the same bounded research ladder
+
+Automation may not promote:
+
+- policy authority
+- risk authority
+- execution intent
+- settlement authority
+- instrument expansion
+- any other runtime-authority surface
+
+This keeps the AI-reviewed research loop fast while leaving runtime ownership
+under explicit governance.
+
+Review decisions remain advisory even when they are `reviewed_accept`.
+
+- they may approve the next bounded research test
+- they may not widen policy, risk, execution, settlement, or runtime authority
+- they may not edit `prd.json`, `progress.txt`, or runtime config as part of
+  the review itself
+
+## Bounded Proposal Comparison and Priority Selection
+
+The repo also allows bounded comparison of already-reviewed advisory proposals.
+
+This comparison layer is governance truth, not runtime authority.
+
+- `proposal_comparison_v1` stores the comparison run
+- `proposal_comparison_item_v1` stores ranked candidates and evidence
+  breakdowns
+- `proposal_supersession_v1` stores append-only same-kind supersession edges
+- `d5 compare-proposals` writes `comparison.json`, `comparison.qmd`, and
+  `research_proposal_priority_receipt.json`
+
+Comparison may:
+
+- rank reviewed proposals across regime and condition slices
+- choose one bounded next experiment with `selected_next`
+- mark lower-ranked same-kind competitors as `superseded`
+- include `regime_model_compare_follow_on` only while it remains advisory-only
+
+Comparison may not:
+
+- widen policy, risk, execution, settlement, or runtime authority
+- auto-review missing proposal packets
+- edit `prd.json`, `progress.txt`, or runtime config
 
 ## Commit governance
 

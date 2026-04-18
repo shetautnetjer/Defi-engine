@@ -57,14 +57,26 @@ The Stage 2 backtesting seam is now also closed:
 - `settlement/backtest.py` owns a bounded spot-first replay ledger with
   explicit session, fill, position, and report assumptions
 
+The first paper-runtime app seam is now also real:
+
+- `paper_runtime/` owns a bounded paper-only operator loop that reads advisory
+  strategy output, keeps quote selection explicit, calls policy/risk/intent and
+  settlement owners, and writes UTC-dated QMD receipts
+
 The next governed product gaps are now:
 
 - canonical regime and label truth
 - strategy registry and challenger governance
+- real-data paper-trading readiness, including enough governed regime history to
+  run paper cycles on live repo truth
+- bounded AI-reviewed research proposal packets between `LABEL-001` and
+  `STRAT-001` are now allowed as long as the result stays advisory
 
 The active orchestration hardening work is therefore about:
 
 - keeping the swarm state monotonic and auditable
+- keeping the standalone watcher advisory, lock-protected, and subordinate to
+  `prd.json` truth
 - keeping the entire `docs/` tree aligned with accepted repo truth
 - letting writer-integrator finish acceptance cleanly instead of letting stale
   lane liveness pretend to be progress
@@ -107,3 +119,48 @@ Writer-integrator is the only lane allowed to turn accepted findings into:
 
 The `.ai/dropbox/` tree is an exchange surface. The `.ai/swarm/*.yaml` layer is
 a machine-readable governance packet, not a live runtime source of truth in v1.
+
+The repo now also carries a standalone watcher contract:
+
+- `.ai/swarm/watcher.yaml`
+- `.ai/templates/watcher.md`
+- `scripts/agents/codex_watch_adapter.py`
+
+That watcher may review paper-runtime cycles, strategy challenger reports, and
+story-promotion receipts, but it stays advisory-only and writes receipts under
+`data/reports/watcher/` instead of editing repo-tracked truth.
+
+The one bounded exception is research proposal review:
+
+- `LABEL-*` and `STRAT-*` story classes may advance an advisory proposal-review
+  packet automatically
+- `improvement_proposal_v1` stores the proposal truth
+- `proposal_review_v1` stores the deterministic AI-review decision truth
+- `d5 review-proposal <proposal_id>` writes `review.json`, `review.qmd`, and
+  `.ai/dropbox/state/research_proposal_review_receipt.json`
+- only while the result stays advisory and outside runtime authority
+- the review loop may not edit `prd.json`, `progress.txt`, policy, risk,
+  strategy eligibility, or runtime config
+
+The next bounded governance seam is proposal comparison and priority selection:
+
+- `proposal_comparison_v1` stores comparison-run truth
+- `proposal_comparison_item_v1` stores ranked proposal candidates and score
+  breakdowns
+- `proposal_supersession_v1` stores append-only same-kind supersession edges
+- `d5 compare-proposals` writes `comparison.json`, `comparison.qmd`, and
+  `.ai/dropbox/state/research_proposal_priority_receipt.json`
+- `selected_next` and `superseded` are governance states for bounded next-test
+  choice only
+- comparison may choose the next bounded experiment, but it may not edit
+  `prd.json`, `progress.txt`, policy, risk, execution, settlement, or runtime
+  config
+
+The current shadow research surface now also includes bounded regime-model
+comparison:
+
+- `d5 run-shadow regime-model-compare-v1`
+- `experiment_run` with `experiment_name = regime_model_compare_v1`
+- artifact evidence under `data/research/regime_model_compare/<run_id>/`
+- advisory-only `regime_model_compare_follow_on` proposal packets
+- no widening of policy, risk, execution, settlement, or runtime authority

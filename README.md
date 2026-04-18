@@ -8,9 +8,9 @@ policy/risk/settlement governance, and widen into Jupiter perps and Coinbase
 futures only through governed capability stages.
 
 The current repo truth is a paper-first evidence engine with bounded downstream layers:
-- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one explicit execution-intent owner (`ExecutionIntentOwner` -> `execution_intent_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), one settlement-owned spot-first backtest replay owner (`BacktestTruthOwner` -> `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, `backtest_session_report_v1`), and one bounded shadow lane (`intraday_meta_stack_v1`)
+- implemented now: config/common helpers, raw JSONL storage, SQLite truth models, DuckDB mirror, adapter clients, capture runner, a shared capture-lane status owner (`capture/lane_status.py`), the generic `d5` CLI with per-lane freshness output, two freshness-gated feature lanes (`spot_chain_macro_v1`, `global_regime_inputs_15m_v1`), one bounded regime scorer (`global_regime_v1`), one explicit policy trace owner (`global_regime_v1` -> `policy_global_regime_trace_v1`), one explicit risk gate owner (`RiskGate` -> `risk_global_regime_gate_v1`), one explicit execution-intent owner (`ExecutionIntentOwner` -> `execution_intent_v1`), one quote-backed paper settlement owner (`PaperSettlement` -> `paper_session`, `paper_fill`, `paper_position`, `paper_session_report`), one settlement-owned spot-first backtest replay owner (`BacktestTruthOwner` -> `backtest_session_v1`, `backtest_fill_v1`, `backtest_position_v1`, `backtest_session_report_v1`), one bounded shadow lane (`intraday_meta_stack_v1`), one canonical label-program lane (`label_program_v1`), one governed strategy challenger lane (`strategy_eval_v1`), one centralized reporting layer (`reporting/`), proposal truth tables (`artifact_reference`, `improvement_proposal_v1`), and first-pass Massive reference plus historical minute-aggregate capture
 - active now: mint-locked universe control, Jupiter spot quote hardening, bounded Helius projection, Coinbase market-data capture, and point-in-time-safe regime history for shadow evaluation
-- still deferred: canonical label/regime truth, strategy registry and challenger governance, governed model promotion, deep Helius decoding, and real Massive historical ingest
+- still deferred: canonical label/regime truth, strategy registry and challenger governance, governed model promotion, deep Helius decoding, and broader Massive entitlement coverage
 
 Accepted work should also flow through writer-owned truth curation so the full
 docs surface, `prd.json`, and `progress.txt` stay aligned, and the next bounded
@@ -70,6 +70,8 @@ d5 capture jupiter-quotes
 d5 capture helius-discovery
 d5 capture coinbase-products
 d5 capture fred-observations
+d5 capture massive-crypto
+d5 capture massive-minute-aggs --date 2026-04-16
 
 # first bounded post-ingest feature lane
 d5 materialize-features spot-chain-macro-v1
@@ -81,13 +83,16 @@ d5 score-conditions global-regime-v1
 # first bounded shadow lane
 d5 run-shadow intraday-meta-stack-v1
 
+# bounded shadow regime-model comparison lane
+d5 run-shadow regime-model-compare-v1
+
 # optional: sync canonical tables into DuckDB
   d5 sync-duckdb ingest_run source_health_event token_registry token_price_snapshot quote_snapshot \
   feature_materialization_run feature_spot_chain_macro_minute_v1 feature_global_regime_input_15m_v1 \
   condition_scoring_run condition_global_regime_snapshot_v1 policy_global_regime_trace_v1 \
   risk_global_regime_gate_v1 execution_intent_v1 paper_session paper_fill paper_position paper_session_report \
   backtest_session_v1 backtest_fill_v1 backtest_position_v1 backtest_session_report_v1 \
-  experiment_run experiment_metric experiment_realized_feedback_v1
+  experiment_run experiment_metric experiment_realized_feedback_v1 artifact_reference improvement_proposal_v1
 ```
 
 ## Current CLI Surface
@@ -99,11 +104,22 @@ d5 run-shadow intraday-meta-stack-v1
 | `d5 materialize-features <feature-set>` | Materialize a bounded deterministic feature set from canonical truth |
 | `d5 score-conditions <condition-set>` | Score a bounded condition set from deterministic feature inputs |
 | `d5 run-shadow <shadow-run>` | Run a bounded shadow-only ML evaluation lane |
+| `d5 run-label-program <label-program>` | Run the bounded canonical label-program scoring loop |
+| `d5 run-strategy-eval <strategy-eval>` | Run the bounded named strategy challenger loop |
 | `d5 status` | Show recent ingest runs, latest provider health events, per-lane capture freshness, and the latest condition run |
 | `d5 sync-duckdb [tables...]` | Copy selected SQLite truth tables into DuckDB |
 
 Current `capture` provider values:
 - `jupiter-tokens`
+
+Current `run-shadow` values:
+- `intraday-meta-stack-v1`
+- `regime-model-compare-v1`
+  - compares the existing 15-minute feature truth against HMM, GMM, and an
+    optional `statsmodels` candidate
+  - writes experiment truth, QMD evidence, and an advisory-only
+    `regime_model_compare_follow_on` proposal
+  - does not widen policy, risk, execution, settlement, or runtime authority
 - `jupiter-prices`
 - `jupiter-quotes`
 - `helius-transactions`
@@ -116,6 +132,7 @@ Current `capture` provider values:
 - `fred-series`
 - `fred-observations`
 - `massive-crypto`
+- `massive-minute-aggs`
 - `all`
 
 ## Source Status
@@ -126,7 +143,7 @@ Current `capture` provider values:
 | Helius | partial | tracked-address discovery, enhanced transaction capture, bounded `solana_transfer_event` projection, and hardened raw websocket capture with reconnect / heartbeat |
 | Coinbase | partial | public product, candle, trade, and L2 book capture with separate raw DB and canonical market-data tables |
 | FRED | implemented | series and observation capture/normalization |
-| Massive | scaffolded | fail-closed readiness/probe path until entitlement and payload shape are confirmed |
+| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization; wider entitlement coverage still deferred |
 
 ## Bounded Model Surfaces
 
@@ -141,7 +158,9 @@ Current `capture` provider values:
 - `experiment_realized_feedback_v1`
   - advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots without promoting research outputs into runtime authority
 
-These surfaces remain non-promoting. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one bounded execution-intent owner, one quote-backed paper settlement owner, one settlement-owned spot-first backtest replay ledger, one bounded shadow evaluation lane, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have governed model promotion, canonical label truth, strategy-family governance, or derivative widening.
+Runtime-adjacent model helpers live under `src/d5_trading_engine/models/`, while shadow-only registries remain explicitly advisory.
+
+These surfaces remain non-promoting at runtime. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one bounded execution-intent owner, one quote-backed paper settlement owner, one settlement-owned spot-first backtest replay ledger, one bounded shadow evaluation lane, one bounded canonical label-program loop, one bounded strategy challenger loop, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have runtime model promotion, fully accepted canonical label truth, fully accepted strategy-family governance, or derivative widening.
 
 ## Time Handling
 

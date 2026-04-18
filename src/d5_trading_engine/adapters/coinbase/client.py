@@ -24,6 +24,7 @@ _GRANULARITY_SECONDS = {
     "SIX_HOUR": 21600,
     "ONE_DAY": 86400,
 }
+_MAX_CANDLES_PER_REQUEST = 300
 
 
 class CoinbaseClient:
@@ -80,19 +81,43 @@ class CoinbaseClient:
     ) -> list[dict[str, Any]]:
         """Fetch public candles for a product."""
         granularity_seconds = _GRANULARITY_SECONDS[granularity]
-        end = datetime.now(tz=UTC)
-        start = end - timedelta(seconds=granularity_seconds * limit)
-        log.info("coinbase_get_public_candles", product_id=product_id, granularity=granularity)
-        data = await self._request(
-            f"/market/products/{product_id}/candles",
-            params={
-                "start": int(start.timestamp()),
-                "end": int(end.timestamp()),
-                "granularity": granularity,
-            },
+        remaining = max(int(limit), 1)
+        window_end = datetime.now(tz=UTC)
+        candles_by_start: dict[str, dict[str, Any]] = {}
+
+        log.info(
+            "coinbase_get_public_candles",
+            product_id=product_id,
+            granularity=granularity,
+            requested_limit=remaining,
         )
-        candles = data.get("candles", [])
-        return candles if isinstance(candles, list) else []
+        while remaining > 0:
+            chunk_limit = min(remaining, _MAX_CANDLES_PER_REQUEST)
+            start = window_end - timedelta(seconds=granularity_seconds * chunk_limit)
+            data = await self._request(
+                f"/market/products/{product_id}/candles",
+                params={
+                    "start": int(start.timestamp()),
+                    "end": int(window_end.timestamp()),
+                    "granularity": granularity,
+                },
+            )
+            candles = data.get("candles", [])
+            if not isinstance(candles, list) or not candles:
+                break
+            for candle in candles:
+                if not isinstance(candle, dict):
+                    continue
+                key = str(candle.get("start"))
+                candles_by_start[key] = candle
+            remaining -= chunk_limit
+            window_end = start
+
+        sorted_candles = sorted(
+            candles_by_start.values(),
+            key=lambda candle: int(candle.get("start") or 0),
+        )
+        return sorted_candles
 
     async def get_public_market_trades(
         self,

@@ -1,0 +1,11 @@
+---
+title: "{{title}}"
+date: "{{generated_at}}"
+format: gfm
+---
+
+# Summary
+
+{{summary_block}}
+
+{{body_sections}}

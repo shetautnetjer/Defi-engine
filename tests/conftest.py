@@ -47,6 +47,7 @@ def isolate_runtime(
     """Keep tests off the real repo `.env` and runtime data paths."""
     run_integration = request.config.getoption("--run-integration")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("REPO_ROOT", str(tmp_path))
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DB_PATH", str(tmp_path / "data" / "db" / "d5.db"))
     monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "data" / "db" / "d5_analytics.duckdb"))

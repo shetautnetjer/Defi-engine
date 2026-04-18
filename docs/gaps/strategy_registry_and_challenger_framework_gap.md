@@ -26,8 +26,8 @@ repeated advisory challenger loop:
 
 The repo still lacks:
 
-- a strategy registry with named strategy families
-- a machine-readable metrics registry
+- accepted strategy-registry doctrine in the docs packet
+- accepted machine-readable metrics doctrine in the docs packet
 - explicit champion-versus-challenger comparison rules
 - promotion-candidate artifacts for strategy-family work
 - a bounded no-HITL advisory runner that can:
@@ -38,9 +38,9 @@ The repo still lacks:
 
 ## Why it matters
 
-Without a strategy registry, the system risks devolving into one giant
+Without an accepted strategy registry, the system risks devolving into one giant
 all-purpose modeling surface instead of many bounded, regime-aware strategy
-families.
+families even though the first registry files now exist.
 
 Without a repeated challenger loop, even named strategy families will stay too
 manual and too slow to evolve toward the north star.
@@ -53,3 +53,5 @@ manual and too slow to evolve toward the north star.
 - model and strategy comparisons are evaluated by explicit governance metrics
 - repeated advisory scoring exists for the bounded challenger families already
   present in the repo
+- bounded research proposal review can move advisory strategy work forward
+  without granting runtime authority

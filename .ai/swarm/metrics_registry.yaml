@@ -1,0 +1,35 @@
+version: 1
+
+label_program:
+  default_candidate: canonical_direction_v1
+  thresholds:
+    min_rows: 64
+    min_valid_coverage: 0.30
+    max_invalid_rate: 0.35
+    max_low_confidence_rate: 0.70
+  tracked_metrics:
+    - rows_total
+    - valid_rows
+    - valid_coverage
+    - invalid_rate
+    - low_confidence_rate
+    - normalized_class_entropy
+
+strategy_eval:
+  default_candidate: governed_challengers_v1
+  thresholds:
+    min_rows_total: 48
+    min_rows_train: 16
+    min_rows_test: 8
+    min_xgb_accuracy: 0.52
+    min_xgb_auc: 0.52
+    min_expected_positive_return: 0.0
+  tracked_metrics:
+    - rows_total
+    - rows_train
+    - rows_test
+    - rf_accuracy
+    - rf_auc
+    - xgb_accuracy
+    - xgb_auc
+    - positive_expectancy

@@ -1,0 +1,42 @@
+version: 1
+
+families:
+  trend_continuation_long_v1:
+    story_class: strategy_eval
+    instrument_scope: solana_spot
+    venue: jupiter_spot
+    label_family: direction_60m_v1
+    target_label: up
+    allowed_regimes:
+      - long_friendly
+    feature_sets:
+      - spot-chain-macro-v1
+      - global-regime-inputs-15m-v1
+    require_anomaly_veto: true
+
+  trend_continuation_short_v1:
+    story_class: strategy_eval
+    instrument_scope: solana_spot
+    venue: jupiter_spot
+    label_family: direction_60m_v1
+    target_label: down
+    allowed_regimes:
+      - short_friendly
+    feature_sets:
+      - spot-chain-macro-v1
+      - global-regime-inputs-15m-v1
+    require_anomaly_veto: true
+
+  flat_regime_stand_aside_v1:
+    story_class: strategy_eval
+    instrument_scope: solana_spot
+    venue: jupiter_spot
+    label_family: direction_60m_v1
+    target_label: flat
+    allowed_regimes:
+      - risk_off
+      - no_trade
+    feature_sets:
+      - spot-chain-macro-v1
+      - global-regime-inputs-15m-v1
+    require_anomaly_veto: false

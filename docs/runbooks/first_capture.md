@@ -16,7 +16,8 @@ Notes:
 - `Jupiter` captures require `JUPITER_API_KEY`
 - `FRED` captures require `FRED_API_KEY`
 - `Helius` discovery, transaction, and websocket capture require tracked addresses to be configured
-- `Massive` is currently scaffold-only and should be expected to fail closed
+- `Massive` reference/snapshot capture requires `MASSIVE_API_KEY`
+- `Massive` historical minute-aggregate replay requires `MASSIVE_FLATFILES_KEY`
 
 ## Setup
 
@@ -68,8 +69,18 @@ Optional bounded websocket receipt:
 d5 capture helius-ws-events
 ```
 
-Use Helius only after configuring tracked addresses in settings or environment. `HELIUS_WS_MAX_MESSAGES` counts notification frames only; the raw websocket receipts also include the subscription acknowledgement. Massive is not part of the safe-first path yet.
+Use Helius only after configuring tracked addresses in settings or environment. `HELIUS_WS_MAX_MESSAGES` counts notification frames only; the raw websocket receipts also include the subscription acknowledgement.
 The websocket path also requires a Helius plan that allows `transactionSubscribe`; REST discovery and enhanced transactions may work on plans where the websocket method is still unavailable.
+
+Optional Massive captures now exist as bounded first-pass source truth:
+
+```bash
+d5 capture massive-crypto
+d5 capture massive-minute-aggs --date 2026-04-16
+```
+
+Massive remains bounded in scope. It is a first-pass reference and historical
+source, not a widening into live authority or unrestricted market coverage.
 
 ## Sync Into DuckDB
 

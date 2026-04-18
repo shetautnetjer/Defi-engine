@@ -9,6 +9,7 @@ surfaces that still need to be closed:
 - `backtest_truth_model_gap.md`
 - `label_program_and_regime_taxonomy_gap.md`
 - `strategy_registry_and_challenger_framework_gap.md`
+- `paper_trading_readiness_gap.md`
 - `codex_watcher_and_autoresearch_gap.md`
 - `execution_intent_gap.md`
 - `instrument_expansion_readiness_gap.md`
@@ -41,7 +42,7 @@ missing.
 - Coinbase is market-data only.
   - Current state: products, candles, trades, and L2 book snapshots are captured, but execution, paper fills, and slippage modeling are not implemented.
 
-- Massive ingestion is scaffold-only.
+- Massive ingestion is only partially complete; first-pass reference and historical minute aggregates exist, but broader coverage is still missing.
   - Current state: the client intentionally fails closed and the CLI surfaces auth and entitlement failures explicitly until endpoint proof and payload examples are confirmed.
 
 ## Engine Layer Gaps
@@ -54,6 +55,7 @@ missing.
 
 - `research_loop/` is only partially implemented.
   - Current state: `intraday_meta_stack_v1` exists as one bounded, point-in-time-safe shadow lane, and advisory realized-feedback comparison against settlement truth now exists, but the surface remains research-only and non-promoting.
+  - Current state now also includes bounded research-stage machine law, canonical label-program scoring, and named strategy-family challenger scoring; runtime promotion is still out of scope.
 
 - `trajectory/` remains scaffold-only and non-promoting.
   - Current state: policy, risk, settlement, and advisory realized-feedback are

@@ -129,6 +129,7 @@ Interpretation:
 
 ```bash
 d5 run-shadow intraday-meta-stack-v1
+d5 run-shadow regime-model-compare-v1
 ```
 
 Expected outcome:
@@ -153,6 +154,10 @@ Notes:
 - the shadow lane uses point-in-time-safe walk-forward regime history
 - Chronos-2 is optional; the shadow run may still succeed when Chronos is unavailable
 - Fibonacci is a research annotation only, not a runtime gate
+- `regime-model-compare-v1` is a separate shadow lane that compares HMM, GMM,
+  and an optional `statsmodels` candidate on the canonical 15-minute feature
+  truth, then writes advisory-only proposal evidence instead of changing the
+  regime owner
 
 ## Step 5. Optional DuckDB Sync
 
@@ -225,6 +230,8 @@ Likely fix:
 - rerun the two feature materializers
 - rerun `d5 score-conditions global-regime-v1`
 - rerun `d5 run-shadow intraday-meta-stack-v1`
+- rerun `d5 run-shadow regime-model-compare-v1` only after the bounded feature
+  history is deep enough for comparison
 
 ## Not Yet Safe To Claim
 

@@ -89,7 +89,7 @@ Minimum dependency reading:
 - required for macro-aware feature materialization:
   - `fred-observations`
 
-If a required lane is `never_started`, `degraded`, `stale`, or `readiness_only`, the feature run should fail closed or explicitly downgrade scope rather than silently proceeding.
+If a required lane is `never_started`, `degraded`, or `stale`, the feature run should fail closed or explicitly downgrade scope rather than silently proceeding.
 
 ## Minimum Feature Run Receipt
 

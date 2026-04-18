@@ -18,13 +18,22 @@ architecture, and writer-integrator.
 
 ## Gap
 
-The machine-law layer is still incomplete. Missing or still-deferred surfaces
-include:
+The machine-law layer is no longer missing the first research-stage policy
+surfaces.
+
+Landed now:
 
 - `.ai/swarm/story_classes.yaml`
 - `.ai/swarm/instrument_scope.yaml`
 - `.ai/swarm/strategy_registry.yaml`
 - `.ai/swarm/metrics_registry.yaml`
+
+The remaining gap is narrower:
+
+- a typed completion and handoff contract that the live supervisor can use
+  directly instead of relying on freshness and artifact heuristics alone
+- clearer packet/build-order generation for the live swarm when research-stage
+  proposal review is enabled
 
 ## Why it matters
 
@@ -38,3 +47,5 @@ on prompt tradition and prose-only packet discipline.
   rediscover it from chat
 - docs truth and backlog truth are machine-routable without creating a second
   runtime source of truth
+- the live supervisor has a typed enough handoff contract to progress active
+  research stories automatically

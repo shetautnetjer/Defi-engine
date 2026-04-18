@@ -371,6 +371,11 @@ def test_cli_help_lists_bootstrap_commands(cli_runner) -> None:
     assert "materialize-features" in result.output
     assert "score-conditions" in result.output
     assert "run-shadow" in result.output
+    assert "run-label-program" in result.output
+    assert "run-strategy-eval" in result.output
+    assert "run-paper-cycle" in result.output
+    assert "review-proposal" in result.output
+    assert "compare-proposals" in result.output
     assert "status" in result.output
     assert "sync-duckdb" in result.output
 
@@ -386,7 +391,16 @@ def test_cli_capture_help_lists_source_expansion_providers(cli_runner) -> None:
         "coinbase-candles",
         "coinbase-market-trades",
         "coinbase-book",
+        "massive-minute-aggs",
     } <= set(_CAPTURE_CHOICES)
+
+
+def test_cli_run_shadow_help_lists_regime_model_compare(cli_runner) -> None:
+    result = cli_runner.invoke(cli, ["run-shadow", "--help"], terminal_width=200)
+
+    assert result.exit_code == 0
+    assert "intraday-meta-stack-v1" in result.output
+    assert "regime-model-compare-v1" in result.output
 
 
 def test_cli_init_runs_migrations(cli_runner, settings) -> None:
@@ -410,7 +424,7 @@ def test_cli_status_reports_empty_initialized_db(cli_runner) -> None:
     assert "jupiter-prices" in result.output
     assert "never_started" in result.output
     assert "massive-crypto" in result.output
-    assert "readiness_only" in result.output
+    assert "operator_reference_refresh" in result.output
 
 
 def test_cli_status_reports_capture_lane_states(cli_runner, settings) -> None:
@@ -427,7 +441,7 @@ def test_cli_status_reports_capture_lane_states(cli_runner, settings) -> None:
     assert "state=healthy_recent" in result.output
     assert "helius-transactions" in result.output
     assert "massive-crypto" in result.output
-    assert "readiness_only" in result.output
+    assert "never_started" in result.output
     assert "required blockers=none" in result.output
 
 
@@ -715,7 +729,7 @@ def test_cli_capture_massive_crypto_surfaces_fail_closed_error(
         return None
 
     monkeypatch.setattr(
-        "d5_trading_engine.adapters.massive.client.MassiveClient.fetch_crypto_reference",
+        "d5_trading_engine.adapters.massive.client.MassiveClient.fetch_crypto_reference_bundle",
         _raise_auth_error,
     )
     monkeypatch.setattr(
@@ -727,3 +741,38 @@ def test_cli_capture_massive_crypto_surfaces_fail_closed_error(
 
     assert result.exit_code == 1
     assert "Massive crypto capture failed closed" in result.output
+
+
+def test_cli_capture_massive_minute_aggs_requires_date(cli_runner) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    result = cli_runner.invoke(cli, ["capture", "massive-minute-aggs"])
+
+    assert result.exit_code == 1
+    assert "--date YYYY-MM-DD is required" in result.output
+
+
+def test_cli_capture_massive_minute_aggs_dispatches(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    async def _fake_capture(self, date_str: str) -> str:
+        assert date_str == "2026-04-16"
+        return "massive_minute_aggs_test"
+
+    monkeypatch.setattr(
+        "d5_trading_engine.capture.runner.CaptureRunner.capture_massive_minute_aggs",
+        _fake_capture,
+    )
+
+    result = cli_runner.invoke(
+        cli,
+        ["capture", "massive-minute-aggs", "--date", "2026-04-16"],
+    )
+
+    assert result.exit_code == 0
+    assert "✓ Massive minute aggs: massive_minute_aggs_test" in result.output

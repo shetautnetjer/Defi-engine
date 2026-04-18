@@ -15,6 +15,10 @@ common:
     - docs/policy/runtime_authority_and_promotion_ladder.md
   packet_first: true
   writer_integrator_is_truth_owner: true
+  bounded_research_proposal_review: true
+  bounded_research_proposal_story_classes:
+    - label_program
+    - strategy_eval
 
 lanes:
   research:
@@ -135,3 +139,4 @@ lanes:
       backlog_promotion_owner: true
       commit_owner: true
       push_requires_operator: true
+      bounded_research_proposal_review_owner: true

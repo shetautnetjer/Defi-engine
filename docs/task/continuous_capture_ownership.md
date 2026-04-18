@@ -16,7 +16,7 @@ Make continuous and recurring capture behavior explicit enough that later `featu
 
 ## Implementation Update — 2026-04-16
 
-- `capture/lane_status.py` defines the governed lane matrix for Jupiter, Helius, Coinbase, FRED, and Massive without widening readiness-only surfaces into runtime authority.
+- `capture/lane_status.py` defines the governed lane matrix for Jupiter, Helius, Coinbase, FRED, and Massive without widening optional operator-refresh surfaces into runtime authority.
 - `FeatureMaterializer` still refuses to materialize freshness-gated feature lanes unless required capture lanes resolve to `healthy_recent`, but it now delegates that decision to the shared source owner.
 - `feature_materialization_run.freshness_snapshot_json` remains the downstream serialized source receipt.
 - `d5 status` now exposes a `=== Capture Lanes ===` section with lane-level freshness, eligibility, latest receipts, and blocker summaries.
@@ -90,7 +90,7 @@ This draft names the current lane reading without locking the repo into numeric 
 | `coinbase-book` | recurring market-data lane | latest successful `ingest_run` plus latest `source_health_event` | stale when book snapshot capture falls behind its chosen cadence |
 | `fred-series` | operator-invoked reference metadata refresh | latest successful `ingest_run` plus latest `source_health_event` | stale when macro metadata needs refresh and no successful baseline exists |
 | `fred-observations` | slower recurring macro lane | latest successful `ingest_run` plus latest `source_health_event` | stale when macro observations fall behind their chosen low-frequency cadence |
-| `massive-crypto` | readiness-only lane | explicit success or fail-closed receipt | never blocks downstream freshness until Massive is promoted beyond readiness-only |
+| `massive-crypto` | operator-invoked reference refresh | latest successful `ingest_run` plus latest `source_health_event` | stale when bounded Massive reference capture has not refreshed inside its explicit cadence |
 
 ## Cursor Reality
 
@@ -100,7 +100,7 @@ This draft names the current lane reading without locking the repo into numeric 
 
 ## Freshness State Model
 
-Every non-readiness lane should eventually resolve to one of these operator-visible states:
+Every lane should resolve to one of these operator-visible states:
 
 - `never_started`
   - no successful baseline receipt exists for the lane
@@ -110,15 +110,11 @@ Every non-readiness lane should eventually resolve to one of these operator-visi
   - the lane still has a recent successful baseline, but the latest health signal failed or the lane is nearing staleness
 - `stale`
   - the lane is past its freshness window for downstream dependence
-- `readiness_only`
-  - the lane is intentionally excluded from runtime freshness gating
-
 Interpretation rules:
 
-- `never_started` blocks downstream dependence for every lane except explicit readiness-only probes
+- `never_started` blocks downstream dependence until a lane has produced one healthy baseline
 - `degraded` should not silently fail open into downstream runtime decisions
 - `stale` means the lane may still contain useful historical truth, but it is no longer safe to treat it as current runtime context
-- `readiness_only` is for surfaces like current Massive capture where success or failure is informative but not freshness-authoritative
 
 ## Minimum Status Surface
 
@@ -130,17 +126,17 @@ Minimum per-lane output:
 |------|-------|
 | `provider` | anchors the source family |
 | `capture_type` | makes freshness specific to the actual lane, not just the provider |
-| `expectation_class` | distinguishes recurring, discovery, stream, and readiness-only lanes |
+| `expectation_class` | distinguishes recurring, discovery, stream, and operator-refresh lanes |
 | `last_success_at_utc` | tells downstream consumers when the lane last produced a valid baseline |
 | `last_failure_at_utc` | keeps recent breakage visible instead of hidden behind an older success |
 | `latest_health_at_utc` | ties freshness to the most recent provider-health signal |
-| `freshness_state` | exposes `never_started`, `healthy_recent`, `degraded`, `stale`, or `readiness_only` directly |
+| `freshness_state` | exposes `never_started`, `healthy_recent`, `degraded`, or `stale` directly |
 | `downstream_eligible` | answers whether later runtime layers may currently depend on this lane |
 | `latest_error_summary` | keeps operator triage close to the freshness state |
 
 Recommended derived rules:
 
-- `downstream_eligible = false` for `never_started`, `stale`, and `readiness_only`
+- `downstream_eligible = false` for `never_started` and `stale`
 - `downstream_eligible = false` for `degraded` unless a later policy explicitly allows soft dependence
 - `downstream_eligible = true` only for lanes in `healthy_recent`
 

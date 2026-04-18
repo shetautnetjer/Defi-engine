@@ -18,6 +18,7 @@ packet:
     - docs/plans/strategy_descent_and_instrument_scope.md
     - docs/math/regime_shadow_modeling_contracts.md
     - docs/math/market_regime_forecast_and_labeling_program.md
+    - docs/math/strategy_family_registry.md
     - docs/policy/runtime_authority_and_promotion_ladder.md
     - docs/policy/writer_story_promotion_rubric.md
     - docs/sdd/d5_trading_engine_sdd.md
@@ -33,6 +34,7 @@ truth_surfaces:
     - docs/prd/backtesting_completion_definition.md
     - docs/plans/strategy_descent_and_instrument_scope.md
     - docs/math/market_regime_forecast_and_labeling_program.md
+    - docs/math/strategy_family_registry.md
     - docs/policy/runtime_authority_and_promotion_ladder.md
     - docs/policy/writer_story_promotion_rubric.md
   exchange:
@@ -96,6 +98,22 @@ finder_policy:
     - repeated_failure_class
     - duplicate_completed_artifact_without_state_change
     - backlog_exhausted
+
+research_proposal_review:
+  enabled: true
+  allowed_story_classes:
+    - label_program
+    - strategy_eval
+  allowed_stages:
+    - regime_and_label_truth
+    - strategy_research
+  next_receipt: .ai/dropbox/state/research_proposal_review_receipt.json
+  runtime_authority_guardrails:
+    - policy
+    - risk
+    - execution_intent
+    - settlement
+    - instrument_expansion
 
 commit_policy:
   builder_can_commit: false

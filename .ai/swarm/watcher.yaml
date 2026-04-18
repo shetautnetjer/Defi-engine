@@ -1,0 +1,85 @@
+authority_mode: advisory-only
+
+lock:
+  path: .ai/dropbox/state/watcher.lock
+  mode: single-run
+
+truth_precedence:
+  canonical_story_source:
+    path: prd.json
+    field: activeStoryId
+  supporting_receipts:
+    - .ai/dropbox/state/docs_truth_receipt.json
+    - .ai/dropbox/state/story_promotion_receipt.json
+  advisory_liveness_sources:
+    - .ai/dropbox/state/lane_health.json
+    - .ai/dropbox/state/mailbox.jsonl
+    - .ai/dropbox/state/mailbox_current.json
+    - .ai/dropbox/state/finder_state.json
+    - .ai/dropbox/state/finder_decision.json
+
+outputs:
+  report_root: data/reports/watcher
+  archive_root: data/archive/ai_dropbox
+  state_files:
+    - .ai/dropbox/state/watcher_state.json
+    - .ai/dropbox/state/watcher_latest.json
+
+triggers:
+  paper_cycle_closed:
+    enabled: true
+    watch_globs:
+      - data/paper_runtime/cycles/*/cycle_summary.json
+    cooldown_seconds: 0
+    sandbox_eval_commands:
+      - d5 status
+  strategy_report_changed:
+    enabled: true
+    watch_paths:
+      - .ai/dropbox/research/STRAT-001__strategy_challenger_report.json
+    cooldown_seconds: 0
+    sandbox_eval_commands:
+      - d5 status
+  story_promotion_changed:
+    enabled: true
+    watch_paths:
+      - .ai/dropbox/state/docs_truth_receipt.json
+      - .ai/dropbox/state/story_promotion_receipt.json
+    cooldown_seconds: 0
+    sandbox_eval_commands: []
+  truth_drift:
+    enabled: true
+    blocking: true
+
+sandbox:
+  enabled: true
+  root: data/tmp/watcher_sandboxes
+  repo_copy_ignore:
+    - .git
+    - data
+    - __pycache__
+    - .pytest_cache
+    - .ruff_cache
+    - graphify-out
+    - .venv
+    - venv
+  allowed_commands:
+    - d5 status
+    - d5 run-label-program canonical-direction-v1
+    - d5 run-strategy-eval governed-challengers-v1
+    - d5 run-paper-cycle <quote_snapshot_id>
+
+ai_hygiene:
+  keep_tracked_policy:
+    - .ai/README.md
+    - .ai/index/current_repo_map.md
+    - .ai/swarm/*.yaml
+    - .ai/templates/*.md
+    - .ai/agents/common.md
+    - .ai/agents/research.md
+    - .ai/agents/builder.md
+    - .ai/agents/architecture.md
+    - .ai/agents/writer_integrator.md
+    - .ai/dropbox/README.md
+  delete_candidates:
+    - .ai/agents/README.md

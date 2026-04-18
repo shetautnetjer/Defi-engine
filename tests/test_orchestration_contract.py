@@ -18,6 +18,11 @@ def test_orchestration_surface_exists() -> None:
         REPO_ROOT / ".ai" / "swarm" / "lane_rules.yaml",
         REPO_ROOT / ".ai" / "swarm" / "promotion_ladder.yaml",
         REPO_ROOT / ".ai" / "swarm" / "doc_owners.yaml",
+        REPO_ROOT / ".ai" / "swarm" / "story_classes.yaml",
+        REPO_ROOT / ".ai" / "swarm" / "metrics_registry.yaml",
+        REPO_ROOT / ".ai" / "swarm" / "strategy_registry.yaml",
+        REPO_ROOT / ".ai" / "swarm" / "instrument_scope.yaml",
+        REPO_ROOT / ".ai" / "swarm" / "watcher.yaml",
         REPO_ROOT / ".ai" / "agents" / "common.md",
         REPO_ROOT / ".ai" / "agents" / "research.md",
         REPO_ROOT / ".ai" / "agents" / "builder.md",
@@ -32,6 +37,7 @@ def test_orchestration_surface_exists() -> None:
         REPO_ROOT / ".ai" / "templates" / "research_finder.md",
         REPO_ROOT / ".ai" / "templates" / "architecture_completion_audit.md",
         REPO_ROOT / ".ai" / "templates" / "writer_completion_audit.md",
+        REPO_ROOT / ".ai" / "templates" / "watcher.md",
         REPO_ROOT / ".ai" / "dropbox" / "README.md",
         REPO_ROOT / ".ai" / "dropbox" / "state" / "accepted_receipts" / ".gitkeep",
         REPO_ROOT / "prd.json",
@@ -55,6 +61,10 @@ def test_orchestration_surface_exists() -> None:
         REPO_ROOT / "scripts" / "agents" / "cleanup_lane_processes.sh",
         REPO_ROOT / "scripts" / "agents" / "stop_supervisor.sh",
         REPO_ROOT / "scripts" / "agents" / "stop_swarm.sh",
+        REPO_ROOT / "scripts" / "agents" / "codex_watch_adapter.py",
+        REPO_ROOT / "scripts" / "agents" / "start_watch_adapter.sh",
+        REPO_ROOT / "scripts" / "agents" / "status_watch_adapter.sh",
+        REPO_ROOT / "scripts" / "agents" / "audit_ai_surfaces.py",
         REPO_ROOT / "scripts" / "ralph" / "ralph.sh",
         REPO_ROOT / "scripts" / "ralph" / "CODEX.md",
         REPO_ROOT / "docs" / "runbooks" / "ralph_tmux_swarm.md",
@@ -146,7 +156,7 @@ def test_prd_has_active_story_and_runtime_owner_backlog() -> None:
     assert by_id["ORCH-005"]["state"] == "done"
     assert by_id["EXEC-001"]["state"] == "done"
     assert by_id["BACKTEST-001"]["state"] == "done"
-    assert by_id["LABEL-001"]["state"] in {"active", "ready"}
+    assert by_id["LABEL-001"]["state"] in {"active", "ready", "done"}
     assert by_id["STRAT-001"]["state"] == "deferred"
 
 
@@ -171,6 +181,10 @@ def test_scripts_are_executable_and_prompts_reference_lane_guides() -> None:
         REPO_ROOT / "scripts" / "agents" / "cleanup_lane_processes.sh",
         REPO_ROOT / "scripts" / "agents" / "stop_supervisor.sh",
         REPO_ROOT / "scripts" / "agents" / "stop_swarm.sh",
+        REPO_ROOT / "scripts" / "agents" / "codex_watch_adapter.py",
+        REPO_ROOT / "scripts" / "agents" / "start_watch_adapter.sh",
+        REPO_ROOT / "scripts" / "agents" / "status_watch_adapter.sh",
+        REPO_ROOT / "scripts" / "agents" / "audit_ai_surfaces.py",
         REPO_ROOT / "scripts" / "ralph" / "ralph.sh",
     ]
     for path in scripts:
@@ -185,6 +199,7 @@ def test_scripts_are_executable_and_prompts_reference_lane_guides() -> None:
         REPO_ROOT / ".ai" / "templates" / "research_finder.md",
         REPO_ROOT / ".ai" / "templates" / "architecture_completion_audit.md",
         REPO_ROOT / ".ai" / "templates" / "writer_completion_audit.md",
+        REPO_ROOT / ".ai" / "templates" / "watcher.md",
         REPO_ROOT / "scripts" / "ralph" / "CODEX.md",
     ]
     for path in prompt_paths:
@@ -248,10 +263,24 @@ def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None
     assert "docs/prd/crypto_backtesting_mission.md" in swarm["packet"]["required_reads"]
     assert "docs/policy/runtime_authority_and_promotion_ladder.md" in swarm["packet"]["required_reads"]
     assert "docs/policy/writer_story_promotion_rubric.md" in swarm["packet"]["required_reads"]
+    assert "docs/math/strategy_family_registry.md" in swarm["packet"]["required_reads"]
+    assert swarm["research_proposal_review"]["enabled"] is True
+    assert set(swarm["research_proposal_review"]["allowed_story_classes"]) == {
+        "label_program",
+        "strategy_eval",
+    }
+
+    watcher = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "watcher.yaml").read_text())
+    assert watcher["authority_mode"] == "advisory-only"
+    assert watcher["lock"]["path"] == ".ai/dropbox/state/watcher.lock"
+    assert watcher["truth_precedence"]["canonical_story_source"]["path"] == "prd.json"
+    assert watcher["triggers"]["truth_drift"]["blocking"] is True
+    assert ".ai/agents/README.md" in watcher["ai_hygiene"]["delete_candidates"]
 
     lane_names = set(lane_rules["lanes"].keys())
     assert lane_names == {"research", "builder", "architecture", "writer_integrator"}
     assert lane_rules["common"]["writer_integrator_is_truth_owner"] is True
+    assert lane_rules["common"]["bounded_research_proposal_review"] is True
     assert lane_rules["lanes"]["builder"]["model_default"] == "ChatGPT 5.4"
     assert "research-finder" in lane_rules["lanes"]["research"]["modes"]
     assert "architecture-finder" in lane_rules["lanes"]["architecture"]["modes"]
@@ -259,7 +288,12 @@ def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None
     assert lane_rules["lanes"]["writer_integrator"]["authority"]["backlog_promotion_owner"] is True
 
     assert "execution_intent" in promotion["runtime_authority_chain"]
-    assert promotion["promotion_rules"]["writer_integrator_is_only_promotion_authority"] is True
+    assert promotion["promotion_rules"]["writer_integrator_is_only_promotion_authority"] is False
+    assert promotion["promotion_rules"]["bounded_research_proposal_review_enabled"] is True
+    assert set(promotion["promotion_rules"]["bounded_research_proposal_story_classes"]) == {
+        "label_program",
+        "strategy_eval",
+    }
     assert "Chronos-2" in promotion["research_only_families"]
     assert "Monte Carlo" in promotion["research_only_families"]
     assert "autoresearch" in promotion["research_only_families"]
@@ -270,6 +304,16 @@ def test_machine_readable_swarm_policy_layer_is_present_and_consistent() -> None
     assert "README.md" in doc_owners["always_review"]
     assert "docs/policy/writer_story_promotion_rubric.md" in doc_owners["always_review"]
     assert "docs/project/current_runtime_truth.md" in doc_owners["always_review"]
+    story_classes = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "story_classes.yaml").read_text())
+    metrics_registry = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "metrics_registry.yaml").read_text())
+    strategy_registry = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "strategy_registry.yaml").read_text())
+    instrument_scope = yaml.safe_load((REPO_ROOT / ".ai" / "swarm" / "instrument_scope.yaml").read_text())
+    assert story_classes["classes"]["label_program"]["proposal_review_enabled"] is True
+    assert story_classes["classes"]["strategy_eval"]["proposal_review_enabled"] is True
+    assert metrics_registry["label_program"]["default_candidate"] == "canonical_direction_v1"
+    assert metrics_registry["strategy_eval"]["default_candidate"] == "governed_challengers_v1"
+    assert "trend_continuation_long_v1" in strategy_registry["families"]
+    assert instrument_scope["research_stage"]["active_default"] == "solana_spot"
 
 
 def test_continuous_loop_uses_story_activation_and_story_scoped_writer_receipts() -> None:
@@ -295,6 +339,8 @@ def test_continuous_loop_uses_story_activation_and_story_scoped_writer_receipts(
     assert "\"docs truth receipt\"" in health_swarm
     assert "lastReceiptMissingCapabilities" in health_swarm
     assert "storyPromotionReceiptId" in health_swarm
+    assert "researchProposalReviewReceiptId" in health_swarm
+    assert "researchProposalReviewStatus" in health_swarm
 
     send_swarm = (REPO_ROOT / "scripts" / "agents" / "send_swarm.sh").read_text()
     assert "prompt_type=" in send_swarm

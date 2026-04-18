@@ -1,0 +1,29 @@
+version: 1
+
+research_stage:
+  active_default: solana_spot
+  venues:
+    - jupiter_spot
+  proposal_review_scopes:
+    - solana_spot
+
+scopes:
+  solana_spot:
+    instrument_family: spot
+    venues:
+      - jupiter_spot
+    proposal_review_stages:
+      - regime_and_label_truth
+      - strategy_research
+
+  jupiter_perps_paper:
+    instrument_family: perp
+    venues:
+      - jupiter_perps
+    proposal_review_stages: []
+
+  coinbase_futures_paper:
+    instrument_family: futures
+    venues:
+      - coinbase_futures
+    proposal_review_stages: []

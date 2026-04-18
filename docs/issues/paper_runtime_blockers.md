@@ -55,7 +55,7 @@ The accepted Stage 2 backtest truth slice is also no longer open:
 
 - provider-specific top-level CLI ergonomics are still optional
 - Parquet export is still deferred
-- Massive remains scaffold-only until entitlement and payload proof exist
+- Massive still needs broader entitlement proof and coverage before it can be treated as a fully mature market-data source
 - richer Helius protocol-aware decoding remains deferred
 
 These matter, but they do not need to be solved before the first truthful paper-runtime descent is planned.

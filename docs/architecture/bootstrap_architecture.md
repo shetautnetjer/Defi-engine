@@ -68,7 +68,7 @@ This remains a paper-only engine. No live order routing, wallet automation, poli
   - Jupiter is the current spot reference source
   - Helius includes tracked-address REST discovery and bounded raw websocket capture
   - Coinbase provides public spot market-data capture
-  - Massive remains a fail-closed readiness/probe path only
+  - Massive now has a first-pass bounded reference and historical minute-aggregate path, but wider source coverage remains deferred
 
 - `capture/runner.py`
   - owns ingest bookkeeping

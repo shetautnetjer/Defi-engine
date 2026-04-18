@@ -89,6 +89,7 @@ stage_paths = [
     repo_root / ".ai" / "dropbox" / "state" / "docs_truth_receipt.json",
     repo_root / ".ai" / "dropbox" / "state" / "docs_sync_status.json",
     repo_root / ".ai" / "dropbox" / "state" / "story_promotion_receipt.json",
+    repo_root / ".ai" / "dropbox" / "state" / "research_proposal_review_receipt.json",
     receipt_path,
 ]
 for raw_path in receipt.get("candidate_artifacts", []):

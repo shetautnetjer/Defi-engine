@@ -14,7 +14,7 @@ This note is a planning surface. Code, schemas, and tests remain the active trut
 | Helius | Solana chain discovery, tracked-address expansion, enhanced transaction receipts, and bounded transfer projection | partial | current canonical projection is intentionally narrow and should not be mistaken for protocol-complete chain semantics |
 | Coinbase | public market-data venue for products, candles, trades, and L2 book snapshots | partial | market-data source only; not an execution venue in current repo truth |
 | FRED | macro context source for series and observations | implemented | useful for later features and condition work, not for direct trade execution logic |
-| Massive | future historical depth and research support | scaffolded | fail-closed until entitlement, endpoint proof, and payload shape are confirmed |
+| Massive | bounded reference and historical depth support | partial | first-pass REST and flat-file support are in place; wider entitlement, endpoint proof, and payload-shape coverage are still deferred |
 
 ## Source Completeness Standard
 

@@ -1,0 +1,31 @@
+---
+title: "capture_massive_crypto_reference"
+format: gfm
+---
+
+# Summary
+
+- run id: `massive_crypto_reference_example`
+- provider: `massive`
+- capture type: `crypto_reference`
+- status: `success`
+- records captured: `3`
+
+# Context
+
+- bounded first-pass Massive reference and snapshot capture
+- canonical SQL truth remains authoritative
+- raw payloads are preserved and replayable
+
+# Health
+
+- endpoint: `/v3/reference/tickers`
+- healthy: `true`
+- status code: `200`
+- latency ms: `143.2`
+
+# Evidence
+
+- `config.json`
+- `capture_summary.json`
+- `report.qmd`

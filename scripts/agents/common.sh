@@ -162,7 +162,7 @@ defi_swarm_bootstrap_runtime_dirs() {
 
   local mailbox lane_health_md lane_health_json accepted_loops rejections open_questions
   local mailbox_current finder_state finder_decision completion_audit_writer
-  local auto_commit_state docs_truth_receipt docs_sync_status story_promotion_receipt
+  local auto_commit_state docs_truth_receipt docs_sync_status story_promotion_receipt research_proposal_review_receipt
   mailbox="$(defi_swarm_mailbox_path "$repo_root")"
   mailbox_current="$(defi_swarm_mailbox_current_path "$repo_root")"
   lane_health_md="$(defi_swarm_lane_health_md_path "$repo_root")"
@@ -177,6 +177,7 @@ defi_swarm_bootstrap_runtime_dirs() {
   docs_truth_receipt="$(defi_swarm_docs_truth_receipt_path "$repo_root")"
   docs_sync_status="$(defi_swarm_docs_sync_status_path "$repo_root")"
   story_promotion_receipt="$(defi_swarm_story_promotion_receipt_path "$repo_root")"
+  research_proposal_review_receipt="$(defi_swarm_research_proposal_review_receipt_path "$repo_root")"
   [[ -f "$mailbox" ]] || : > "$mailbox"
   [[ -f "$mailbox_current" ]] || printf '%s\n' '[]' > "$mailbox_current"
   [[ -f "$lane_health_md" ]] || cat <<'EOF' > "$lane_health_md"
@@ -240,6 +241,21 @@ EOF
   "deferred_items": [],
   "proposal_sources": [],
   "summary": "",
+  "updated_at": ""
+}
+EOF
+  [[ -f "$research_proposal_review_receipt" ]] || cat <<'EOF' > "$research_proposal_review_receipt"
+{
+  "receipt_id": "",
+  "source_story_id": "",
+  "target_story_id": "",
+  "proposal_id": "",
+  "source_artifact_path": "",
+  "status": "pending",
+  "summary": "",
+  "story_class": "",
+  "stage": "",
+  "metrics": {},
   "updated_at": ""
 }
 EOF
@@ -314,6 +330,11 @@ defi_swarm_docs_sync_status_path() {
 defi_swarm_story_promotion_receipt_path() {
   local repo_root="${1:?repo root required}"
   printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/story_promotion_receipt.json"
+}
+
+defi_swarm_research_proposal_review_receipt_path() {
+  local repo_root="${1:?repo root required}"
+  printf '%s\n' "$(defi_swarm_state_dir "$repo_root")/research_proposal_review_receipt.json"
 }
 
 defi_swarm_runtime_state_dir() {

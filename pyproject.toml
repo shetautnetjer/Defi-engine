@@ -36,6 +36,7 @@ ml = [
     "chronos-forecasting>=2.0",
     "hmmlearn>=0.3.2",
     "scikit-learn>=1.5",
+    "statsmodels>=0.14",
     "xgboost>=2.1",
 ]
 

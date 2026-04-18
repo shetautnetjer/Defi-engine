@@ -35,7 +35,7 @@ Initialize the canonical truth DB cleanly, establish one real provider-backed in
 - Parquet export
 - deep Helius canonical projections
 - Helius websocket hardening beyond explicit scaffold status
-- real Massive REST/websocket/flatfile implementation
+- deeper Massive entitlement expansion beyond first-pass REST reference and historical minute aggregates
 - live-provider integration in default CI
 
 ## Next Actions After This Slice

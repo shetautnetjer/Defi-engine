@@ -14,6 +14,11 @@ This note documents the HMM-style regime scorer, the bounded fallback behavior w
   - fits the first bounded regime model and writes a condition receipt
 - `d5 run-shadow intraday-meta-stack-v1`
   - runs the shadow-only ensemble and writes experiment receipts plus evidence artifacts
+- `d5 run-shadow regime-model-compare-v1`
+  - compares the current 15-minute feature truth across HMM, GMM, and an
+    optional `statsmodels` candidate using a bounded walk-forward protocol
+  - writes experiment truth, QMD evidence, and an advisory-only
+    `regime_model_compare_follow_on` proposal without changing runtime authority
 - `d5 status`
   - shows the latest condition run alongside ingest health, including failed-run visibility instead of silently falling back to an older success receipt
 
@@ -43,6 +48,9 @@ This note documents the HMM-style regime scorer, the bounded fallback behavior w
   - stores advisory comparison receipts that align replayed shadow context to settlement-owned paper fills and latest session snapshots
 - `data/research/shadow_runs/<run_id>/`
   - stores JSON artifacts and a QMD report without promoting them into runtime authority
+- `data/research/regime_model_compare/<run_id>/`
+  - stores the feature-history inventory, candidate comparison packet, and QMD
+    evidence for the bounded regime-model comparison lane
 
 ## Input Contract
 
@@ -76,6 +84,11 @@ Macro staleness does not block scoring in v1. It degrades confidence instead, wh
 ## Shadow Stack Scope
 
 `intraday_meta_stack_v1` is shadow-only. It does not widen runtime authority.
+
+`regime_model_compare_v1` is also shadow-only. It compares the current
+runtime-adjacent regime owner against a bounded `statsmodels` candidate on the
+existing canonical 15-minute feature truth, then writes advisory proposal truth
+instead of changing the regime owner.
 
 Current shadow components:
 

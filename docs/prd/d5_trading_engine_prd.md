@@ -35,7 +35,8 @@ The current product phase is no longer source-ingest only. It is a bounded downs
   - `intraday_meta_stack_v1`
 - Keep runtime authority explicit:
   - source -> normalize -> truth -> features -> condition -> shadow evidence
-- Preserve auditable receipts for feature, condition, and shadow runs.
+- Preserve auditable receipts for capture, feature, condition, paper, and experiment runs.
+- Persist advisory-only proposal truth and QMD evidence after paper and experiment runs.
 
 ## Non-Goals
 
@@ -106,7 +107,7 @@ The current product phase is no longer source-ingest only. It is a bounded downs
 - FRED
   - macro reference series and observations
 - Massive
-  - deferred historical depth source, currently fail-closed
+  - first-pass reference and historical minute-aggregate source, with wider entitlement coverage deferred
 
 ## Tracked Universe
 
@@ -192,6 +193,9 @@ The current product should be considered healthy when:
 - `d5 materialize-features global-regime-inputs-15m-v1` succeeds when required market lanes are fresh
 - `d5 score-conditions global-regime-v1` writes a latest condition receipt and snapshot
 - `d5 run-shadow intraday-meta-stack-v1` writes experiment receipts and artifacts
+- `d5 run-shadow regime-model-compare-v1` writes bounded comparison receipts,
+  QMD evidence, and an advisory-only follow-on proposal without changing
+  policy, risk, execution, settlement, or runtime authority
 - `d5 status` shows the latest condition run, including failed-run visibility
 - `d5 sync-duckdb` can mirror selected canonical, feature, condition, and experiment tables
 - offline-safe tests pass by default

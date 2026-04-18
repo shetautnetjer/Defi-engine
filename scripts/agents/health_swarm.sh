@@ -323,6 +323,12 @@ story_promotion_created = list(story_promotion_receipt.get("stories_created") or
 story_promotion_updated = list(story_promotion_receipt.get("stories_updated") or [])
 story_promotion_deferred = list(story_promotion_receipt.get("deferred_items") or [])
 story_promotion_summary = str(story_promotion_receipt.get("summary") or "")
+research_proposal_review_receipt = read_json(state_dir / "research_proposal_review_receipt.json") or {}
+research_proposal_review_receipt_id = str(research_proposal_review_receipt.get("receipt_id") or "")
+research_proposal_review_status = str(research_proposal_review_receipt.get("status") or "")
+research_proposal_review_story_class = str(research_proposal_review_receipt.get("story_class") or "")
+research_proposal_review_source_story_id = str(research_proposal_review_receipt.get("source_story_id") or "")
+research_proposal_review_target_story_id = str(research_proposal_review_receipt.get("target_story_id") or "")
 accepted_state = "none"
 if active_story_state == "done" or (last_receipt_decision == "accept" and last_promotion_status == "complete"):
     accepted_state = "complete"
@@ -695,6 +701,11 @@ doc = {
         "storyPromotionStoryId": story_promotion_story_id or None,
         "storyPromotionStage": story_promotion_stage or None,
         "storyPromotionOwnerLayer": story_promotion_owner_layer or None,
+        "researchProposalReviewReceiptId": research_proposal_review_receipt_id or None,
+        "researchProposalReviewStatus": research_proposal_review_status or None,
+        "researchProposalReviewStoryClass": research_proposal_review_story_class or None,
+        "researchProposalReviewSourceStoryId": research_proposal_review_source_story_id or None,
+        "researchProposalReviewTargetStoryId": research_proposal_review_target_story_id or None,
         "storyPromotionStoriesCreated": story_promotion_created,
         "storyPromotionStoriesUpdated": story_promotion_updated,
         "storyPromotionDeferredItems": story_promotion_deferred,
@@ -739,6 +750,9 @@ md_lines = [
     f"- Story promotion story: `{story_promotion_story_id or 'none'}`",
     f"- Story promotion stage: `{story_promotion_stage or 'none'}`",
     f"- Story promotion owner layer: `{story_promotion_owner_layer or 'none'}`",
+    f"- Research proposal review receipt: `{research_proposal_review_receipt_id or 'none'}`",
+    f"- Research proposal review status: `{research_proposal_review_status or 'none'}`",
+    f"- Research proposal review class: `{research_proposal_review_story_class or 'none'}`",
     f"- Next eligible story: `{next_eligible_story or 'none'}`",
     f"- Architecture path exhausted: `{str(path_exhausted).lower()}`",
     "",

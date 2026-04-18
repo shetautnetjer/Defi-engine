@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 from types import SimpleNamespace
 
 import pandas as pd
@@ -141,6 +142,59 @@ async def test_massive_fetch_crypto_reference_fails_closed_on_auth(httpx_mock) -
 
 
 @pytest.mark.asyncio
+async def test_massive_fetch_crypto_reference_bundle_filters_bounded_tickers(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "results": [
+                {"ticker": "X:SOLUSD", "base_currency_symbol": "SOL", "quote_currency_symbol": "USD"},
+                {"ticker": "X:BTCUSD", "base_currency_symbol": "BTC", "quote_currency_symbol": "USD"},
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "ticker": "X:SOLUSD",
+            "min": {"t": 1_713_350_400_000, "o": 150.0, "h": 151.0, "l": 149.0, "c": 150.5, "v": 42.0},
+        },
+    )
+
+    client = MassiveClient(Settings(_env_file=None, massive_api_key="test-massive-key"))
+    try:
+        payload = await client.fetch_crypto_reference_bundle(["X:SOLUSD"])
+    finally:
+        await client.close()
+
+    assert [row["ticker"] for row in payload["tickers"]] == ["X:SOLUSD"]
+    assert payload["snapshots"][0]["ticker"] == "X:SOLUSD"
+
+
+def test_massive_parse_minute_aggs_csv_handles_gzip_payload() -> None:
+    client = MassiveClient(Settings(_env_file=None, massive_api_key="test-massive-key"))
+    compressed = gzip.compress(
+        (
+            "ticker,window_start,open,high,low,close,volume\n"
+            "X:SOLUSD,1713350400000,150.0,151.0,149.0,150.5,42.0\n"
+        ).encode("utf-8")
+    )
+
+    rows = client.parse_minute_aggs_csv(compressed)
+
+    assert rows == [
+        {
+            "ticker": "X:SOLUSD",
+            "window_start": "1713350400000",
+            "open": "150.0",
+            "high": "151.0",
+            "low": "149.0",
+            "close": "150.5",
+            "volume": "42.0",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_coinbase_list_public_products_uses_market_products_path(httpx_mock) -> None:
     httpx_mock.add_response(method="GET", json={"products": [{"product_id": "SOL-USD"}]})
 
@@ -154,3 +208,42 @@ async def test_coinbase_list_public_products_uses_market_products_path(httpx_moc
 
     request = httpx_mock.get_requests()[0]
     assert request.url.path == "/api/v3/brokerage/market/products"
+
+
+@pytest.mark.asyncio
+async def test_coinbase_get_public_candles_chunks_large_history_requests(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "candles": [
+                {"start": "1713350400", "open": "1", "high": "1", "low": "1", "close": "1", "volume": "1"},
+                {"start": "1713350460", "open": "2", "high": "2", "low": "2", "close": "2", "volume": "2"},
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "candles": [
+                {"start": "1713350280", "open": "0", "high": "0", "low": "0", "close": "0", "volume": "0"},
+                {"start": "1713350400", "open": "1", "high": "1", "low": "1", "close": "1", "volume": "1"},
+            ]
+        },
+    )
+
+    client = CoinbaseClient(Settings(_env_file=None))
+    try:
+        candles = await client.get_public_candles("SOL-USD", limit=360)
+    finally:
+        await client.close()
+
+    assert [candle["start"] for candle in candles] == [
+        "1713350280",
+        "1713350400",
+        "1713350460",
+    ]
+
+    requests = httpx_mock.get_requests()
+    assert len(requests) == 2
+    assert requests[0].url.path == "/api/v3/brokerage/market/products/SOL-USD/candles"
+    assert requests[0].url.params["granularity"] == "ONE_MINUTE"

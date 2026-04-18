@@ -30,6 +30,7 @@ This design keeps write authority narrow and explicit:
 - DuckDB is an analytical mirror
 - raw payloads remain replayable
 - feature, condition, and experiment receipts remain first-class truth surfaces
+- QMD evidence artifacts and artifact-reference rows are first-class truth surfaces
 - policy, risk, settlement, and promotion do not inherit authority implicitly from model outputs
 
 ## Design Principles
@@ -73,6 +74,7 @@ This design keeps write authority narrow and explicit:
 
 `src/d5_trading_engine/storage/raw_store.py`
 - provider/date JSONL writes
+- replayable raw byte writes for bounded flat-file capture
 
 `src/d5_trading_engine/storage/coinbase_raw/`
 - separate raw SQLite store for Coinbase payloads
@@ -92,8 +94,14 @@ This design keeps write authority narrow and explicit:
 
 `src/d5_trading_engine/capture/lane_status.py`
 - owns the governed capture-lane manifest
-- derives lane freshness, readiness-only treatment, and required blockers from repo truth
+- derives lane freshness, operator-refresh treatment, and required blockers from repo truth
 - serializes the operator-facing capture-lane status surface reused by downstream consumers
+
+`src/d5_trading_engine/reporting/`
+- owns QMD rendering, artifact writes, and advisory proposal helpers
+
+`src/d5_trading_engine/models/`
+- owns runtime-adjacent baseline model factories, HMM regime helpers, and shadow-only registries
 
 `src/d5_trading_engine/normalize/`
 - owns source-specific projection into canonical truth
@@ -216,6 +224,8 @@ These package boundaries exist, and `policy/` now owns one explicit condition-to
 - `experiment_run`
 - `experiment_metric`
 - `experiment_realized_feedback_v1`
+- `artifact_reference`
+- `improvement_proposal_v1`
 
 ## Provider Design
 
@@ -438,7 +448,7 @@ Live integration is gated separately and not part of default CI.
 
 - Helius websocket capture remains raw-first and lightly validated compared with REST.
 - Coinbase currently uses public market endpoints only, so authenticated or execution-aware behavior is absent.
-- Massive remains a planned source, not an operational one.
+- Massive is operational in a bounded first-pass form, but broader source coverage remains deferred.
 - Chronos-2 is optional in the current shadow path and may skip cleanly when its dependencies are unavailable.
 - Richer settlement lifecycle / mark history and promotion-sensitive governance are still intentionally unimplemented.
 

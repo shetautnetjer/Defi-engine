@@ -21,6 +21,26 @@ The repo already has a meaningful watch surface:
 The repo also already treats `autoresearch` as advisory-only future research
 doctrine rather than runtime authority.
 
+The repo now also has a first repo-native watcher adapter seam:
+
+- `.ai/swarm/watcher.yaml`
+- `.ai/templates/watcher.md`
+- `scripts/agents/codex_watch_adapter.py`
+- `scripts/agents/start_watch_adapter.sh`
+- `scripts/agents/status_watch_adapter.sh`
+- `scripts/agents/audit_ai_surfaces.py`
+- `.ai/dropbox/state/watcher_state.json`
+- `.ai/dropbox/state/watcher_latest.json`
+- `.ai/dropbox/state/watcher.lock`
+
+That watcher is explicitly:
+
+- advisory-only
+- single-run locked
+- `prd.json.activeStoryId` first
+- bounded to JSON/QMD watcher packets plus archive copies under `data/`
+- sandboxed for optional evals instead of writing back into main repo truth
+
 The current shadow lane already provides the bounded ingredients that a watcher
 should eventually supervise:
 
@@ -33,22 +53,17 @@ should eventually supervise:
 
 ## Gap
 
-The repo still lacks the pieces that would let a Codex agent safely watch the
-repo, suggest upgrades, and use ideas from
+The repo still lacks the later-stage pieces that would let a Codex agent safely
+watch the repo, suggest upgrades, and use ideas from
 `https://github.com/karpathy/autoresearch` without creating governance drift.
 
 Missing pieces:
 
-- a read-only watcher contract that says exactly what the watcher may observe
-- a repo-specific packet generator or `program.md` equivalent for watcher and
-  autoresearch-style agents
 - a proposal artifact schema for suggestions such as:
   - upgrades
   - subtraction recommendations
   - benchmark ideas
   - strategy-family experiments
-- a safe sandbox or worktree path where suggestions can be exercised without
-  mutating the main repo truth directly
 - a machine-readable metrics registry that can judge whether a suggestion is
   actually better
 - a repeated advisory runner contract that can:
@@ -98,11 +113,7 @@ promoting the next bounded slices without human micromanagement.
 
 ## Close when
 
-- a watcher contract exists with an explicit read packet and no-write default
-- a repo-specific `program.md` equivalent exists for bounded watcher/research
-  loops
 - proposal artifacts are standardized and writer-routable
-- a safe experiment sandbox exists for autoresearch-style trials
 - a metrics registry exists for accepting or rejecting suggested upgrades
 - the repo has a bounded no-HITL advisory shadow loop for repeated backtest,
   walk-forward, and challenger scoring

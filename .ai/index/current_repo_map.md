@@ -79,6 +79,10 @@ Read this before proposing new files, modules, or runtime claims.
 
 - `intraday_meta_stack_v1`
   - bounded shadow-only lane
+- `label_program_v1`
+  - bounded canonical direction-label scoring lane
+- `strategy_eval_v1`
+  - bounded named strategy-family challenger lane
 - `experiment_realized_feedback_v1`
   - advisory comparison receipts between replayed shadow context and settlement-owned paper outcomes
 - triple-barrier labels
@@ -88,6 +92,19 @@ Read this before proposing new files, modules, or runtime claims.
 - optional Chronos-2 summaries
 - Monte Carlo summaries from quantiles
 - Fibonacci as research annotation only
+- bounded research proposal-review receipts for `LABEL-*` / `STRAT-*`
+- `improvement_proposal_v1`
+- `proposal_review_v1`
+- `d5 review-proposal <proposal_id>`
+- bounded proposal comparison and priority-selection receipts
+- `proposal_comparison_v1`
+- `proposal_comparison_item_v1`
+- `proposal_supersession_v1`
+- `d5 compare-proposals`
+- bounded regime-model comparison receipts
+- `regime_model_compare_v1`
+- `regime_model_compare_follow_on`
+- `d5 run-shadow regime-model-compare-v1`
 
 ## Remaining runtime blockers
 
@@ -146,11 +163,17 @@ The repo now also carries policy-only swarm governance files under `.ai/swarm/`:
 - `.ai/swarm/lane_rules.yaml`
 - `.ai/swarm/promotion_ladder.yaml`
 - `.ai/swarm/doc_owners.yaml`
+- `.ai/swarm/story_classes.yaml`
+- `.ai/swarm/metrics_registry.yaml`
+- `.ai/swarm/strategy_registry.yaml`
+- `.ai/swarm/instrument_scope.yaml`
 
 Writer-owned north-star curation now also depends on:
 
 - `docs/policy/writer_story_promotion_rubric.md`
 - `scripts/agents/write_story_promotion_receipt.sh`
 - `.ai/dropbox/state/story_promotion_receipt.json`
+- `.ai/dropbox/state/research_proposal_review_receipt.json`
+- `.ai/dropbox/state/research_proposal_priority_receipt.json`
 
 They are packet and governance truth, not live supervisor inputs in v1.

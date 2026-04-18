@@ -22,6 +22,15 @@ The canonical story ledger does **not** live in this directory.
 - `progress.txt`
   - append-only carry-forward state
 
+Use the surfaces deliberately:
+
+- `.ai/dropbox/`
+  - live working exchange, receipts, runtime status, mailbox, and machine-visible handoff state
+- `docs/handoff/`
+  - verbose human-readable continuation notes after a bounded slice is complete
+- `prd.json` / `progress.txt`
+  - canonical story and carry-forward truth
+
 The swarm now runs as a continuous completion loop:
 
 - bounded one-shot lanes under a persistent supervisor
@@ -51,10 +60,20 @@ The repo also carries a machine-readable governance layer under `.ai/swarm/`:
 - `lane_rules.yaml`
 - `promotion_ladder.yaml`
 - `doc_owners.yaml`
+- `story_classes.yaml`
+- `metrics_registry.yaml`
+- `strategy_registry.yaml`
+- `instrument_scope.yaml`
+- `watcher.yaml`
 
-In v1 these YAMLs are policy-only. They document packet rules, lane authority,
-promotion doctrine, and docs-routing discipline, but they do not override
-`prd.json`, `progress.txt`, or the live supervisor scripts.
+In v1 these YAMLs are still policy-first. They now also define the bounded
+research proposal-review envelope for `LABEL-*` / `STRAT-*`, but they still do
+not override runtime authority or replace `prd.json`, `progress.txt`, or the
+live supervisor scripts.
+
+Treat the `.ai/swarm/` YAML layer as policy-only machine law: it shapes lane
+behavior and research backlog movement, but it is not runtime authority by
+itself.
 
 Lifecycle is intentionally split:
 
@@ -62,10 +81,82 @@ Lifecycle is intentionally split:
   - tmux/session control only
 - `scripts/agents/start_supervisor.sh`
   - detached continuous execution
+- `scripts/agents/start_watch_adapter.sh`
+  - standalone advisory watcher loop
 - `scripts/agents/status_swarm.sh`
   - combined tmux + supervisor state
+- `scripts/agents/status_watch_adapter.sh`
+  - standalone watcher lock and packet state
 - `scripts/agents/stop_swarm.sh`
   - stops both tmux and the detached supervisor by default
 
+The watcher is deliberately separate from the persistent supervisor in v1:
+
+- advisory-only
+- no repo-tracked mutations
+- `prd.json.activeStoryId` is canonical over stale dropbox state
+- single-run lock at `.ai/dropbox/state/watcher.lock`
+- bounded sandbox evals only when `--sandbox-evals` is passed
+- watcher evidence lands in `data/reports/watcher/`
+- archive copies of ignored `.ai/dropbox` residue land in `data/archive/ai_dropbox/`
+
+Watcher prompt and runtime surfaces:
+
+- `.ai/templates/watcher.md`
+- `scripts/agents/codex_watch_adapter.py`
+- `scripts/agents/audit_ai_surfaces.py`
+- `.ai/dropbox/state/watcher_state.json`
+- `.ai/dropbox/state/watcher_latest.json`
+
 The `dropbox/` subdirectories are tracked only for structure. Live lane output
 inside them is ignored by Git unless explicitly staged.
+
+Treat `.ai/dropbox/` as active exchange, not as a substitute for stable docs or
+canonical story state. When a slice needs a durable human handoff, write that
+under `docs/handoff/` and point it back to the current runtime-truth packet.
+
+The bounded research review packet now has three durable surfaces:
+
+- `improvement_proposal_v1`
+  - proposal truth for advisory next-test packets
+- `proposal_review_v1`
+  - deterministic review truth for proposal decisions
+- `.ai/dropbox/state/research_proposal_review_receipt.json`
+  - latest review receipt for swarm/status visibility
+
+Operators can refresh that packet explicitly with:
+
+- `d5 review-proposal <proposal_id>`
+
+This review flow is advisory-only. It does not grant runtime authority or edit
+`prd.json`, `progress.txt`, policy, risk, or runtime config by itself.
+
+The bounded proposal-priority packet now adds four more durable surfaces:
+
+- `proposal_comparison_v1`
+  - comparison-run truth for reviewed proposals
+- `proposal_comparison_item_v1`
+  - ranked candidate truth with score breakdowns
+- `proposal_supersession_v1`
+  - append-only same-kind supersession history
+- `.ai/dropbox/state/research_proposal_priority_receipt.json`
+  - latest bounded next-test selection receipt
+
+Operators can refresh that packet explicitly with:
+
+- `d5 compare-proposals`
+
+This comparison flow is also advisory-only. It may choose the next bounded
+experiment, but it does not grant runtime authority or edit `prd.json`,
+`progress.txt`, policy, risk, or runtime config by itself.
+
+The shadow research packet also includes a bounded regime-model comparison lane:
+
+- `d5 run-shadow regime-model-compare-v1`
+- `experiment_run` with `experiment_name = regime_model_compare_v1`
+- `data/research/regime_model_compare/<run_id>/comparison.json`
+- advisory-only `regime_model_compare_follow_on` proposal packets
+
+That lane may compare HMM, GMM, and an optional `statsmodels` candidate on the
+existing canonical 15-minute feature truth, but it does not grant runtime
+authority or mutate policy, risk, execution, settlement, or runtime config.

@@ -8,12 +8,16 @@ from datetime import timedelta
 
 import orjson
 import pandas as pd
-from sklearn.mixture import GaussianMixture
 
 from d5_trading_engine.common.logging import get_logger
 from d5_trading_engine.common.time_utils import ensure_utc, utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.features.materializer import _GLOBAL_REGIME_FEATURE_SET_NAME
+from d5_trading_engine.models.hmm_regime import (
+    fit_hmm_or_gmm,
+    map_regime_state_semantics,
+    predict_regime_states,
+)
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ConditionGlobalRegimeSnapshotV1,
@@ -286,29 +290,10 @@ class ConditionScorer:
         return matrix.to_numpy(dtype=float)
 
     def _fit_regime_model(self, feature_matrix):
-        try:
-            from hmmlearn.hmm import GaussianHMM
-        except ModuleNotFoundError:
-            model = GaussianMixture(
-                n_components=_N_COMPONENTS,
-                covariance_type="diag",
-                n_init=5,
-                random_state=42,
-            )
-            model.fit(feature_matrix)
-            return model, "gaussian_mixture_regime_proxy_4state"
-
-        model = GaussianHMM(
-            n_components=_N_COMPONENTS,
-            covariance_type="diag",
-            n_iter=200,
-            random_state=42,
-        )
-        model.fit(feature_matrix)
-        return model, "gaussian_hmm_4state"
+        return fit_hmm_or_gmm(feature_matrix, n_components=_N_COMPONENTS)
 
     def _predict_regime_states(self, model, feature_matrix):
-        return model.predict(feature_matrix), model.predict_proba(feature_matrix)
+        return predict_regime_states(model, feature_matrix)
 
     def _fit_model_and_semantics(self, history: pd.DataFrame):
         feature_matrix = self._prepare_feature_matrix(history)
@@ -433,46 +418,7 @@ class ConditionScorer:
         return walk_forward_history, latest_state_semantics, latest_model_family
 
     def _state_semantics(self, history: pd.DataFrame) -> dict[int, dict[str, object]]:
-        summaries: dict[int, dict[str, object]] = {}
-        for state_id in sorted(history["raw_state_id"].unique()):
-            state_rows = history.loc[history["raw_state_id"] == state_id]
-            summaries[int(state_id)] = {
-                "rows": int(len(state_rows)),
-                "return_mean": float(state_rows["market_return_mean_15m"].mean(skipna=True) or 0.0),
-                "vol_mean": float(state_rows["market_realized_vol_15m"].mean(skipna=True) or 0.0),
-                "spread_mean": float(
-                    state_rows["market_book_spread_bps_mean_15m"].mean(skipna=True) or 0.0
-                ),
-            }
-
-        remaining = list(summaries)
-        if not remaining:
-            raise RuntimeError("No latent states were produced for regime scoring.")
-
-        risk_off_state = max(
-            remaining,
-            key=lambda state_id: (
-                summaries[state_id]["vol_mean"],
-                summaries[state_id]["spread_mean"],
-            ),
-        )
-        summaries[risk_off_state]["semantic_regime"] = "risk_off"
-        remaining.remove(risk_off_state)
-
-        if remaining:
-            long_state = max(remaining, key=lambda state_id: summaries[state_id]["return_mean"])
-            summaries[long_state]["semantic_regime"] = "long_friendly"
-            remaining.remove(long_state)
-
-        if remaining:
-            short_state = min(remaining, key=lambda state_id: summaries[state_id]["return_mean"])
-            summaries[short_state]["semantic_regime"] = "short_friendly"
-            remaining.remove(short_state)
-
-        for state_id in remaining:
-            summaries[state_id]["semantic_regime"] = "no_trade"
-
-        return summaries
+        return map_regime_state_semantics(history)
 
     def _macro_context_state(self, feature_run: FeatureMaterializationRun) -> str:
         if not feature_run.freshness_snapshot_json:

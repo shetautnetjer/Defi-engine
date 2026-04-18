@@ -13,10 +13,15 @@ The repo already has:
 - semantic regime labels such as `long_friendly`, `short_friendly`,
   `risk_off`, and `no_trade`
 - bounded shadow labels such as `tb_60m_atr1x` and `tb_240m_atr1x`
+- bounded canonical direction label-program scoring for:
+  - `direction_60m_v1`
+  - `direction_240m_v1`
+- bounded research proposal review from `LABEL-001` to the next
+  `strategy_eval` story when registry thresholds pass
 
 ## Gap
 
-The repo still lacks one canonical labeling program that defines:
+The repo still lacks one fully accepted canonical labeling program that defines:
 
 - `up`
 - `down`
@@ -27,9 +32,8 @@ The repo still lacks one canonical labeling program that defines:
 - macro regime
 - invalid, uncertain, and low-confidence windows
 
-It also lacks the repeated advisory loop that can score those label choices
-over and over under explicit backtest and walk-forward rules instead of leaving
-label quality to one-off experiments.
+The repeated advisory loop now exists, but the accepted math/doctrine still
+needs to catch up with what the bounded loop is proving and rejecting.
 
 ## Why it matters
 
@@ -48,3 +52,5 @@ slow and too manual to harden into governed strategy evidence.
 - the evaluation metrics used for label quality are documented and tested
 - repeated backtest and walk-forward label scoring exists as an advisory loop
   rather than one-off shadow analysis
+- the loop can harden or reject label candidates repeatedly without reopening
+  runtime-authority governance

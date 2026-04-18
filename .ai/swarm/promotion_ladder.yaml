@@ -85,11 +85,19 @@ promotion_stages:
       - open risks recorded
 
 promotion_rules:
-  writer_integrator_is_only_promotion_authority: true
+  writer_integrator_is_only_promotion_authority: false
+  bounded_research_proposal_review_enabled: true
+  bounded_research_proposal_story_classes:
+    - label_program
+    - strategy_eval
+  bounded_research_proposal_allowed_stages:
+    - regime_and_label_truth
+    - strategy_research
   research_and_architecture_may_propose_only: true
   promotion_requires_receipt: true
   promotion_requires_docs_sync: true
   promotion_requires_validation: true
+  runtime_authority_promotion_still_requires_writer: true
 
 research_only_families:
   - Chronos-2
