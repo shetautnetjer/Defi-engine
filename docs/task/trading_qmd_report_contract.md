@@ -34,6 +34,7 @@ Every trading-facing `report.qmd` should carry small YAML frontmatter with these
 - `owner_type`
 - `owner_key`
 - `profile_revision_id`
+- `selected_research_profile`
 - `instrument_scope`
 - `context_instruments`
 - `timeframe`
@@ -79,6 +80,7 @@ The sections may be omitted only when they are truly not relevant to the report 
 ### Strategy / Profile
 
 - active profile revision
+- selected research profile
 - preferred strategy family
 - strategy report path
 - confidence threshold

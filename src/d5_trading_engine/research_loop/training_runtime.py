@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,12 @@ import orjson
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+from d5_trading_engine.research_loop.research_profiles import (
+    get_research_profile,
+    resolve_research_profile_schema_path,
+    resolve_research_profiles_path,
+    summarize_research_profile,
+)
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 
@@ -22,6 +29,157 @@ def _load_json(path: Path) -> dict[str, Any]:
     except orjson.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _merge_historical_cache_status(
+    warehouse_status: dict[str, Any],
+    latest_source_collection: dict[str, Any],
+) -> dict[str, Any]:
+    """Expose capture-vs-warehouse completeness without flattening them together."""
+    merged = dict(warehouse_status)
+    merged["completeness_basis"] = "warehouse(raw+parquet+sql)"
+    merged["warehouse_completed_day_count"] = warehouse_status.get("completed_day_count", 0)
+    merged["warehouse_missing_day_count"] = warehouse_status.get("missing_day_count", 0)
+    merged["warehouse_next_missing_date"] = warehouse_status.get("next_missing_date", "")
+
+    capture_after = latest_source_collection.get("historical_cache_after")
+    if isinstance(capture_after, dict):
+        merged["capture_complete"] = bool(capture_after.get("complete", False))
+        merged["capture_completed_day_count"] = capture_after.get("completed_day_count", 0)
+        merged["capture_missing_day_count"] = capture_after.get("missing_day_count", 0)
+        merged["capture_next_missing_date"] = capture_after.get("next_missing_date", "")
+        merged["capture_latest_completed_date"] = capture_after.get("latest_completed_date", "")
+
+    return merged
+
+
+def _merge_training_status(
+    db_status: dict[str, Any],
+    status_receipt: dict[str, Any],
+) -> dict[str, Any]:
+    """Prefer the latest paper-practice receipt for operator-facing loop state."""
+    merged = deepcopy(db_status)
+    receipt_loop_state = status_receipt.get("loop_state")
+    conflicts: list[dict[str, Any]] = []
+
+    if isinstance(receipt_loop_state, dict) and receipt_loop_state:
+        receipt_loop_run_id = str(receipt_loop_state.get("loop_run_id") or "")
+        receipt_loop_status = str(receipt_loop_state.get("status") or "")
+        receipt_decision_id = str(receipt_loop_state.get("latest_decision_id") or "")
+        receipt_session_key = str(receipt_loop_state.get("latest_session_key") or "")
+
+        if (
+            merged.get("latest_loop_run_id")
+            and receipt_loop_run_id
+            and merged.get("latest_loop_run_id") != receipt_loop_run_id
+        ):
+            conflicts.append(
+                {
+                    "field": "latest_loop_run_id",
+                    "db_value": merged.get("latest_loop_run_id", ""),
+                    "receipt_value": receipt_loop_run_id,
+                }
+            )
+        if (
+            merged.get("latest_loop_status")
+            and receipt_loop_status
+            and merged.get("latest_loop_status") != receipt_loop_status
+        ):
+            conflicts.append(
+                {
+                    "field": "latest_loop_status",
+                    "db_value": merged.get("latest_loop_status", ""),
+                    "receipt_value": receipt_loop_status,
+                }
+            )
+
+        merged["receipt_loop_state"] = receipt_loop_state
+        merged["effective_loop_run_id"] = receipt_loop_run_id or merged.get("latest_loop_run_id", "")
+        merged["effective_loop_status"] = receipt_loop_status or merged.get("latest_loop_status", "")
+        merged["effective_latest_decision_id"] = receipt_decision_id or merged.get(
+            "latest_decision_id", ""
+        )
+        merged["effective_latest_session_key"] = receipt_session_key or merged.get(
+            "open_session_key", ""
+        )
+    else:
+        merged["effective_loop_run_id"] = merged.get("latest_loop_run_id", "")
+        merged["effective_loop_status"] = merged.get("latest_loop_status", "")
+        merged["effective_latest_decision_id"] = merged.get("latest_decision_id", "")
+        merged["effective_latest_session_key"] = merged.get("open_session_key", "")
+
+    merged["status_conflicts"] = conflicts
+    return merged
+
+
+def _summarize_trader_lane_status(
+    lane_sessions: dict[str, Any],
+    watcher_status: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the operator-facing summary of the persistent trader lane."""
+    trader = lane_sessions.get("trader")
+    if not isinstance(trader, dict):
+        return {
+            "present": False,
+            "watcher_status": watcher_status.get("status", ""),
+            "watcher_last_event_id": watcher_status.get("last_event_id", ""),
+            "watcher_last_dispatch_ok": watcher_status.get("last_dispatch_ok"),
+        }
+
+    return {
+        "present": True,
+        "mode": trader.get("mode", ""),
+        "profile": trader.get("profile", ""),
+        "session_id": trader.get("session_id", ""),
+        "thread_id": trader.get("thread_id", ""),
+        "last_event_id": trader.get("last_event_id", ""),
+        "updated_at_utc": trader.get("updated_at_utc", ""),
+        "stale_after_hours": trader.get("stale_after_hours", ""),
+        "watcher_status": watcher_status.get("status", ""),
+        "watcher_last_event_id": watcher_status.get("last_event_id", ""),
+        "watcher_last_dispatch_ok": watcher_status.get("last_dispatch_ok"),
+    }
+
+
+def _summarize_governor_status(
+    review_receipt: dict[str, Any],
+    priority_receipt: dict[str, Any],
+) -> dict[str, Any]:
+    latest_action = str(
+        priority_receipt.get("governor_action")
+        or review_receipt.get("governor_action")
+        or ""
+    )
+    latest_updated_at = str(
+        priority_receipt.get("updated_at")
+        or review_receipt.get("updated_at")
+        or ""
+    )
+    policy_id = str(
+        priority_receipt.get("governor_policy_id")
+        or review_receipt.get("governor_policy_id")
+        or ""
+    )
+    return {
+        "present": bool(policy_id or latest_action),
+        "policy_id": policy_id,
+        "latest_action": latest_action,
+        "latest_review_action": str(review_receipt.get("governor_action") or ""),
+        "latest_priority_action": str(priority_receipt.get("governor_action") or ""),
+        "latest_reason_codes": priority_receipt.get("governor_reason_codes")
+        or review_receipt.get("governor_reason_codes")
+        or [],
+        "latest_updated_at": latest_updated_at,
+    }
+
+
+def _selected_research_profile(settings: Settings) -> dict[str, Any]:
+    repo_root = settings.repo_root
+    profile = get_research_profile(settings.trader_research_profile, repo_root=repo_root)
+    payload = summarize_research_profile(profile)
+    payload["catalog_path"] = str(resolve_research_profiles_path(repo_root))
+    payload["schema_path"] = str(resolve_research_profile_schema_path(repo_root))
+    return payload
 
 
 class TrainingRuntime:
@@ -170,6 +328,7 @@ class TrainingRuntime:
     def status(self) -> dict[str, Any]:
         payload = self.practice.get_status()
         cache_status = self.practice.historical_cache_status()
+        selected_research_profile = _selected_research_profile(self.settings)
         artifact_paths = []
         for name in (
             "paper_practice_status.json",
@@ -180,22 +339,62 @@ class TrainingRuntime:
             path = self._state_path(name)
             if path.exists():
                 artifact_paths.append(str(path))
+        watcher_status_path = self.workspace_root / "automation" / "state" / "watcher_status.json"
+        lane_sessions_path = self.workspace_root / "automation" / "state" / "lane_sessions.json"
+        if watcher_status_path.exists():
+            artifact_paths.append(str(watcher_status_path))
+        if lane_sessions_path.exists():
+            artifact_paths.append(str(lane_sessions_path))
+
+        latest_receipt_status = _load_json(self._state_path("paper_practice_status.json"))
         latest_source_collection = _load_json(self._state_path("source_collection_status.json"))
+        latest_review_receipt = _load_json(
+            self._state_path("research_proposal_review_receipt.json")
+        )
+        latest_priority_receipt = _load_json(
+            self._state_path("research_proposal_priority_receipt.json")
+        )
+        watcher_status = _load_json(watcher_status_path)
+        lane_sessions = _load_json(lane_sessions_path)
+        merged_cache_status = _merge_historical_cache_status(cache_status, latest_source_collection)
+        merged_training_status = _merge_training_status(payload, latest_receipt_status)
+        governor_status = _summarize_governor_status(
+            latest_review_receipt,
+            latest_priority_receipt,
+        )
+        selected_training_profile = payload.get("selected_training_profile", {})
+        historical_ladder_completed = bool(
+            (latest_receipt_status.get("loop_state") or {}).get("historical_ladder_completed")
+        )
+        if selected_training_profile.get("ready") and not historical_ladder_completed:
+            next_command = "d5 training bootstrap --json"
+        elif not cache_status["complete"]:
+            next_command = "d5 training collect --json"
+        else:
+            next_command = "d5 training review --json"
         return {
             "status": "ok",
-            "run_id": payload.get("latest_loop_run_id") or "training_status",
+            "run_id": merged_training_status.get("effective_loop_run_id")
+            or payload.get("latest_loop_run_id")
+            or "training_status",
             "artifact_dir": str(self.workspace_root),
             "artifact_paths": artifact_paths,
             "active_profile_revision_id": payload["active_revision_id"],
             "workspace_root": "training",
-            "next_command": (
-                "d5 training collect --json"
-                if not cache_status["complete"]
-                else "d5 training review --json"
-            ),
-            "historical_cache_status": cache_status,
+            "next_command": next_command,
+            "historical_cache_status": merged_cache_status,
+            "selected_training_profile": selected_training_profile,
+            "selected_training_regimen": selected_training_profile,
+            "selected_research_profile": selected_research_profile,
+            "selected_research_profile_name": selected_research_profile["name"],
+            "selected_research_profile_summary": selected_research_profile["summary"],
+            "training_profile_readiness": payload.get("training_profile_readiness", {}),
+            "training_regimen_readiness": payload.get("training_profile_readiness", {}),
             "latest_source_collection": latest_source_collection,
-            "training_status": payload,
+            "automation_status": watcher_status,
+            "trader_lane_status": _summarize_trader_lane_status(lane_sessions, watcher_status),
+            "governor_status": governor_status,
+            "training_status": merged_training_status,
         }
 
     def review(self) -> dict[str, Any]:
@@ -214,12 +413,22 @@ class TrainingRuntime:
         )
         latest_trade_receipt = _load_json(self._state_path("paper_practice_latest_trade_receipt.json"))
         latest_profile_revision = _load_json(self._state_path("paper_practice_latest_profile_revision.json"))
+        selected_research_profile = status_payload.get("selected_research_profile", {})
+        governor_status = status_payload.get("governor_status", {})
 
         summary = {
             "status": "completed",
             "run_id": review_id,
             "workspace_root": "training",
             "active_profile_revision_id": status_payload["active_profile_revision_id"],
+            "selected_training_profile": status_payload.get("selected_training_profile", {}),
+            "selected_training_regimen": status_payload.get("selected_training_profile", {}),
+            "selected_research_profile": selected_research_profile,
+            "selected_research_profile_name": selected_research_profile.get("name", ""),
+            "selected_research_profile_summary": selected_research_profile.get("summary", ""),
+            "governor_status": governor_status,
+            "training_profile_readiness": status_payload.get("training_profile_readiness", {}),
+            "training_regimen_readiness": status_payload.get("training_profile_readiness", {}),
             "latest_loop_run_id": status_payload["training_status"].get("latest_loop_run_id", ""),
             "open_session_key": status_payload["training_status"].get("open_session_key", ""),
             "latest_backtest_run_id": latest_backtest_summary.get("run_id", ""),
@@ -261,10 +470,13 @@ class TrainingRuntime:
                     timeframe="15m",
                     summary_path="summary.json",
                     config_path="summary.json",
+                    selected_research_profile=summary["selected_research_profile_name"] or None,
                 ),
                 summary_lines=[
                     f"- review id: `{review_id}`",
                     f"- active revision: `{summary['active_profile_revision_id']}`",
+                    f"- selected training profile: `{summary['selected_training_profile'].get('name', 'none')}`",
+                    f"- selected research profile: `{summary['selected_research_profile_name'] or 'none'}`",
                     f"- latest loop run: `{summary['latest_loop_run_id'] or 'none'}`",
                     f"- latest backtest run: `{summary['latest_backtest_run_id'] or 'none'}`",
                     f"- historical ladder completed: `{summary['historical_ladder_completed']}`",
@@ -275,6 +487,8 @@ class TrainingRuntime:
                         [
                             f"- historical cache complete: `{status_payload['historical_cache_status']['complete']}`",
                             f"- next missing date: `{status_payload['historical_cache_status']['next_missing_date'] or 'none'}`",
+                            f"- selected training profile ready: `{summary['selected_training_profile'].get('ready', False)}`",
+                            f"- selected research profile summary: {summary['selected_research_profile_summary'] or 'none'}",
                             f"- latest source collection run: `{status_payload['latest_source_collection'].get('collect_id', 'none')}`",
                             "- evidence plane: SQL as truth, QMD as review packet, thin JSON only for watcher state",
                         ],
@@ -284,7 +498,19 @@ class TrainingRuntime:
                         [
                             f"- active profile revision: `{summary['active_profile_revision_id']}`",
                             f"- latest profile source: `{latest_profile_revision.get('revision_id', 'none')}`",
+                            f"- research profile objective: {selected_research_profile.get('primary_objective', 'none')}",
+                            f"- research profile preferred sources: `{', '.join(selected_research_profile.get('preferred_sources', [])) or 'none'}`",
+                            f"- research profile preferred metrics: `{', '.join(selected_research_profile.get('preferred_metrics', [])) or 'none'}`",
                             f"- workspace root: `training/`",
+                        ],
+                    ),
+                    (
+                        "Profile Governor",
+                        [
+                            f"- policy id: `{governor_status.get('policy_id', 'none') or 'none'}`",
+                            f"- latest action: `{governor_status.get('latest_action', 'none') or 'none'}`",
+                            f"- latest review action: `{governor_status.get('latest_review_action', 'none') or 'none'}`",
+                            f"- latest priority action: `{governor_status.get('latest_priority_action', 'none') or 'none'}`",
                         ],
                     ),
                     (

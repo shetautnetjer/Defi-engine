@@ -1,0 +1,500 @@
+[meta]
+version = "v1"
+owner = "D5 Trading Engine"
+purpose = "Training and autoresearch profiles only; not runtime strategy or risk authority."
+default_authority = "proposal_only"
+default_status = "active"
+
+[defaults]
+authority = "proposal_only"
+status = "active"
+exploration = "balanced"
+cost_sensitivity = "balanced_cost"
+max_concurrent_experiments = 1
+max_daily_proposals = 3
+requires_qmd_receipt = true
+requires_sql_metrics = true
+
+[profiles.momentum_scalper_perps]
+market_style = "momentum"
+time_horizon = "scalp"
+market_focus = ["perps", "majors", "solana"]
+cost_sensitivity = "ultra_cost_sensitive"
+exploration = "balanced"
+authority = "proposal_only"
+preferred_sources = ["jupiter", "massive"]
+preferred_surfaces = ["condition_model", "execution_fill", "label_program"]
+preferred_features = [
+  "returns_short",
+  "realized_vol",
+  "quote_imbalance",
+  "liquidity_pressure",
+  "trend_context"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "fill_quality",
+  "max_drawdown",
+  "turnover_cost",
+  "slippage_realism"
+]
+disfavored_conditions = ["chop", "anomalous", "illiquid_fragile"]
+primary_objective = "Capture short momentum bursts only when execution quality remains realistic after cost."
+hypothesis_templates = [
+  "Short-horizon momentum works best when spread and price impact stay below threshold.",
+  "Momentum setups degrade quickly in chop and anomaly-heavy tape."
+]
+max_concurrent_experiments = 1
+max_daily_proposals = 2
+
+[profiles.mean_reversion_intraday_majors]
+market_style = "mean_reversion"
+time_horizon = "intraday"
+market_focus = ["spot", "majors"]
+cost_sensitivity = "balanced_cost"
+exploration = "conservative"
+authority = "proposal_only"
+preferred_sources = ["massive", "jupiter"]
+preferred_surfaces = ["condition_model", "strategy_policy", "label_program"]
+preferred_features = [
+  "distance_to_vwap",
+  "zscore_price",
+  "range_percentile",
+  "wick_structure",
+  "low_vol_context"
+]
+preferred_labels = ["tb_60m_atr1x_v1", "tb_240m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "quantile_separation",
+  "drawdown_control",
+  "regime_fit"
+]
+disfavored_conditions = ["trend_strong", "volatility_expansion", "anomalous"]
+primary_objective = "Exploit stretch-to-mean setups only in stable, non-trending environments."
+hypothesis_templates = [
+  "Mean reversion works best in low-vol range regimes and fails in expansion regimes.",
+  "Execution realism matters less than regime purity for this profile."
+]
+
+[profiles.breakout_intraday_solana]
+market_style = "breakout"
+time_horizon = "intraday"
+market_focus = ["spot", "solana", "majors"]
+cost_sensitivity = "balanced_cost"
+exploration = "balanced"
+authority = "proposal_only"
+preferred_sources = ["jupiter", "massive", "helius"]
+preferred_surfaces = ["condition_model", "strategy_policy", "execution_fill"]
+preferred_features = [
+  "compression_score",
+  "volume_acceleration",
+  "route_fragmentation",
+  "realized_vol",
+  "trend_context"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "breakout_followthrough",
+  "price_impact_cost",
+  "regime_separation"
+]
+disfavored_conditions = ["range_exhaustion", "anomalous"]
+primary_objective = "Find high-quality compression-to-expansion breakouts with manageable route costs."
+hypothesis_templates = [
+  "Breakouts work best after compression plus rising participation.",
+  "Breakout signals degrade when route fragmentation implies unstable executable liquidity."
+]
+
+[profiles.swing_trend_crypto]
+market_style = "trend_following"
+time_horizon = "swing"
+market_focus = ["spot", "perps", "majors"]
+cost_sensitivity = "balanced_cost"
+exploration = "conservative"
+authority = "proposal_only"
+preferred_sources = ["massive", "fred", "jupiter"]
+preferred_surfaces = ["condition_model", "regime_semantic_mapping", "strategy_policy"]
+preferred_features = [
+  "multi_horizon_returns",
+  "trend_slope",
+  "drawdown_state",
+  "macro_context",
+  "benchmark_pressure"
+]
+preferred_labels = ["tb_240m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "max_drawdown",
+  "regime_stability",
+  "paper_cycle_consistency"
+]
+disfavored_conditions = ["mean_reverting_microstructure", "anomalous"]
+primary_objective = "Favor stable trend continuation hypotheses with low regime thrash."
+hypothesis_templates = [
+  "Trend persistence improves when 15m regime and 4h context agree.",
+  "Macro overlays may help trend profiles only if they improve stability, not complexity."
+]
+
+[profiles.wallet_flow_follower]
+market_style = "smart_money"
+time_horizon = "intraday"
+market_focus = ["spot", "memecoin", "wallet_flow"]
+cost_sensitivity = "balanced_cost"
+exploration = "exploratory"
+authority = "proposal_only"
+preferred_sources = ["helius", "jupiter"]
+preferred_surfaces = ["feature_set", "label_program", "strategy_policy"]
+preferred_features = [
+  "wallet_accumulation",
+  "unique_buyer_growth",
+  "flow_velocity",
+  "liquidity_growth",
+  "migration_state"
+]
+preferred_labels = ["tb_240m_atr1x_v1"]
+preferred_metrics = [
+  "quantile_separation",
+  "survival_after_entry",
+  "net_expectancy",
+  "slippage_realism"
+]
+disfavored_conditions = ["insider_concentration", "illiquid_fragile", "anomalous"]
+primary_objective = "Prefer repeatable wallet-flow edges rather than raw P/L hero-wallet imitation."
+hypothesis_templates = [
+  "Wallet features add value only if they survive cost and liquidity filters.",
+  "Flow features should outperform naive buy-after-whale baselines to be kept."
+]
+
+[profiles.memecoin_launch_hunter]
+market_style = "event_driven"
+time_horizon = "micro"
+market_focus = ["memecoin", "launchpad", "pump_migration"]
+cost_sensitivity = "aggressive_cost_tolerant"
+exploration = "exploratory"
+authority = "proposal_only"
+preferred_sources = ["helius", "jupiter"]
+preferred_surfaces = ["feature_set", "execution_fill", "label_program"]
+preferred_features = [
+  "launch_state",
+  "curve_velocity",
+  "unique_buyer_growth",
+  "liquidity_bootstrap",
+  "migration_transition"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "survival_after_entry",
+  "net_expectancy",
+  "max_adverse_excursion",
+  "exit_viability"
+]
+disfavored_conditions = ["dev_concentration", "bundle_heavy_manipulation", "anomalous"]
+primary_objective = "Test whether launch-state structure creates a durable edge after realistic slippage."
+hypothesis_templates = [
+  "Launch velocity only matters when unique participation is broad enough.",
+  "Migration state should be modeled separately from pre-migration launch state."
+]
+max_daily_proposals = 2
+
+[profiles.jupiter_route_efficiency]
+market_style = "execution"
+time_horizon = "intraday"
+market_focus = ["spot", "route_quality", "solana"]
+cost_sensitivity = "ultra_cost_sensitive"
+exploration = "balanced"
+authority = "proposal_only"
+preferred_sources = ["jupiter"]
+preferred_surfaces = ["execution_fill", "feature_set", "report_diagnostic"]
+preferred_features = [
+  "price_impact_pct",
+  "route_hops",
+  "amm_mix",
+  "effective_spread",
+  "quote_stability"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "fill_quality",
+  "price_impact_cost",
+  "quote_to_fill_gap",
+  "net_expectancy"
+]
+disfavored_conditions = ["route_instability", "fragmented_liquidity"]
+primary_objective = "Minimize execution drag and identify when a signal is invalidated by route quality."
+hypothesis_templates = [
+  "Execution quality may be the main bottleneck, not signal quality.",
+  "Quote instability should suppress otherwise attractive setups."
+]
+
+[profiles.dlmm_bin_reaction]
+market_style = "liquidity_reaction"
+time_horizon = "intraday"
+market_focus = ["spot", "meteora", "dlmm"]
+cost_sensitivity = "balanced_cost"
+exploration = "exploratory"
+authority = "proposal_only"
+preferred_sources = ["helius", "jupiter"]
+preferred_surfaces = ["feature_set", "condition_model", "execution_fill"]
+preferred_features = [
+  "bin_cross_count",
+  "fee_acceleration",
+  "local_liquidity_density",
+  "volatility_cluster",
+  "swap_pressure"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "fee_capture_proxy",
+  "slippage_realism",
+  "regime_fit"
+]
+disfavored_conditions = ["dead_liquidity", "extreme_fragmentation"]
+primary_objective = "Test whether DLMM structure creates repeatable short-horizon reactions."
+hypothesis_templates = [
+  "Bin crossing intensity can separate expansion from chop.",
+  "Dynamic fee conditions may distinguish LP-friendly vs momentum-friendly states."
+]
+
+[profiles.risk_off_defensive]
+market_style = "defensive"
+time_horizon = "intraday"
+market_focus = ["global", "majors", "perps", "spot"]
+cost_sensitivity = "balanced_cost"
+exploration = "conservative"
+authority = "proposal_only"
+preferred_sources = ["massive", "fred", "jupiter"]
+preferred_surfaces = ["condition_model", "risk_sizing", "report_diagnostic"]
+preferred_features = [
+  "anomaly_score",
+  "realized_vol",
+  "spread_widening",
+  "macro_stress",
+  "drawdown_state"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "max_drawdown",
+  "expected_shortfall",
+  "veto_precision",
+  "paper_loss_reduction"
+]
+disfavored_conditions = []
+primary_objective = "Reduce damage in hostile tape even at the cost of lower upside."
+hypothesis_templates = [
+  "The best edge may be selective no-trade, not more entries.",
+  "Anomaly-heavy periods should tighten participation rather than seek alpha."
+]
+
+[profiles.execution_cost_minimizer]
+market_style = "execution"
+time_horizon = "intraday"
+market_focus = ["spot", "perps", "majors"]
+cost_sensitivity = "ultra_cost_sensitive"
+exploration = "conservative"
+authority = "proposal_only"
+preferred_sources = ["jupiter", "massive"]
+preferred_surfaces = ["execution_fill", "strategy_policy", "report_diagnostic"]
+preferred_features = [
+  "spread",
+  "depth_proxy",
+  "route_hops",
+  "trade_intensity",
+  "volatility_cost_ratio"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "turnover_cost",
+  "fill_quality",
+  "slippage_realism"
+]
+disfavored_conditions = ["high_spread", "thin_depth", "route_instability"]
+primary_objective = "Prefer fewer, cleaner trades if cost is the main edge killer."
+hypothesis_templates = [
+  "Reducing trade count may improve net expectancy more than improving signal precision.",
+  "Cost-aware policy selection can outperform raw setup scoring."
+]
+
+[profiles.perps_basis_rotation]
+market_style = "rotation"
+time_horizon = "intraday"
+market_focus = ["perps", "majors", "solana"]
+cost_sensitivity = "balanced_cost"
+exploration = "balanced"
+authority = "proposal_only"
+preferred_sources = ["jupiter", "massive", "fred"]
+preferred_surfaces = ["condition_model", "strategy_policy", "risk_sizing"]
+preferred_features = [
+  "returns_short",
+  "realized_vol",
+  "cross_asset_relative_strength",
+  "macro_context",
+  "trend_context"
+]
+preferred_labels = ["tb_240m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "drawdown_control",
+  "cross_asset_regime_fit",
+  "paper_cycle_consistency"
+]
+disfavored_conditions = ["illiquid_fragile", "anomalous"]
+primary_objective = "Rotate across the highest-quality perps conditions without overtrading."
+hypothesis_templates = [
+  "Cross-asset relative strength can improve perps selection when regime state is stable.",
+  "Macro context should help only if it reduces false directional bias."
+]
+
+[profiles.volatility_harvester]
+market_style = "volatility"
+time_horizon = "intraday"
+market_focus = ["perps", "majors", "solana"]
+cost_sensitivity = "balanced_cost"
+exploration = "exploratory"
+authority = "proposal_only"
+preferred_sources = ["massive", "jupiter"]
+preferred_surfaces = ["condition_model", "feature_set", "strategy_policy"]
+preferred_features = [
+  "realized_vol",
+  "vol_of_vol",
+  "compression_score",
+  "range_expansion",
+  "liquidity_pressure"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "net_expectancy",
+  "tail_capture",
+  "regime_separation",
+  "max_adverse_excursion"
+]
+disfavored_conditions = ["flat_dead_tape"]
+primary_objective = "Exploit volatility regime transitions rather than steady-state trend."
+hypothesis_templates = [
+  "Compression-to-expansion transitions may outperform trend continuation in some windows.",
+  "Volatility clustering should be modeled before strategy selection."
+]
+
+[profiles.anomaly_suppressor]
+market_style = "anomaly_control"
+time_horizon = "intraday"
+market_focus = ["global", "majors", "solana"]
+cost_sensitivity = "balanced_cost"
+exploration = "conservative"
+authority = "proposal_only"
+preferred_sources = ["massive", "jupiter", "helius"]
+preferred_surfaces = ["condition_model", "risk_sizing", "report_diagnostic"]
+preferred_features = [
+  "isolation_score",
+  "spread_widening",
+  "trade_count_shock",
+  "route_instability",
+  "drawdown_state"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "veto_precision",
+  "loss_avoidance",
+  "false_veto_cost",
+  "paper_cycle_stability"
+]
+disfavored_conditions = []
+primary_objective = "Find where anomaly filtering improves downside control without killing too many valid setups."
+hypothesis_templates = [
+  "Anomaly suppression should be evaluated by avoided bad trades, not only by reduced trade count.",
+  "The filter is only useful if it beats a simpler no-trade threshold baseline."
+]
+
+[profiles.macro_context_bridge]
+market_style = "macro_bridge"
+time_horizon = "swing"
+market_focus = ["majors", "perps", "macro"]
+cost_sensitivity = "balanced_cost"
+exploration = "exploratory"
+authority = "proposal_only"
+preferred_sources = ["fred", "massive", "jupiter"]
+preferred_surfaces = ["feature_set", "condition_model", "regime_semantic_mapping"]
+preferred_features = [
+  "dff",
+  "dgs10",
+  "t10y2y",
+  "vixcls",
+  "benchmark_pressure",
+  "trend_context"
+]
+preferred_labels = ["tb_240m_atr1x_v1"]
+preferred_metrics = [
+  "regime_stability",
+  "paper_cycle_consistency",
+  "drawdown_control",
+  "semantic_plausibility"
+]
+disfavored_conditions = ["microstructure_only_logic"]
+primary_objective = "Test whether slow macro context improves regime semantics without overcomplicating intraday behavior."
+hypothesis_templates = [
+  "Macro data should improve state interpretation more than short-horizon entry prediction.",
+  "If macro inputs increase instability, they should be dropped back to context-only."
+]
+
+[profiles.smart_money_shadow]
+market_style = "smart_money"
+time_horizon = "intraday"
+market_focus = ["wallet_flow", "memecoin", "spot"]
+cost_sensitivity = "balanced_cost"
+exploration = "exploratory"
+authority = "shadow_only"
+preferred_sources = ["helius", "jupiter"]
+preferred_surfaces = ["feature_set", "label_program", "report_diagnostic"]
+preferred_features = [
+  "repeat_wallet_participation",
+  "wallet_cluster_overlap",
+  "flow_velocity",
+  "holder_breadth",
+  "liquidity_growth"
+]
+preferred_labels = ["tb_240m_atr1x_v1"]
+preferred_metrics = [
+  "quantile_separation",
+  "survival_after_entry",
+  "net_expectancy",
+  "cost_adjusted_edge"
+]
+disfavored_conditions = ["bundle_heavy_manipulation", "concentrated_supply"]
+primary_objective = "Keep wallet-following in shadow until it proves repeatable value beyond hype."
+hypothesis_templates = [
+  "Wallet intelligence is only useful if repeatability survives realistic cost assumptions.",
+  "Cluster and breadth metrics should outrank raw P/L leaderboards."
+]
+
+[profiles.regime_simplicity_guard]
+market_style = "diagnostic"
+time_horizon = "intraday"
+market_focus = ["global", "majors", "solana"]
+cost_sensitivity = "balanced_cost"
+exploration = "conservative"
+authority = "proposal_only"
+preferred_sources = ["massive", "jupiter", "fred"]
+preferred_surfaces = ["condition_model", "regime_semantic_mapping", "report_diagnostic"]
+preferred_features = [
+  "returns_short",
+  "realized_vol",
+  "trend_context",
+  "macro_context"
+]
+preferred_labels = ["tb_60m_atr1x_v1"]
+preferred_metrics = [
+  "flip_rate",
+  "median_dwell_time",
+  "semantic_stability",
+  "strategy_separation_score"
+]
+disfavored_conditions = []
+primary_objective = "Prevent the regime layer from becoming overcomplicated or overly fragile."
+hypothesis_templates = [
+  "Simpler regime models should be preferred when they preserve downstream strategy separation.",
+  "A condition model that flips too often is not useful even if it scores well offline."
+]

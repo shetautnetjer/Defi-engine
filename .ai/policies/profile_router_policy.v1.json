@@ -1,0 +1,36 @@
+{
+  "policy_id": "profile_router_policy_v1",
+  "version": "v1",
+  "description": "Evidence-weighted profile router. Profiles are experts; this policy does not create runtime authority.",
+  "scoring_weights": {
+    "out_of_sample": 0.30,
+    "paper": 0.25,
+    "stability": 0.15,
+    "regime_fit": 0.10,
+    "cost_penalty": 0.10,
+    "decay_penalty": 0.07,
+    "complexity_penalty": 0.03
+  },
+  "evidence_multipliers": {
+    "feature_only": 0.55,
+    "condition_only": 0.65,
+    "label_program": 1.00,
+    "strategy_eval": 0.90,
+    "paper_cycle": 1.00
+  },
+  "thresholds": {
+    "min_select_score": 70.0,
+    "min_blend_score": 64.0,
+    "max_blend_gap": 7.0,
+    "high_disagreement_index": 0.35,
+    "retire_below_score": 35.0
+  },
+  "actions": [
+    "SELECT_PROFILE",
+    "BLEND_PROFILES",
+    "NO_TRADE",
+    "SHADOW_ONLY",
+    "NEED_MORE_EVIDENCE",
+    "RETIRE_PROFILE"
+  ]
+}

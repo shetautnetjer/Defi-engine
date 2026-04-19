@@ -75,6 +75,32 @@ Treat the `.ai/swarm/` YAML layer as policy-only machine law: it shapes lane
 behavior and research backlog movement, but it is not runtime authority by
 itself.
 
+The repo also carries a machine-readable research profile pack:
+
+- `.ai/profiles.toml`
+  - training and autoresearch bias profiles only
+- `.ai/schemas/profile.schema.json`
+  - validation schema for the profile pack
+- `.ai/policies/profile_router_policy.v1.json`
+  - thin profile-governor routing weights and thresholds
+- `.ai/schemas/meta_governor_scorecard.schema.json`
+  - scorecard schema for governor review output
+- `.ai/schemas/profile_router_policy.schema.json`
+  - validation schema for the router policy
+- `.ai/schemas/profile_governor_decision.schema.json`
+  - validation schema for governor actions and reasons
+- `.ai/prompts/profile_governor_turn.md`
+  - companion prompt surface for the governor review layer
+
+These profiles shape what the trader/autoresearch lane prefers to explore and
+how it ranks evidence. They do **not** grant runtime authority and they do not
+replace strategy policy, risk policy, or live execution controls.
+
+The profile governor is a thin review/router overlay only. It consumes existing
+proposal, comparison, SQL, and QMD evidence and can recommend actions like
+select, blend, shadow, or need-more-evidence, but it does not replace runtime
+policy or risk authority.
+
 Lifecycle is intentionally split:
 
 - `scripts/agents/start_swarm.sh`

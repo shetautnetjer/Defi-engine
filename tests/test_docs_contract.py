@@ -7,6 +7,7 @@ ACTIVE_DOCS = [
     REPO_ROOT / "README.md",
     REPO_ROOT / "docs" / "README.md",
     REPO_ROOT / "docs" / "project" / "bootstrap_inventory.md",
+    REPO_ROOT / "docs" / "project" / "trader_cli_crosswalk.md",
     REPO_ROOT / "docs" / "project" / "current_runtime_truth.md",
     REPO_ROOT / "docs" / "prd" / "crypto_backtesting_mission.md",
     REPO_ROOT / "docs" / "prd" / "backtesting_completion_definition.md",
@@ -37,10 +38,18 @@ TRAINING_WORKSPACE_DOCS = [
     REPO_ROOT / "training" / "vendor" / "autoresearch" / "UPSTREAM.md",
     REPO_ROOT / "training" / "automation" / "README.md",
     REPO_ROOT / "training" / "config" / "source_sets.example.json",
+    REPO_ROOT / "training" / "config" / "research_profiles.example.toml",
     REPO_ROOT / "training" / "rubrics" / "paper_practice_default.json",
     REPO_ROOT / "training" / "rubrics" / "training_regime_rubric.md",
     REPO_ROOT / "training" / "prompts" / "training_review.md.tmpl",
     REPO_ROOT / "training" / "bin" / "emit_training_event.py",
+    REPO_ROOT / ".ai" / "profiles.toml",
+    REPO_ROOT / ".ai" / "schemas" / "profile.schema.json",
+    REPO_ROOT / ".codex" / "config.toml",
+    REPO_ROOT / ".codex" / "hooks.json",
+    REPO_ROOT / ".codex" / "hooks" / "session_start.py",
+    REPO_ROOT / ".codex" / "hooks" / "post_tool_receipt.py",
+    REPO_ROOT / ".codex" / "hooks" / "stop_validate.py",
 ]
 REQUIRED_DOCS = ACTIVE_DOCS + [
     REPO_ROOT / "docs" / "issues" / "governed_product_descent_capability_ladder.md",
@@ -76,29 +85,42 @@ def test_training_workspace_grounding_docs_link_notion_and_local_doctrine() -> N
     training_readme = (REPO_ROOT / "training" / "README.md").read_text()
     training_harness = (REPO_ROOT / "training" / "trading_agent_harness.md").read_text()
     training_program = (REPO_ROOT / "training" / "program.md").read_text()
+    research_profiles = (REPO_ROOT / ".ai" / "profiles.toml").read_text()
+    research_profile_schema = (REPO_ROOT / ".ai" / "schemas" / "profile.schema.json").read_text()
     training_rubric = (
         REPO_ROOT / "training" / "rubrics" / "training_regime_rubric.md"
     ).read_text()
 
     notion_url = "https://www.notion.so/Training-regime-347936b02c25803d8ec4cb77cf4040d6?source=copy_link"
+    harness_notion_url = "https://www.notion.so/Codex-trader-harnesses-347936b02c25806bad8bd6a5fde8c51d?source=copy_link"
 
     assert notion_url in training_agents
     assert "Repo-owned files in `training/` remain the durable" in training_agents
     assert "`training/trading_agent_harness.md`" in training_agents
     assert notion_url in training_readme
+    assert harness_notion_url in training_readme
     assert "The Notion page is stronger on rubric and autoresearch program framing." in training_readme
     assert "`training/trading_agent_harness.md`" in training_readme
     assert "`training/program.md`" in training_readme
     assert "`training/rubrics/training_regime_rubric.md`" in training_readme
     assert "`docs/task/trading_qmd_report_contract.md`" in training_readme
+    assert "`.ai/profiles.toml`" in training_readme
+    assert "`.ai/schemas/profile.schema.json`" in training_readme
     assert "Trading Agent Harness" in training_harness
     assert "Required Read Order" in training_harness
     assert "keep, revert, or shadow" in training_harness
     assert "paper-only" in training_harness
+    assert "named persistent `trader` lane" in training_harness
+    assert "fresh `task` lane" in training_harness
     assert "trading_qmd_report_contract.md" in training_harness
+    assert "Research Profile Bias" in training_harness
     assert "repo-owned operating contract" in training_program
     assert "best evidence-driven trading system" in training_program
     assert "Allowed Surfaces" in training_program
+    assert "Training and autoresearch profiles only; not runtime strategy or risk authority." in research_profiles
+    assert "[profiles.momentum_scalper_perps]" in research_profiles
+    assert "[profiles.wallet_flow_follower]" in research_profiles
+    assert "\"title\": \"D5 Training Profiles File\"" in research_profile_schema
     assert "Training Regime Rubric" in training_rubric
     assert "Failure Attribution Matrix" in training_rubric
 
@@ -117,16 +139,35 @@ def test_agents_files_include_superpowers_routing() -> None:
 
 def test_readme_and_runbooks_reference_flatfile_warehouse_and_qmd_contract() -> None:
     readme = (REPO_ROOT / "README.md").read_text()
+    cli_crosswalk = (REPO_ROOT / "docs" / "project" / "trader_cli_crosswalk.md").read_text()
     current_truth = (REPO_ROOT / "docs" / "project" / "current_runtime_truth.md").read_text()
     first_capture = (REPO_ROOT / "docs" / "runbooks" / "first_capture.md").read_text()
     qmd_contract = (REPO_ROOT / "docs" / "task" / "trading_qmd_report_contract.md").read_text()
     training_automation = (REPO_ROOT / "training" / "automation" / "README.md").read_text()
+    codex_config = (REPO_ROOT / ".codex" / "config.toml").read_text()
+    codex_hooks = (REPO_ROOT / ".codex" / "hooks.json").read_text()
 
     assert "data/parquet/" in readme
     assert "docs/task/trading_qmd_report_contract.md" in readme
     assert "codex exec --json -C <repo>" in readme
+    assert "codex exec resume <SESSION_ID>" in readme
+    assert ".ai/profiles.toml" in readme
+    assert "TRADER_RESEARCH_PROFILE" in readme
+    assert "docs/project/trader_cli_crosswalk.md" in readme
+    assert "Current truthful commands" in cli_crosswalk
+    assert "North-star grammar" in cli_crosswalk
+    assert "Jupiter" in cli_crosswalk
+    assert "Coinbase" in cli_crosswalk
+    assert "Massive" in cli_crosswalk
+    assert "Helius" in cli_crosswalk
     assert "Parquet" in current_truth
     assert "falls back to REST minute aggregates" in current_truth
+    assert "named persistent `trader` lane" in current_truth
+    assert "fresh `task` lane" in current_truth
+    assert "watcher_status.json" in current_truth
+    assert "warehouse completeness" in current_truth
+    assert "capture progress" in current_truth
+    assert ".ai/profiles.toml" in current_truth
     assert "Storage contract:" in first_capture
     assert "raw JSONL and CSV.gz source artifacts" in first_capture
     assert "data/parquet/" in first_capture
@@ -135,6 +176,15 @@ def test_readme_and_runbooks_reference_flatfile_warehouse_and_qmd_contract() -> 
     assert "https://developers.openai.com/codex/changelog" in qmd_contract
     assert "`AGENTS.md`" in training_automation
     assert "exec-server" in training_automation
+    assert "lane_sessions.json" in training_automation
+    assert "watcher_status.json" in training_automation
+    assert "persistent `trader` lane" in training_automation
+    assert "fresh `task` lane" in training_automation
+    assert "[profiles.trader]" in codex_config
+    assert "[profiles.task]" in codex_config
+    assert "\"SessionStart\"" in codex_hooks
+    assert "\"PostToolUse\"" in codex_hooks
+    assert "\"Stop\"" in codex_hooks
 
 
 def test_navigation_agents_exist_only_in_high_value_runtime_roots() -> None:
@@ -287,6 +337,8 @@ def test_current_runtime_truth_and_ai_packet_reference_machine_readable_swarm_la
     assert "start_watch_adapter.sh" in ai_readme
     assert "proposal_comparison_v1" in ai_readme
     assert "proposal_supersession_v1" in ai_readme
+    assert "profile_router_policy.v1.json" in ai_readme
+    assert "meta_governor_scorecard.schema.json" in ai_readme
     assert "research_proposal_priority_receipt.json" in ai_readme
     assert "regime-model-compare-v1" in ai_readme
     assert "regime_model_compare_follow_on" in ai_readme
@@ -339,11 +391,14 @@ def test_training_workspace_and_readme_expose_repo_owned_training_lane() -> None
     assert "d5 training review" in readme
     assert "d5 training loop" in readme
     assert "d5 training status" in readme
+    assert "profile governor" in readme.lower()
     assert "codex --exec" in training_readme
     assert "SQL as canonical truth" in training_readme
     assert "QMD as evidence" in training_readme
+    assert "profile governor" in training_readme.lower()
     assert "paper-only" in training_agents
     assert "one bounded thing at a time" in training_agents
+    assert "profile governor" in training_agents.lower()
     assert "karpathy/autoresearch" in upstream
 
 

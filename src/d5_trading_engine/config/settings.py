@@ -146,6 +146,14 @@ class Settings(BaseSettings):
         default="",
         description="Massive S3-compatible flat files key",
     )
+    massive_flatfiles_secret: str = Field(
+        default="",
+        description="Massive S3-compatible flat files secret",
+    )
+    massive_flatfiles_bucket: str = Field(
+        default="flatfiles",
+        description="Massive S3-compatible flat files bucket name",
+    )
     massive_default_tickers: list[str] = Field(
         default=["X:SOLUSD", "X:BTCUSD", "X:ETHUSD"],
         description="Default Massive crypto tickers for bounded reference and snapshot capture.",
@@ -176,6 +184,20 @@ class Settings(BaseSettings):
         description=(
             "Maximum retries for a Massive REST minute-aggregate request after a rate-limit "
             "response."
+        ),
+    )
+    paper_practice_training_profile: str = Field(
+        default="full_730d",
+        description=(
+            "Named paper-practice training profile. Supported values are "
+            "`full_730d`, `quickstart_300d`, and `auto`."
+        ),
+    )
+    trader_research_profile: str = Field(
+        default="execution_cost_minimizer",
+        description=(
+            "Named trader autoresearch profile. This is a research-bias selector "
+            "only; it does not grant runtime strategy or risk authority."
         ),
     )
 

@@ -133,3 +133,30 @@ def test_paper_practice_loop_requires_completed_historical_ladder(settings) -> N
 
     with pytest.raises(RuntimeError, match="run-paper-practice-bootstrap"):
         runtime.run_loop(max_iterations=1)
+
+
+def test_paper_practice_status_exposes_training_profile_readiness(
+    settings,
+    monkeypatch,
+) -> None:
+    run_migrations_to_head(settings)
+    runtime = PaperPracticeRuntime(settings)
+
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
+        "historical_cache_status",
+        lambda self: {
+            "complete": False,
+            "completed_day_count": 335,
+            "missing_day_count": 395,
+            "next_missing_date": "2025-03-20",
+        },
+    )
+
+    status = runtime.get_status()
+
+    assert status["selected_training_profile"]["name"] == "full_730d"
+    assert status["selected_training_regimen"]["name"] == "full_730d"
+    assert status["selected_training_profile"]["ready"] is False
+    assert status["training_profile_readiness"]["profiles"]["quickstart_300d"]["ready"] is True
+    assert status["training_regimen_readiness"]["profiles"]["quickstart_300d"]["ready"] is True

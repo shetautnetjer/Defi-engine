@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/meta_governor_scorecard.schema.json",
+  "title": "D5 Meta Governor Scorecard",
+  "type": "object",
+  "required": [
+    "scorecard_id",
+    "created_at_utc",
+    "policy_id",
+    "context",
+    "profile_scores",
+    "disagreement",
+    "ranking"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "scorecard_id": { "type": "string" },
+    "created_at_utc": { "type": "string", "format": "date-time" },
+    "policy_id": { "type": "string" },
+    "context": {
+      "type": "object",
+      "required": ["market", "time_horizon", "regime_label", "instrument_scope"],
+      "additionalProperties": false,
+      "properties": {
+        "market": { "type": "string" },
+        "time_horizon": { "type": "string" },
+        "regime_label": { "type": "string" },
+        "instrument_scope": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "profile_scores": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["profile_id", "profile_result_id", "evidence_maturity", "score", "components", "eligible"],
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": { "type": "string" },
+          "profile_result_id": { "type": "string" },
+          "evidence_maturity": { "type": "string" },
+          "score": { "type": "number" },
+          "eligible": { "type": "boolean" },
+          "ineligible_reason_codes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "components": {
+            "type": "object",
+            "required": ["out_of_sample", "paper", "stability", "regime_fit", "cost_penalty", "decay_penalty", "complexity_penalty", "evidence_multiplier"],
+            "additionalProperties": false,
+            "properties": {
+              "out_of_sample": { "type": "number" },
+              "paper": { "type": "number" },
+              "stability": { "type": "number" },
+              "regime_fit": { "type": "number" },
+              "cost_penalty": { "type": "number" },
+              "decay_penalty": { "type": "number" },
+              "complexity_penalty": { "type": "number" },
+              "evidence_multiplier": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "disagreement": {
+      "type": "object",
+      "required": ["index", "classification", "reason_codes"],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "number", "minimum": 0, "maximum": 1 },
+        "classification": { "type": "string", "enum": ["low", "medium", "high"] },
+        "reason_codes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "ranking": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  }
+}

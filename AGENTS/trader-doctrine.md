@@ -3,6 +3,10 @@
 ## Purpose
 Define the repo's trading law for engineering agents, research agents, and policy agents.
 
+The repo's named persistent automation lane is `trader`. It is crypto-first,
+paper-only, and evidence-driven. Fresh fixup work may use a separate `task`
+lane, but the `trader` lane owns continuous trading-review memory.
+
 ## Core Doctrine
 - Capital preservation first.
 - Paper trading first.

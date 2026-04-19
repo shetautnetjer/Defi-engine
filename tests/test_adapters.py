@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 from types import SimpleNamespace
 
 import pandas as pd
@@ -199,6 +200,43 @@ def test_massive_parse_minute_aggs_csv_handles_gzip_payload() -> None:
             "volume": "42.0",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_massive_download_minute_aggs_prefers_s3_when_secret_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compressed = gzip.compress(
+        (
+            "ticker,window_start,open,high,low,close,volume\n"
+            "X:SOLUSD,1741132800000,150.0,151.0,149.0,150.5,42.0\n"
+        ).encode("utf-8")
+    )
+
+    captured: dict[str, str] = {}
+
+    class FakeS3Client:
+        def get_object(self, *, Bucket: str, Key: str):
+            captured["bucket"] = Bucket
+            captured["key"] = Key
+            return {"Body": io.BytesIO(compressed)}
+
+    settings = Settings(
+        _env_file=None,
+        massive_api_key="test-massive-key",
+        massive_flatfiles_key="test-flatfiles-key",
+        massive_flatfiles_secret="test-flatfiles-secret",
+    )
+    client = MassiveClient(settings)
+    monkeypatch.setattr(client, "_build_flatfiles_s3_client", lambda: FakeS3Client())
+
+    raw = await client.download_minute_aggs("2025-03-05")
+
+    assert raw == compressed
+    assert captured == {
+        "bucket": "flatfiles",
+        "key": "global_crypto/minute_aggs_v1/2025/03/2025-03-05/2025-03-05.csv.gz",
+    }
 
 
 @pytest.mark.asyncio

@@ -39,6 +39,7 @@ Project Notion surfaces:
 
 - [Defi-engine project hub](https://www.notion.so/Defi-engine-342936b02c2580bc8062f70287d6919c?source=copy_link)
 - [CLI Ideas review page](https://www.notion.so/CLI-Ideas-346936b02c258037a00ffdcc53f4693a?source=copy_link)
+- [Codex trader harnesses review page](https://www.notion.so/Codex-trader-harnesses-347936b02c25806bad8bd6a5fde8c51d?source=copy_link)
 
 ## Tracked Universe
 
@@ -158,6 +159,17 @@ Coinbase credential note:
 - if you later add private Coinbase App / Advanced Trade endpoints, use CDP/Coinbase App JWT auth with an **ECDSA / ES256** key, not Exchange passphrase auth
 - if you use `COINBASE_SECRETS_FILE`, the settings layer now understands both the legacy Exchange env-file shape and the simpler CDP/Coinbase App export shape
 
+Paper-practice training regimen note:
+- `PAPER_PRACTICE_TRAINING_PROFILE=full_730d` keeps the current higher-confidence default
+- `PAPER_PRACTICE_TRAINING_PROFILE=quickstart_300d` enables an earlier paper-only bootstrap with explicit lower-confidence labeling
+- `PAPER_PRACTICE_TRAINING_PROFILE=auto` picks the strongest ready regimen from the available history window
+- these regimens govern history budget and replay shape only; they do not hard-wire strategy, policy, or risk
+- `TRADER_RESEARCH_PROFILE=<name>` selects the trader/autoresearch bias pack from `.ai/profiles.toml`
+- separate research-bias profiles belong in `.ai/profiles.toml` with `.ai/schemas/profile.schema.json` validation; `training/config/research_profiles.example.toml` remains a companion example
+- research-bias profiles describe what hypotheses to explore and how to rank them, not how live runtime authority behaves
+- the thin profile governor lives alongside that pack in `.ai/policies/profile_router_policy.v1.json`, `.ai/schemas/meta_governor_scorecard.schema.json`, `.ai/schemas/profile_router_policy.schema.json`, `.ai/schemas/profile_governor_decision.schema.json`, and `.ai/prompts/profile_governor_turn.md`
+- the profile governor is a review/router layer over existing evidence, not a runtime strategy or risk authority
+
 Current `capture` provider values:
 - `jupiter-tokens`
 - `jupiter-prices`
@@ -248,10 +260,18 @@ the evidence surface those training wrappers point back to.
 The control plane is intentionally hybrid:
 
 - tmux/supervisor handles long-running hydration and incremental collection
-- `codex exec --json -C <repo>` handles bounded semantic work such as review,
-  comparison, and proposal synthesis
+- repo-local `.codex/` config + hooks stabilize the named persistent `trader`
+  lane and the fresh `task` lane
+- `codex exec --json -C <repo>` handles fresh bounded semantic work such as
+  feature review and repair prompts
+- `codex exec resume <SESSION_ID> --json` handles persistent trader review
+  continuity for paper sessions, experiments, and condition runs
 - `exec-server` / app-server remains a future-phase option after the event and
   receipt contracts stabilize
+
+See [docs/project/trader_cli_crosswalk.md](docs/project/trader_cli_crosswalk.md)
+for the truthful command map, source/venue matrix, and the north-star grammar
+that the repo is intentionally not pretending to implement yet.
 
 These surfaces remain non-promoting at runtime. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one bounded execution-intent owner, one quote-backed paper settlement owner, one settlement-owned spot-first backtest replay ledger, one bounded shadow evaluation lane, one bounded canonical label-program loop, one bounded strategy challenger loop, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have runtime model promotion, fully accepted canonical label truth, fully accepted strategy-family governance, or derivative widening.
 

@@ -38,21 +38,26 @@ bot.
 1. repo root `AGENTS.md`
 2. this file
 3. `training/README.md`
-4. `training/trading_agent_harness.md`
-5. `training/program.md`
-6. `training/rubrics/training_regime_rubric.md`
-7. `docs/task/trading_qmd_report_contract.md`
-8. linked runtime and project truth docs
+4. `.codex/config.toml` and `.codex/hooks.json`
+5. `.ai/profiles.toml` and `.ai/schemas/profile.schema.json`
+6. `.ai/policies/profile_router_policy.v1.json` and `.ai/prompts/profile_governor_turn.md`
+7. `training/trading_agent_harness.md`
+8. `training/program.md`
+9. `training/rubrics/training_regime_rubric.md`
+10. `docs/task/trading_qmd_report_contract.md`
+11. linked runtime and project truth docs
 
 ## What This Folder Owns
 
 - vendored upstream training references
 - trading-harness doctrine
 - watcher and `codex --exec` adapters
+- named lane/session stewardship for `trader` and `task`
 - source-set and timeframe configs
 - evaluation rubrics
 - prompt templates
 - event-bridge helpers
+- profile governor prompt and policy surfaces
 
 ## What This Folder Does Not Own
 

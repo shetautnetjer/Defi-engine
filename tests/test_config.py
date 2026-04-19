@@ -31,6 +31,8 @@ def test_settings_allow_missing_provider_keys_for_bootstrap(
     assert settings.jupiter_api_key == ""
     assert settings.helius_api_key == ""
     assert settings.massive_api_key == ""
+    assert settings.massive_flatfiles_key == ""
+    assert settings.massive_flatfiles_secret == ""
     assert settings.fred_api_key == ""
     assert settings.db_path.name == "d5.db"
     assert settings.db_url == f"sqlite:///{settings.db_path}"
@@ -51,6 +53,24 @@ def test_settings_parse_helius_tracked_addresses_from_comma_separated_env() -> N
     )
 
     assert settings.helius_tracked_addresses == ["wallet_1", "wallet_2", "wallet_3"]
+
+
+def test_settings_accept_named_paper_practice_training_profile() -> None:
+    settings = Settings(
+        _env_file=None,
+        paper_practice_training_profile="quickstart_300d",
+    )
+
+    assert settings.paper_practice_training_profile == "quickstart_300d"
+
+
+def test_settings_accept_named_trader_research_profile() -> None:
+    settings = Settings(
+        _env_file=None,
+        trader_research_profile="wallet_flow_follower",
+    )
+
+    assert settings.trader_research_profile == "wallet_flow_follower"
 
 
 def test_settings_parse_helius_tracked_addresses_from_dotenv_file(
@@ -138,6 +158,10 @@ def test_env_example_keys_map_to_settings_fields() -> None:
         "COINBASE_SECRETS_FILE",
         "COINBASE_RAW_DB_PATH",
         "MASSIVE_API_KEY",
+        "MASSIVE_FLATFILES_KEY",
+        "MASSIVE_FLATFILES_SECRET",
+        "PAPER_PRACTICE_TRAINING_PROFILE",
+        "TRADER_RESEARCH_PROFILE",
         "FRED_API_KEY",
     } <= example_keys
 

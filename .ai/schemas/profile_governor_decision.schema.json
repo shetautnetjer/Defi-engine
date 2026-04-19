@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/profile_governor_decision.schema.json",
+  "title": "D5 Profile Governor Decision",
+  "type": "object",
+  "required": [
+    "decision_id",
+    "created_at_utc",
+    "policy_id",
+    "scorecard_id",
+    "action",
+    "selected_profiles",
+    "authority",
+    "reason_codes",
+    "next_action"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "decision_id": { "type": "string" },
+    "created_at_utc": { "type": "string", "format": "date-time" },
+    "policy_id": { "type": "string" },
+    "scorecard_id": { "type": "string" },
+    "action": { "type": "string", "enum": ["SELECT_PROFILE", "BLEND_PROFILES", "NO_TRADE", "SHADOW_ONLY", "NEED_MORE_EVIDENCE", "RETIRE_PROFILE"] },
+    "selected_profiles": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "authority": {
+      "type": "object",
+      "required": ["runtime_change", "strategy_policy_change", "risk_change", "live_execution_allowed"],
+      "additionalProperties": false,
+      "properties": {
+        "runtime_change": { "type": "boolean" },
+        "strategy_policy_change": { "type": "boolean" },
+        "risk_change": { "type": "boolean" },
+        "live_execution_allowed": { "type": "boolean" }
+      }
+    },
+    "reason_codes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "next_action": {
+      "type": "object",
+      "required": ["type", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["run_bounded_experiment", "write_proposal", "wait_for_paper_evidence", "retire_profile", "no_action"] },
+        "description": { "type": "string" },
+        "proposal_id": { "type": "string" },
+        "task_id": { "type": "string" }
+      }
+    }
+  }
+}

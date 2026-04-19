@@ -76,6 +76,30 @@ def main():
             "training_rubric",
             "training/rubrics/training_regime_rubric.md",
         ),
+        "RESEARCH_PROFILES_PATH": doc_paths.get(
+            "research_profiles",
+            ".ai/profiles.toml",
+        ),
+        "RESEARCH_PROFILE_SCHEMA_PATH": doc_paths.get(
+            "research_profile_schema",
+            ".ai/schemas/profile.schema.json",
+        ),
+        "GOVERNOR_POLICY_PATH": doc_paths.get(
+            "governor_policy",
+            ".ai/policies/profile_router_policy.v1.json",
+        ),
+        "GOVERNOR_SCORECARD_SCHEMA_PATH": doc_paths.get(
+            "governor_scorecard_schema",
+            ".ai/schemas/meta_governor_scorecard.schema.json",
+        ),
+        "GOVERNOR_DECISION_SCHEMA_PATH": doc_paths.get(
+            "governor_decision_schema",
+            ".ai/schemas/profile_governor_decision.schema.json",
+        ),
+        "GOVERNOR_PROMPT_PATH": doc_paths.get(
+            "governor_prompt",
+            ".ai/prompts/profile_governor_turn.md",
+        ),
         "TRAINING_DOC_READ_ORDER_BULLETS": bullets(
             context.get("training_doc_read_order", [])
         ),
@@ -104,6 +128,23 @@ def main():
             context.get("resolved_sql_refs", [])
         ),
         "PRIMARY_QMD_PATH": context.get("primary_qmd_path", ""),
+        "SELECTED_RESEARCH_PROFILE_NAME": context.get(
+            "selected_research_profile_name",
+            "",
+        ),
+        "SELECTED_RESEARCH_PROFILE_SUMMARY": context.get(
+            "selected_research_profile_summary",
+            "no selected research profile available",
+        ),
+        "SELECTED_RESEARCH_PROFILE_SOURCES_BULLETS": bullets(
+            (context.get("selected_research_profile") or {}).get("preferred_sources", [])
+        ),
+        "SELECTED_RESEARCH_PROFILE_SURFACES_BULLETS": bullets(
+            (context.get("selected_research_profile") or {}).get("preferred_surfaces", [])
+        ),
+        "SELECTED_RESEARCH_PROFILE_METRICS_BULLETS": bullets(
+            (context.get("selected_research_profile") or {}).get("preferred_metrics", [])
+        ),
     }
     out = string.Template(template_text).safe_substitute(values)
     pathlib.Path(args.output).write_text(out, encoding="utf-8")

@@ -15,7 +15,16 @@ from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.research_loop.profile_governor import (
+    GovernorCandidate,
+    ProfileGovernor,
+)
 from d5_trading_engine.research_loop.proposal_review import ProposalReviewer
+from d5_trading_engine.research_loop.research_profiles import (
+    ResearchProfile,
+    get_research_profile,
+    summarize_research_profile,
+)
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ArtifactReference,
@@ -72,10 +81,14 @@ class _Candidate:
     maturity_rank: int
     decision_rank: int
     regime_fit_rank: int
+    profile_fit_rank: int
     evidence_score: float
     evidence_tuple: tuple[float, ...]
     score_breakdown: dict[str, Any]
     eligible_for_selection: bool
+    governor_score: float = 0.0
+    governor_profile_name: str = ""
+    governor_profile_neutral_validation_state: str = ""
 
 
 class ProposalComparator:
@@ -84,6 +97,14 @@ class ProposalComparator:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
         self._reviewer = ProposalReviewer(self.settings)
+        self._governor = ProfileGovernor(repo_root=self.settings.repo_root)
+
+    def _selected_research_profile(self) -> tuple[ResearchProfile, dict[str, Any]]:
+        profile = get_research_profile(
+            self.settings.trader_research_profile,
+            repo_root=self.settings.repo_root,
+        )
+        return profile, summarize_research_profile(profile)
 
     def compare_proposals(
         self,
@@ -96,6 +117,7 @@ class ProposalComparator:
     ) -> dict[str, Any]:
         comparison_id = f"comparison_{uuid.uuid4().hex[:12]}"
         created_at = utcnow()
+        selected_profile, selected_profile_summary = self._selected_research_profile()
         session = get_session(self.settings)
         try:
             current_snapshot = (
@@ -120,7 +142,7 @@ class ProposalComparator:
             candidates = [
                 candidate
                 for candidate in (
-                    self._build_candidate(session, proposal, current_context)
+                    self._build_candidate(session, proposal, current_context, selected_profile)
                     for proposal in proposals
                 )
                 if self._candidate_in_scope(
@@ -132,25 +154,53 @@ class ProposalComparator:
             ]
 
             ranked = sorted(candidates, key=self._sort_key)
+            governor_result = self._governor.evaluate_candidates(
+                [self._governor_candidate(candidate, selected_profile_summary["name"]) for candidate in ranked],
+                selected_research_profile_name=selected_profile_summary["name"],
+            )
+            governor_scores = {
+                item["candidate_id"]: float(item["score"])
+                for item in governor_result["governor_scorecard"]["profile_scores"]
+            }
+            governor_states = {
+                item["candidate_id"]: str(item["profile_neutral_validation_state"])
+                for item in governor_result["governor_scorecard"]["profile_scores"]
+            }
+            for candidate in ranked:
+                candidate.governor_score = governor_scores.get(candidate.proposal.proposal_id, 0.0)
+                candidate.governor_profile_name = selected_profile_summary["name"]
+                candidate.governor_profile_neutral_validation_state = governor_states.get(
+                    candidate.proposal.proposal_id,
+                    "",
+                )
             selected_candidate: _Candidate | None = None
             superseded_candidates: list[_Candidate] = []
             if choose_top:
-                for candidate in ranked:
-                    if candidate.eligible_for_selection:
-                        selected_candidate = candidate
-                        break
-                if selected_candidate is not None:
-                    superseded_candidates = [
+                selected_candidate = next(
+                    (
                         candidate
                         for candidate in ranked
-                        if candidate.proposal.proposal_id != selected_candidate.proposal.proposal_id
-                        and candidate.proposal.proposal_kind
-                        == selected_candidate.proposal.proposal_kind
-                        and candidate.eligible_for_selection
-                    ]
-                    selected_candidate.proposal.status = "selected_next"
-                    for candidate in superseded_candidates:
-                        candidate.proposal.status = "superseded"
+                        if candidate.proposal.proposal_id
+                        == governor_result["selected_candidate_id"]
+                    ),
+                    None,
+                )
+                if selected_candidate is not None:
+                    if governor_result["governor_action"] == "SELECT_PROFILE":
+                        superseded_candidates = [
+                            candidate
+                            for candidate in ranked
+                            if candidate.proposal.proposal_id
+                            != selected_candidate.proposal.proposal_id
+                            and candidate.proposal.proposal_kind
+                            == selected_candidate.proposal.proposal_kind
+                            and candidate.eligible_for_selection
+                        ]
+                        selected_candidate.proposal.status = "selected_next"
+                        for candidate in superseded_candidates:
+                            candidate.proposal.status = "superseded"
+                    else:
+                        selected_candidate = None
 
             comparison_row = ProposalComparisonV1(
                 comparison_id=comparison_id,
@@ -269,12 +319,17 @@ class ProposalComparator:
             ),
             "selected_slice_key": selected_candidate.slice_key if selected_candidate else None,
             "current_context": current_context,
+            "selected_research_profile": selected_profile_summary,
             "scope": {
                 "proposal_ids": proposal_ids or [],
                 "proposal_kind": proposal_kind or "",
                 "story_class": story_class or "",
                 "semantic_regime": semantic_regime or "",
             },
+            "governor_policy_id": governor_result["governor_policy_id"],
+            "governor_action": governor_result["governor_action"],
+            "governor_reason_codes": governor_result["governor_reason_codes"],
+            "governor_scorecard": governor_result["governor_scorecard"],
             "ranked_items": [self._candidate_payload(candidate) for candidate in ranked],
             "selected_item": selected_payload,
             "superseded_proposal_ids": [
@@ -300,6 +355,7 @@ class ProposalComparator:
                     f"- selection mode: `{'choose_top' if choose_top else 'rank_only'}`",
                     f"- current semantic regime: `{current_context['semantic_regime'] or 'unknown'}`",
                     f"- current macro context: `{current_context['macro_context_state'] or 'unknown'}`",
+                    f"- selected research profile: `{selected_profile_summary['name']}`",
                     f"- selected proposal: `{selected_candidate.proposal.proposal_id if selected_candidate else 'none'}`",
                 ],
                 sections=[
@@ -313,6 +369,25 @@ class ProposalComparator:
                         ],
                     ),
                     (
+                        "Research Profile Bias",
+                        [
+                            f"- summary: {selected_profile_summary['summary']}",
+                            f"- primary objective: {selected_profile_summary['primary_objective']}",
+                            f"- preferred sources: `{', '.join(selected_profile_summary['preferred_sources'])}`",
+                            f"- preferred surfaces: `{', '.join(selected_profile_summary['preferred_surfaces'])}`",
+                            f"- preferred metrics: `{', '.join(selected_profile_summary['preferred_metrics'])}`",
+                        ],
+                    ),
+                    (
+                        "Profile Governor",
+                        [
+                            f"- policy id: `{governor_result['governor_policy_id']}`",
+                            f"- action: `{governor_result['governor_action']}`",
+                            f"- disagreement: `{governor_result['governor_scorecard']['disagreement_classification']}`",
+                            f"- reason codes: `{', '.join(governor_result['governor_reason_codes']) or 'none'}`",
+                        ],
+                    ),
+                    (
                         "Ranked Proposals",
                         [
                             (
@@ -320,7 +395,9 @@ class ProposalComparator:
                                 f"kind=`{candidate.proposal.proposal_kind}` "
                                 f"decision=`{candidate.review_decision}` "
                                 f"slice=`{candidate.slice_key}` "
-                                f"evidence_score=`{candidate.evidence_score:.4f}`"
+                                f"evidence_score=`{candidate.evidence_score:.4f}` "
+                                f"governor_score=`{candidate.governor_score:.4f}` "
+                                f"profile_fit=`{candidate.profile_fit_rank}`"
                             )
                             for index, candidate in enumerate(ranked)
                         ]
@@ -384,18 +461,26 @@ class ProposalComparator:
             "summary": (
                 selected_candidate.score_breakdown.get("selection_summary", "")
                 if selected_candidate
-                else "No proposal was eligible for bounded next-test selection."
+                else f"No proposal was selected; governor action was {governor_result['governor_action']}."
             ),
             "metrics": (
                 {
                     "maturity_rank": selected_candidate.maturity_rank,
                     "decision_rank": selected_candidate.decision_rank,
                     "regime_fit_rank": selected_candidate.regime_fit_rank,
+                    "profile_fit_rank": selected_candidate.profile_fit_rank,
                     "evidence_score": selected_candidate.evidence_score,
+                    "governor_score": selected_candidate.governor_score,
                 }
                 if selected_candidate
                 else {}
             ),
+            "selected_research_profile_name": selected_profile_summary["name"],
+            "selected_research_profile_summary": selected_profile_summary["summary"],
+            "governor_policy_id": governor_result["governor_policy_id"],
+            "governor_action": governor_result["governor_action"],
+            "governor_reason_codes": governor_result["governor_reason_codes"],
+            "governor_scorecard": governor_result["governor_scorecard"],
             "updated_at": created_at.isoformat(),
         }
         write_json_artifact(
@@ -444,6 +529,7 @@ class ProposalComparator:
         session,
         proposal: ImprovementProposalV1,
         current_context: dict[str, str],
+        selected_profile: ResearchProfile,
     ) -> _Candidate:
         source_artifacts = (
             session.query(ArtifactReference)
@@ -509,6 +595,11 @@ class ProposalComparator:
             current_semantic_regime=current_context["semantic_regime"],
             source_context=source_context,
         )
+        profile_fit_rank, profile_fit_details = self._profile_fit_rank(
+            selected_profile=selected_profile,
+            proposal=proposal,
+            source_context=source_context,
+        )
         evidence_tuple, evidence_score, evidence_details = self._evidence_rank(
             proposal=proposal,
             source_context=source_context,
@@ -519,6 +610,8 @@ class ProposalComparator:
             "maturity_rank": maturity_rank,
             "decision_rank": decision_rank,
             "regime_fit_rank": regime_fit_rank,
+            "profile_fit_rank": profile_fit_rank,
+            "profile_fit_details": profile_fit_details,
             "evidence_tuple": evidence_tuple,
             "evidence_score": evidence_score,
             "evidence_details": evidence_details,
@@ -530,7 +623,7 @@ class ProposalComparator:
             "selection_summary": (
                 f"{proposal.proposal_kind} in {semantic_regime or 'unknown_regime'} "
                 f"ranked with maturity={maturity_rank}, decision={decision_rank}, "
-                f"regime_fit={regime_fit_rank}."
+                f"regime_fit={regime_fit_rank}, profile_fit={profile_fit_rank}."
             ),
         }
         return _Candidate(
@@ -548,6 +641,7 @@ class ProposalComparator:
             maturity_rank=maturity_rank,
             decision_rank=decision_rank,
             regime_fit_rank=regime_fit_rank,
+            profile_fit_rank=profile_fit_rank,
             evidence_score=evidence_score,
             evidence_tuple=evidence_tuple,
             score_breakdown=score_breakdown,
@@ -588,6 +682,90 @@ class ProposalComparator:
         if semantic_regime or source_context["condition_scope"].get("condition_run_id"):
             return 1
         return 0
+
+    def _profile_fit_rank(
+        self,
+        *,
+        selected_profile: ResearchProfile,
+        proposal: ImprovementProposalV1,
+        source_context: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        preferred_sources = set(selected_profile.preferred_sources)
+        preferred_surfaces = set(selected_profile.preferred_surfaces)
+        candidate_sources = self._candidate_sources(proposal=proposal, source_context=source_context)
+        candidate_surfaces = self._candidate_surfaces(proposal=proposal, source_context=source_context)
+        source_matches = sorted(preferred_sources & candidate_sources)
+        surface_matches = sorted(preferred_surfaces & candidate_surfaces)
+        rank = 0
+        if surface_matches:
+            rank += 2
+        if source_matches:
+            rank += 1
+        return rank, {
+            "candidate_sources": sorted(candidate_sources),
+            "candidate_surfaces": sorted(candidate_surfaces),
+            "matched_sources": source_matches,
+            "matched_surfaces": surface_matches,
+        }
+
+    def _candidate_sources(
+        self,
+        *,
+        proposal: ImprovementProposalV1,
+        source_context: dict[str, Any],
+    ) -> set[str]:
+        source_story = str(source_context.get("source_story_id") or "").lower()
+        story_class = str(source_context.get("story_class") or "").lower()
+        stage = str(source_context.get("stage") or "").lower()
+        artifact_path = str(source_context.get("source_artifact_path") or "").lower()
+        artifact_types = [str(item).lower() for item in source_context.get("source_artifact_types", [])]
+        joined = " ".join([proposal.proposal_kind.lower(), source_story, story_class, stage, artifact_path, *artifact_types])
+        sources: set[str] = set()
+        if proposal.source_owner_type == "paper_session":
+            sources.add("jupiter")
+        if proposal.source_owner_type == "backtest_session":
+            sources.update({"massive", "jupiter"})
+        if any(token in joined for token in ("jupiter", "paper_cycle", "paper_practice", "route", "quote")):
+            sources.add("jupiter")
+        if any(token in joined for token in ("massive", "label", "regime_model", "backtest", "walk_forward", "bootstrap")):
+            sources.add("massive")
+        if any(token in joined for token in ("helius", "wallet", "launch", "flow", "memecoin", "dlmm")):
+            sources.add("helius")
+        if any(token in joined for token in ("coinbase", "global", "macro", "basis", "perps")):
+            sources.add("coinbase")
+        return sources
+
+    def _candidate_surfaces(
+        self,
+        *,
+        proposal: ImprovementProposalV1,
+        source_context: dict[str, Any],
+    ) -> set[str]:
+        mapping = {
+            "regime_model_compare_follow_on": {"condition_model", "regime_semantic_mapping", "report_diagnostic"},
+            "label_program_follow_on": {"label_program"},
+            "strategy_eval_follow_on": {"strategy_policy"},
+            "paper_cycle_follow_on": {"execution_fill", "report_diagnostic"},
+            "live_regime_cycle_follow_on": {"condition_model", "execution_fill", "report_diagnostic"},
+            "paper_profile_adjustment_follow_on": {"strategy_policy", "report_diagnostic"},
+        }
+        surfaces = set(mapping.get(proposal.proposal_kind, set()))
+        story_class = str(source_context.get("story_class") or "").lower()
+        stage = str(source_context.get("stage") or "").lower()
+        joined = " ".join([story_class, stage, proposal.proposal_kind.lower()])
+        if any(token in joined for token in ("label", "taxonomy")):
+            surfaces.add("label_program")
+        if any(token in joined for token in ("regime", "condition")):
+            surfaces.update({"condition_model", "regime_semantic_mapping"})
+        if any(token in joined for token in ("feature", "wallet", "flow", "launch", "dlmm")):
+            surfaces.add("feature_set")
+        if any(token in joined for token in ("strategy", "paper_profile")):
+            surfaces.add("strategy_policy")
+        if any(token in joined for token in ("paper", "execution", "route")):
+            surfaces.update({"execution_fill", "report_diagnostic"})
+        if any(token in joined for token in ("risk", "defensive", "anomaly")):
+            surfaces.add("risk_sizing")
+        return surfaces
 
     def _evidence_rank(
         self,
@@ -944,6 +1122,7 @@ class ProposalComparator:
             -candidate.decision_rank,
             -candidate.regime_fit_rank,
             *inverted_evidence,
+            -candidate.profile_fit_rank,
             -review_created_at,
             -proposal_created_at,
             candidate.proposal.proposal_id,
@@ -967,8 +1146,94 @@ class ProposalComparator:
             "maturity_rank": candidate.maturity_rank,
             "decision_rank": candidate.decision_rank,
             "regime_fit_rank": candidate.regime_fit_rank,
+            "profile_fit_rank": candidate.profile_fit_rank,
             "evidence_score": candidate.evidence_score,
+            "governor_score": candidate.governor_score,
+            "governor_profile_name": candidate.governor_profile_name,
+            "profile_neutral_validation_state": candidate.governor_profile_neutral_validation_state,
             "source_artifact_path": candidate.source_artifact_path,
             "score_breakdown": candidate.score_breakdown,
             "eligible_for_selection": candidate.eligible_for_selection,
         }
+
+    def _governor_candidate(
+        self,
+        candidate: _Candidate,
+        selected_research_profile_name: str,
+    ) -> GovernorCandidate:
+        evidence_maturity = self._governor_evidence_maturity(candidate.proposal.proposal_kind)
+        evidence_details = candidate.score_breakdown.get("evidence_details", {})
+        base_signal_score = min(100.0, max(candidate.evidence_score / 10.0, 0.0))
+        if evidence_maturity == "paper_cycle":
+            base_signal_score = max(
+                base_signal_score,
+                min(
+                    100.0,
+                    max(
+                        float(evidence_details.get("realized_pnl_bps", 0.0) or 0.0),
+                        float(evidence_details.get("realized_pnl_usdc", 0.0) or 0.0) * 100.0,
+                    ),
+                ),
+            )
+        stability_score = min(
+            100.0,
+            35.0 + (candidate.maturity_rank * 15.0) + (candidate.decision_rank * 10.0),
+        )
+        regime_fit_score = min(
+            100.0,
+            (candidate.regime_fit_rank * 30.0) + (candidate.profile_fit_rank * 10.0),
+        )
+        out_of_sample_score = base_signal_score
+        paper_score = max(20.0, base_signal_score * 0.7)
+        if evidence_maturity == "paper_cycle":
+            paper_score = base_signal_score
+        complexity_penalty = min(
+            12.0,
+            max(
+                0.0,
+                (len(candidate.score_breakdown.get("profile_fit_details", {}).get("candidate_surfaces", [])) - 1)
+                * 2.0,
+            ),
+        )
+        decay_penalty = max(0.0, 12.0 - (candidate.maturity_rank * 3.0) - (candidate.decision_rank * 2.0))
+        cost_penalty = 6.0
+        if "paper_fill_slippage_bps" in evidence_details:
+            cost_penalty = min(
+                20.0,
+                2.0 + (abs(float(evidence_details.get("paper_fill_slippage_bps", 0.0) or 0.0)) / 10.0),
+            )
+        neutral_validation_state = "pending"
+        if candidate.review_decision == "reviewed_accept":
+            neutral_validation_state = "confirmed"
+        elif candidate.review_decision == "reviewed_reject":
+            neutral_validation_state = "failed"
+        return GovernorCandidate(
+            candidate_id=candidate.proposal.proposal_id,
+            profile_name=selected_research_profile_name,
+            evidence_maturity=evidence_maturity,
+            out_of_sample_score=out_of_sample_score,
+            paper_score=paper_score,
+            stability_score=stability_score,
+            regime_fit_score=regime_fit_score,
+            cost_penalty=cost_penalty,
+            decay_penalty=decay_penalty,
+            complexity_penalty=complexity_penalty,
+            disagreement_index=0.08 if candidate.regime_fit_rank >= 2 else 0.18,
+            eligible_for_selection=candidate.eligible_for_selection,
+            profile_neutral_validation_state=neutral_validation_state,
+            reason_codes=list(candidate.score_breakdown.get("reason_codes", [])),
+            evidence_refs=[candidate.source_artifact_path] if candidate.source_artifact_path else [],
+            details={
+                "proposal_kind": candidate.proposal.proposal_kind,
+                "slice_key": candidate.slice_key,
+            },
+        )
+
+    def _governor_evidence_maturity(self, proposal_kind: str) -> str:
+        if proposal_kind in {"paper_cycle_follow_on", "paper_profile_adjustment_follow_on"}:
+            return "paper_cycle"
+        if proposal_kind == "strategy_eval_follow_on":
+            return "strategy_eval"
+        if proposal_kind == "label_program_follow_on":
+            return "label_program"
+        return "condition_only"

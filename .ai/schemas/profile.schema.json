@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/profile.schema.json",
+  "title": "D5 Training Profiles File",
+  "type": "object",
+  "required": ["meta", "defaults", "profiles"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["version", "owner", "purpose", "default_authority", "default_status"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "owner": { "type": "string" },
+        "purpose": { "type": "string" },
+        "default_authority": { "type": "string" },
+        "default_status": { "type": "string" }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "required": [
+        "authority",
+        "status",
+        "exploration",
+        "cost_sensitivity",
+        "max_concurrent_experiments",
+        "max_daily_proposals",
+        "requires_qmd_receipt",
+        "requires_sql_metrics"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "$ref": "#/$defs/authority" },
+        "status": { "$ref": "#/$defs/status" },
+        "exploration": { "$ref": "#/$defs/exploration" },
+        "cost_sensitivity": { "$ref": "#/$defs/cost_sensitivity" },
+        "max_concurrent_experiments": { "type": "integer", "minimum": 1 },
+        "max_daily_proposals": { "type": "integer", "minimum": 1 },
+        "requires_qmd_receipt": { "type": "boolean" },
+        "requires_sql_metrics": { "type": "boolean" }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "authority": {
+      "type": "string",
+      "enum": ["proposal_only", "shadow_only", "advisory_only", "paper_allowed"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "paused", "archived"]
+    },
+    "exploration": {
+      "type": "string",
+      "enum": ["conservative", "balanced", "exploratory"]
+    },
+    "cost_sensitivity": {
+      "type": "string",
+      "enum": ["ultra_cost_sensitive", "balanced_cost", "aggressive_cost_tolerant"]
+    },
+    "string_array": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "market_style",
+        "time_horizon",
+        "market_focus",
+        "cost_sensitivity",
+        "exploration",
+        "authority",
+        "preferred_sources",
+        "preferred_surfaces",
+        "preferred_features",
+        "preferred_labels",
+        "preferred_metrics",
+        "disfavored_conditions",
+        "primary_objective",
+        "hypothesis_templates"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "market_style": { "type": "string" },
+        "time_horizon": { "type": "string" },
+        "market_focus": { "$ref": "#/$defs/string_array" },
+        "cost_sensitivity": { "$ref": "#/$defs/cost_sensitivity" },
+        "exploration": { "$ref": "#/$defs/exploration" },
+        "authority": { "$ref": "#/$defs/authority" },
+        "preferred_sources": { "$ref": "#/$defs/string_array" },
+        "preferred_surfaces": { "$ref": "#/$defs/string_array" },
+        "preferred_features": { "$ref": "#/$defs/string_array" },
+        "preferred_labels": { "$ref": "#/$defs/string_array" },
+        "preferred_metrics": { "$ref": "#/$defs/string_array" },
+        "disfavored_conditions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "primary_objective": { "type": "string", "minLength": 1 },
+        "hypothesis_templates": { "$ref": "#/$defs/string_array" },
+        "max_concurrent_experiments": { "type": "integer", "minimum": 1 },
+        "max_daily_proposals": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

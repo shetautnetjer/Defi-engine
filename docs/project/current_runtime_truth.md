@@ -227,6 +227,12 @@ The current historical ladder is now bounded, explicit, and evidence-first:
   - `d5 training hydrate-history`
   - `d5 training collect`
   - `d5 training status`
+- paper-practice bootstrap now supports named training regimens:
+  - `full_730d` = higher-confidence default
+  - `quickstart_300d` = earlier paper-only bootstrap
+  - `auto` = strongest ready regimen from available history
+- these regimens change data budget and replay shape only; strategy, policy, and risk remain separate owners
+- research-bias profiles are a separate layer from training regimens and live in `.ai/profiles.toml` with `.ai/schemas/profile.schema.json`; they shape what to explore, not what runtime policy/risk may execute
 - the intended operating model is:
   - finish the local historical cache once
   - reuse local SQL, raw CSV.gz, and Parquet artifacts for walk-forward and review
@@ -249,3 +255,26 @@ The trading evidence contract is now also explicit:
 - QMD remains the human-and-LLM evidence packet with small YAML frontmatter
 - SQL remains canonical truth and Parquet remains the deep-history warehouse
 - see `docs/task/trading_qmd_report_contract.md` for the required reporting sections
+
+The current Codex automation topology is now also explicit:
+
+- repo-local `.codex/config.toml` and `.codex/hooks.json` define trader/task
+  automation defaults
+- the named persistent `trader` lane owns resumed paper-session, experiment,
+  and condition review continuity
+- the fresh `task` lane owns one-shot feature review and repair work
+- `training/automation/state/lane_sessions.json` stores lane session continuity
+- `training/automation/state/watcher_status.json` stores watcher heartbeat and
+  trader-lane health for operator-facing status reads
+- tmux/supervisor remains the process steward for hydration and collection
+- app-server and exec-server stay deferred until the current lane/event/receipt
+  contracts prove stable
+
+`d5 training status --json` now intentionally separates:
+
+- warehouse completeness: raw + Parquet + normalized SQL
+- capture progress: the latest incremental source-collection receipt
+- runtime loop truth from SQL versus the latest paper-practice status receipt
+
+If those surfaces disagree, the status payload should expose the conflict
+instead of flattening it away.

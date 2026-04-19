@@ -1,0 +1,113 @@
+# Research profiles express exploration bias only.
+# They do not grant runtime strategy authority, change policy/risk ownership,
+# or bypass the selected paper-practice training regimen.
+
+[profiles.momentum_scalper_majors]
+market_style = "momentum"
+time_horizon = "scalp"
+market_preference = ["majors", "spot", "perps_context"]
+cost_sensitivity = "ultra_cost_sensitive"
+exploration = "balanced"
+search_budget = "medium"
+
+preferred_features = [
+  "returns_short",
+  "realized_vol",
+  "quote_imbalance",
+  "liquidity_pressure",
+  "trend_context",
+]
+
+preferred_labels = [
+  "tb_60m_atr1x_v1",
+]
+
+preferred_strategy_families = [
+  "trend_continuation",
+  "breakout_follow_through",
+]
+
+preferred_metrics = [
+  "net_expectancy",
+  "fill_quality",
+  "turnover_cost",
+  "max_drawdown",
+]
+
+disfavored_conditions = [
+  "chop",
+  "anomalous",
+]
+
+[profiles.wallet_flow_intraday_memecoins]
+market_style = "smart_money"
+time_horizon = "intraday"
+market_preference = ["memecoin", "spot", "wallet_flow", "solana"]
+cost_sensitivity = "balanced_cost"
+exploration = "exploratory"
+search_budget = "wide"
+
+preferred_features = [
+  "wallet_accumulation",
+  "unique_buyer_growth",
+  "flow_velocity",
+  "liquidity_growth",
+  "migration_state",
+]
+
+preferred_labels = [
+  "tb_240m_atr1x_v1",
+]
+
+preferred_strategy_families = [
+  "flow_follow",
+  "liquidity_reaction",
+]
+
+preferred_metrics = [
+  "quantile_separation",
+  "net_expectancy",
+  "survival_after_entry",
+  "slippage_realism",
+]
+
+disfavored_conditions = [
+  "illiquid_fragile",
+  "insider_concentration",
+]
+
+[profiles.execution_cost_minimizer]
+market_style = "execution_minimalist"
+time_horizon = "intraday"
+market_preference = ["spot", "majors"]
+cost_sensitivity = "ultra_cost_sensitive"
+exploration = "conservative"
+search_budget = "narrow"
+
+preferred_features = [
+  "spread_proxy",
+  "route_efficiency",
+  "liquidity_pressure",
+  "realized_vol",
+]
+
+preferred_labels = [
+  "tb_120m_atr1x_v1",
+]
+
+preferred_strategy_families = [
+  "low_turnover_breakout",
+  "high_quality_pullback",
+]
+
+preferred_metrics = [
+  "net_expectancy",
+  "turnover_cost",
+  "fill_quality",
+  "max_drawdown",
+]
+
+disfavored_conditions = [
+  "thin_liquidity",
+  "unstable_quotes",
+]

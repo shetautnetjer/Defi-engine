@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/profile_router_policy.schema.json",
+  "title": "D5 Profile Router Policy",
+  "type": "object",
+  "required": ["policy_id", "version", "scoring_weights", "evidence_multipliers", "thresholds", "actions"],
+  "additionalProperties": false,
+  "properties": {
+    "policy_id": { "type": "string" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "scoring_weights": {
+      "type": "object",
+      "required": ["out_of_sample", "paper", "stability", "regime_fit", "cost_penalty", "decay_penalty", "complexity_penalty"],
+      "additionalProperties": false,
+      "properties": {
+        "out_of_sample": { "type": "number" },
+        "paper": { "type": "number" },
+        "stability": { "type": "number" },
+        "regime_fit": { "type": "number" },
+        "cost_penalty": { "type": "number" },
+        "decay_penalty": { "type": "number" },
+        "complexity_penalty": { "type": "number" }
+      }
+    },
+    "evidence_multipliers": {
+      "type": "object",
+      "required": ["feature_only", "condition_only", "label_program", "strategy_eval", "paper_cycle"],
+      "additionalProperties": false,
+      "properties": {
+        "feature_only": { "type": "number" },
+        "condition_only": { "type": "number" },
+        "label_program": { "type": "number" },
+        "strategy_eval": { "type": "number" },
+        "paper_cycle": { "type": "number" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "required": ["min_select_score", "min_blend_score", "max_blend_gap", "high_disagreement_index", "retire_below_score"],
+      "additionalProperties": false,
+      "properties": {
+        "min_select_score": { "type": "number" },
+        "min_blend_score": { "type": "number" },
+        "max_blend_gap": { "type": "number" },
+        "high_disagreement_index": { "type": "number", "minimum": 0, "maximum": 1 },
+        "retire_below_score": { "type": "number" }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["SELECT_PROFILE", "BLEND_PROFILES", "NO_TRADE", "SHADOW_ONLY", "NEED_MORE_EVIDENCE", "RETIRE_PROFILE"] },
+      "uniqueItems": true
+    }
+  }
+}

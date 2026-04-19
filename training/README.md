@@ -5,6 +5,7 @@ This workspace is the repo-owned training surface for adaptive paper practice.
 ## Grounding
 
 - Companion Notion reference: [Training regime](https://www.notion.so/Training-regime-347936b02c25803d8ec4cb77cf4040d6?source=copy_link)
+- Companion Notion reference: [Codex trader harnesses](https://www.notion.so/Codex-trader-harnesses-347936b02c25806bad8bd6a5fde8c51d?source=copy_link)
 - Root policy and execution law: `AGENTS.md`
 - Local grounding guide: `training/AGENTS.md`
 - Trading harness doctrine: `training/trading_agent_harness.md`
@@ -25,7 +26,11 @@ repo-owned docs first.
 4. `training/program.md`
 5. `training/rubrics/training_regime_rubric.md`
 6. `docs/task/trading_qmd_report_contract.md`
-7. `docs/project/current_runtime_truth.md`
+7. `.ai/profiles.toml`
+8. `.ai/schemas/profile.schema.json`
+9. `.ai/policies/profile_router_policy.v1.json`
+10. `.ai/prompts/profile_governor_turn.md`
+11. `docs/project/current_runtime_truth.md`
 
 It exists to keep the long-running automation lane clean:
 
@@ -39,10 +44,17 @@ The training loop remains paper-only. It may adapt the active paper-practice
 profile through bounded proposal review/comparison, but it must not widen into
 live trading, mutate YAML policy, or self-edit runtime code.
 
+The current automation split is:
+
+- `.codex/config.toml` and `.codex/hooks.json` for repo-local Codex profiles and hook plumbing
+- persistent `trader` lane for resumed review continuity
+- fresh `task` lane for one-shot repair/review work
+- `training/automation/state/lane_sessions.json` for lane session stewardship
+
 ## Layout
 
 - `vendor/autoresearch/` — bounded vendored snapshot of `karpathy/autoresearch`
-- `automation/` — adapted watcher/dispatcher pack for `codex --exec`
+- `automation/` — adapted watcher/dispatcher pack for `codex exec` and `codex exec resume`
 - `config/` — source-set and timeframe examples
 - `trading_agent_harness.md` — trading-focused Codex harness doctrine for bounded training and paper review work
 - `rubrics/` — default evaluation rubrics
@@ -67,6 +79,30 @@ These wrappers sit on top of the adaptive paper-practice runtime and standardize
 machine-readable receipts for `codex --exec`, tmux lanes, and watcher-driven
 training review.
 
+The paper-practice training regimen is now selectable:
+
+- `full_730d` keeps the current higher-confidence default
+- `quickstart_300d` allows an earlier paper-only bootstrap once roughly 300 days are available
+- `auto` chooses the strongest ready regimen from the available history
+
+These regimens control history depth, warmup, and replay shape only. They do not
+hard-wire strategy, policy, or risk behavior.
+
+Research profiles are a separate concept. They should express search bias such as
+momentum, mean reversion, wallet flow, cost sensitivity, or preferred market
+horizons. They are not runtime authority. The repo-owned machine-readable pack
+lives in `.ai/profiles.toml`, with `.ai/schemas/profile.schema.json` as the
+validator and `training/config/research_profiles.example.toml` retained as a
+companion example surface.
+
+The profile governor is a thin overlay on top of that pack. Its machine-readable
+surfaces live in `.ai/policies/profile_router_policy.v1.json`,
+`.ai/schemas/meta_governor_scorecard.schema.json`,
+`.ai/schemas/profile_router_policy.schema.json`,
+`.ai/schemas/profile_governor_decision.schema.json`, and
+`.ai/prompts/profile_governor_turn.md`. It should route or score existing
+proposal/comparison evidence, not replace runtime policy or risk ownership.
+
 The intended operating shape is:
 
 - hydrate the Massive historical backbone once and keep it locally
@@ -74,7 +110,7 @@ The intended operating shape is:
 - reuse local SQL + local warehouse artifacts for replay, walk-forward, review, and QMD evidence
 - append only the missing historical days until the cache is complete
 - after that, keep running incremental source collection for Massive/Coinbase/Jupiter/Helius
-- only then run the continuous live paper-practice loop
+- once the selected training regimen is ready, run bootstrap and only then run the continuous live paper-practice loop
 
 In other words, `training collect` should append new source data. It should not
 repull the full historical window once the cache is complete.

@@ -21,6 +21,12 @@ from d5_trading_engine.condition.scorer import ConditionScorer
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.features.materializer import FeatureMaterializer
 from d5_trading_engine.paper_runtime.operator import PaperTradeOperator
+from d5_trading_engine.paper_runtime.training_profiles import (
+    PaperPracticeTrainingProfile,
+    assess_training_history_window,
+    get_training_profile,
+    summarize_training_profile_readiness,
+)
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
 from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
@@ -116,7 +122,14 @@ class PaperPracticeRuntime:
         artifact_dir.mkdir(parents=True, exist_ok=True)
 
         end_date = utcnow().date() - timedelta(days=1)
-        start_date = end_date - timedelta(days=self.settings.massive_free_tier_lookback_days - 1)
+        cache_status = self.historical_cache_status()
+        training_profile_readiness = self._training_profile_readiness(
+            available_history_days=int(cache_status.get("completed_day_count") or 0)
+        )
+        training_profile = self._selected_training_profile(
+            available_history_days=int(cache_status.get("completed_day_count") or 0)
+        )
+        start_date = end_date - timedelta(days=training_profile.history_lookback_days - 1)
 
         backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
         materializer = FeatureMaterializer(self.settings)
@@ -129,12 +142,14 @@ class PaperPracticeRuntime:
             history_end=end_date.isoformat(),
             use_massive_context=True,
         )
-        backtest_result = self.run_backtest_walk_forward()
+        backtest_result = self.run_backtest_walk_forward(training_profile_name=training_profile.name)
 
         payload = {
             "bootstrap_id": bootstrap_id,
             "profile_id": profile["profile_id"],
             "active_revision_id": profile["active_revision_id"],
+            "training_profile": training_profile_readiness["profiles"][training_profile.name],
+            "training_profile_readiness": training_profile_readiness,
             "history_start": start_date.isoformat(),
             "history_end": end_date.isoformat(),
             "backfill_result": backfill_result,
@@ -174,6 +189,7 @@ class PaperPracticeRuntime:
                 summary_lines=[
                     f"- bootstrap id: `{bootstrap_id}`",
                     f"- profile id: `{profile['profile_id']}`",
+                    f"- training profile: `{training_profile.name}` ({training_profile.confidence_label})",
                     f"- history start: `{start_date.isoformat()}`",
                     f"- history end: `{end_date.isoformat()}`",
                     f"- feature rows: `{feature_rows}`",
@@ -186,6 +202,7 @@ class PaperPracticeRuntime:
                             f"- batch id: `{backfill_result['batch_id']}`",
                             f"- captured days: `{backfill_result['days']['captured_count']}`",
                             f"- skipped days: `{backfill_result['days']['skipped_count']}`",
+                            f"- training regimen minimum history: `{training_profile.required_history_days}` days",
                             "- warehouse contract: raw `CSV.gz` + partitioned `Parquet` + normalized `SQL`",
                         ],
                     ),
@@ -194,6 +211,7 @@ class PaperPracticeRuntime:
                         [
                             f"- recommended candidate: `{comparison_result['recommended_candidate']}`",
                             f"- proposal status: `{comparison_result['proposal_status']}`",
+                            "- training profile controls data budget only; strategy, policy, and risk stay separate runtime owners",
                         ],
                     ),
                     (
@@ -202,6 +220,7 @@ class PaperPracticeRuntime:
                             f"- backtest run id: `{backtest_result['run_id']}`",
                             f"- windows completed: `{backtest_result['window_count']}`",
                             f"- completed ladder: `{backtest_result['completed_ladder']}`",
+                            f"- replay readiness: `{backtest_result['history_window']['ready']}`",
                             f"- active revision: `{backtest_result['active_revision_id']}`",
                         ],
                     ),
@@ -224,6 +243,8 @@ class PaperPracticeRuntime:
                 "comparison_run_id": comparison_result["run_id"],
                 "backtest_run_id": backtest_result["run_id"],
                 "backtest_window_count": backtest_result["window_count"],
+                "training_profile_name": training_profile.name,
+                "training_profile_confidence": training_profile.confidence_label,
                 "historical_ladder_completed": bool(backtest_result["completed_ladder"]),
             },
         )
@@ -262,7 +283,11 @@ class PaperPracticeRuntime:
             )
         )
 
-    def run_backtest_walk_forward(self) -> dict[str, Any]:
+    def run_backtest_walk_forward(
+        self,
+        *,
+        training_profile_name: str | None = None,
+    ) -> dict[str, Any]:
         profile = self.ensure_active_profile()
         starting_revision_id = profile["active_revision_id"]
         run_id = f"backtest_walk_forward_{uuid.uuid4().hex[:12]}"
@@ -285,12 +310,32 @@ class PaperPracticeRuntime:
 
         history_start = _as_utc_timestamp(history["bucket_start_utc"].min())
         history_end = _as_utc_timestamp(history["bucket_start_utc"].max())
-        training_end = history_start + pd.DateOffset(years=1)
+        available_history_days = int((history_end - history_start).days) + 1
+        training_profile = self._selected_training_profile(
+            available_history_days=available_history_days,
+            requested_profile_name=training_profile_name,
+        )
+        history_window = assess_training_history_window(
+            history_start=history_start,
+            history_end=history_end,
+            profile=training_profile,
+        )
+        if not history_window["ready"]:
+            raise RuntimeError(
+                "Selected paper-practice training profile is not ready. "
+                f"Profile `{training_profile.name}` requires `{history_window['required_history_days']}` "
+                f"days but only `{history_window['available_history_days']}` are available. "
+                "Collect more history or switch to a weaker training regimen before rerunning "
+                "`d5 run-paper-practice-bootstrap`."
+            )
+        training_end = history_start + pd.Timedelta(days=training_profile.minimum_training_days)
         replay_history = history.loc[history["bucket_start_utc"] >= training_end].copy()
         if replay_history.empty:
             raise RuntimeError(
-                "Need at least one 3-month replay window after the first 12 calendar months. "
-                "Refresh the historical ladder, then rerun `d5 run-paper-practice-bootstrap`."
+                "Need at least one replay window after the selected training regimen warmup. "
+                f"Profile `{training_profile.name}` requires `{training_profile.minimum_replay_days}` "
+                "days of replay after the warmup window. Refresh the historical ladder, switch to "
+                "a weaker training regimen, then rerun `d5 run-paper-practice-bootstrap`."
             )
 
         macro_context_state = scorer._macro_context_state(feature_run)
@@ -299,7 +344,9 @@ class PaperPracticeRuntime:
 
         window_start = _as_utc_timestamp(replay_history["bucket_start_utc"].min())
         while window_start <= history_end:
-            next_window_start = _as_utc_timestamp(window_start + pd.DateOffset(months=3))
+            next_window_start = _as_utc_timestamp(
+                window_start + pd.Timedelta(days=training_profile.walk_forward_window_days)
+            )
             window_end_exclusive = min(next_window_start, history_end + pd.Timedelta(microseconds=1))
             expanding_history = history.loc[
                 history["bucket_start_utc"] < window_end_exclusive
@@ -343,6 +390,15 @@ class PaperPracticeRuntime:
             "status": "completed",
             "completed_ladder": bool(window_results),
             "feature_run_id": feature_run.run_id,
+            "training_profile": {
+                "name": training_profile.name,
+                "confidence_label": training_profile.confidence_label,
+                "history_lookback_days": training_profile.history_lookback_days,
+                "minimum_training_days": training_profile.minimum_training_days,
+                "minimum_replay_days": training_profile.minimum_replay_days,
+                "walk_forward_window_days": training_profile.walk_forward_window_days,
+            },
+            "history_window": history_window,
             "history_start": history_start.date().isoformat(),
             "history_end": history_end.date().isoformat(),
             "training_end": _as_utc_timestamp(training_end).date().isoformat(),
@@ -382,6 +438,7 @@ class PaperPracticeRuntime:
                 summary_lines=[
                     f"- run id: `{run_id}`",
                     f"- feature run id: `{feature_run.run_id}`",
+                    f"- training profile: `{training_profile.name}` ({training_profile.confidence_label})",
                     f"- history start: `{payload['history_start']}`",
                     f"- history end: `{payload['history_end']}`",
                     f"- training end: `{payload['training_end']}`",
@@ -389,6 +446,14 @@ class PaperPracticeRuntime:
                     f"- active revision: `{active_profile['active_revision_id']}`",
                 ],
                 sections=[
+                    (
+                        "Market / Source Context",
+                        [
+                            f"- required history days: `{history_window['required_history_days']}`",
+                            f"- available history days: `{history_window['available_history_days']}`",
+                            "- replay market candles: normalized SQL from Massive `X:SOLUSD` minute aggregates",
+                        ],
+                    ),
                     (
                         "Trade / Replay Outcome",
                         [
@@ -571,6 +636,13 @@ class PaperPracticeRuntime:
 
     def get_status(self) -> dict[str, Any]:
         profile = self.ensure_active_profile()
+        cache_status = self.historical_cache_status()
+        training_profile_readiness = self._training_profile_readiness(
+            available_history_days=int(cache_status.get("completed_day_count") or 0)
+        )
+        selected_training_profile = training_profile_readiness["profiles"][
+            str(training_profile_readiness["selected_profile_name"])
+        ]
         session = get_session(self.settings)
         try:
             latest_loop = (
@@ -593,6 +665,10 @@ class PaperPracticeRuntime:
                 "active_profile_id": profile["profile_id"],
                 "active_revision_id": profile["active_revision_id"],
                 "profile_payload": profile["payload"],
+                "selected_training_profile": selected_training_profile,
+                "selected_training_regimen": selected_training_profile,
+                "training_profile_readiness": training_profile_readiness,
+                "training_regimen_readiness": training_profile_readiness,
                 "open_session_key": open_session.session_key if open_session else "",
                 "open_session_status": open_session.status if open_session else "",
                 "latest_loop_run_id": latest_loop.loop_run_id if latest_loop else "",
@@ -1962,6 +2038,23 @@ class PaperPracticeRuntime:
             "strategy_report_path": str(self.settings.repo_root / _DEFAULT_STRATEGY_REPORT),
             "preferred_family": "",
         }
+
+    def _training_profile_readiness(self, *, available_history_days: int) -> dict[str, Any]:
+        return summarize_training_profile_readiness(
+            available_history_days=available_history_days,
+            selected_profile_name=self.settings.paper_practice_training_profile,
+        )
+
+    def _selected_training_profile(
+        self,
+        available_history_days: int,
+        *,
+        requested_profile_name: str | None = None,
+    ) -> PaperPracticeTrainingProfile:
+        return get_training_profile(
+            requested_profile_name or self.settings.paper_practice_training_profile,
+            available_history_days=available_history_days,
+        )
 
     def _usdc_mint(self) -> str:
         return self._mint_for_symbol("USDC")

@@ -23,6 +23,7 @@ dependencies = [
     "orjson>=3.10",
     "duckdb>=1.1",
     "pandas>=2.2",
+    "boto3>=1.35",
 ]
 
 [project.optional-dependencies]

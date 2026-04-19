@@ -4,7 +4,7 @@ This folder adapts the small event-driven automation pack from
 `defi_codex_automation_pack_v2` into the repo-owned training surface.
 
 Use it to watch a JSONL queue, render bounded prompts, and dispatch
-`codex exec --json` or an equivalent CLI mode over already-written receipts.
+`codex exec --json` or `codex exec resume` over already-written receipts.
 
 The automation layer is intentionally thin:
 
@@ -30,9 +30,30 @@ Event JSON should stay thin and point back to SQL truth plus QMD evidence.
 The intended split is:
 
 - tmux/supervisor owns long-running hydration and incremental collection
-- `codex exec --json -C <repo>` owns bounded semantic review work
+- the named persistent `trader` lane owns resumed paper-session, experiment,
+  and condition review continuity
+- the fresh `task` lane owns one-shot feature review and repair-style runs
+- `codex exec --json -C <repo>` owns fresh bounded semantic work
+- `codex exec resume <SESSION_ID> --json` owns the persistent trader lane
 - QMD is the rich evidence packet
 - small JSON files remain queue and heartbeat contracts only
+
+Lane continuity is tracked under:
+
+- `training/automation/state/lane_sessions.json`
+- `training/automation/state/watcher_status.json`
+
+The watcher now also acts like the light session steward for the automation lane:
+
+- it tails the thin event queue
+- it dispatches fresh or resumed Codex runs
+- it writes `watcher_status.json` so `d5 training status --json` can surface
+  trader-lane health next to source-collection and paper-practice receipts
+
+Repo-local Codex config and hooks live under:
+
+- `.codex/config.toml`
+- `.codex/hooks.json`
 
 Future-phase note:
 

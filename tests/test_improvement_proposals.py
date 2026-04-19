@@ -532,6 +532,9 @@ def test_compare_proposals_choose_top_supersedes_same_kind_only(settings) -> Non
             / "research_proposal_priority_receipt.json"
         ).read_text(encoding="utf-8")
     )
+    comparison_payload = json.loads(
+        (Path(result["artifact_dir"]) / "comparison.json").read_text(encoding="utf-8")
+    )
 
     assert comparison.selection_mode == "choose_top"
     assert result["selected_proposal_id"] == proposal_a["proposal_id"]
@@ -547,6 +550,13 @@ def test_compare_proposals_choose_top_supersedes_same_kind_only(settings) -> Non
     assert supersession.superseded_proposal_id == proposal_b["proposal_id"]
     assert receipt["selected_proposal_id"] == proposal_a["proposal_id"]
     assert receipt["superseded_proposal_ids"] == [proposal_b["proposal_id"]]
+    assert comparison_payload["governor_policy_id"] == "profile_router_policy_v1"
+    assert comparison_payload["governor_action"] == "SELECT_PROFILE"
+    assert comparison_payload["governor_scorecard"]["candidate_count"] == 2
+    assert comparison_payload["selected_item"]["governor_score"] > 0
+    assert receipt["governor_policy_id"] == "profile_router_policy_v1"
+    assert receipt["governor_action"] == "SELECT_PROFILE"
+    assert receipt["governor_scorecard"]["candidate_count"] == 2
 
 
 def test_compare_proposals_prefers_paper_over_earlier_stage_evidence(settings) -> None:
@@ -690,9 +700,20 @@ def test_proposal_review_accepts_bounded_paper_profile_adjustment(settings) -> N
         proposal_ids=[proposal["proposal_id"]],
         choose_top=True,
     )
+    review_payload = json.loads(
+        (Path(review["artifact_dir"]) / "review.json").read_text(encoding="utf-8")
+    )
+    comparison_payload = json.loads(
+        (Path(comparison["artifact_dir"]) / "comparison.json").read_text(encoding="utf-8")
+    )
 
     assert review["decision"] == "reviewed_accept"
     assert comparison["selected_proposal_id"] == proposal["proposal_id"]
+    assert review_payload["governor_policy_id"] == "profile_router_policy_v1"
+    assert review_payload["governor_action"] in {"SELECT_PROFILE", "SHADOW_ONLY"}
+    assert review_payload["governor_scorecard"]["candidate_count"] == 1
+    assert comparison_payload["governor_policy_id"] == "profile_router_policy_v1"
+    assert comparison_payload["governor_action"] == "SELECT_PROFILE"
 
 
 def test_proposal_review_rejects_disallowed_paper_profile_patch(settings) -> None:

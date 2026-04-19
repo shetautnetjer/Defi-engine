@@ -118,6 +118,28 @@ class MassiveClient:
             f"{parsed:%Y/%m}/{date_str}/{date_str}.csv.gz"
         )
 
+    def build_minute_aggs_s3_key(self, date_str: str) -> str:
+        """Build the S3 object key for the requested UTC crypto minute aggregate date."""
+        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+        return f"global_crypto/minute_aggs_v1/{parsed:%Y/%m}/{date_str}/{date_str}.csv.gz"
+
+    def _build_flatfiles_s3_client(self):
+        """Build a Massive S3-compatible client for flat-file access."""
+        try:
+            import boto3
+        except ModuleNotFoundError as exc:
+            raise AdapterError(
+                "massive",
+                "boto3 is required for Massive flat-file S3 access",
+            ) from exc
+
+        return boto3.client(
+            "s3",
+            endpoint_url=self.settings.massive_flatfiles_base,
+            aws_access_key_id=self.settings.massive_flatfiles_key,
+            aws_secret_access_key=self.settings.massive_flatfiles_secret,
+        )
+
     def build_minute_aggs_rest_url(self, ticker: str, date_str: str) -> str:
         """Build the bounded REST aggregates URL for one ticker and UTC date."""
         safe_ticker = quote(ticker, safe="")
@@ -128,6 +150,39 @@ class MassiveClient:
 
     async def download_minute_aggs(self, date_str: str) -> bytes:
         """Download the gzip minute-aggregate flat file for the requested UTC date."""
+        if self.settings.massive_flatfiles_key and self.settings.massive_flatfiles_secret:
+            bucket = self.settings.massive_flatfiles_bucket
+            key = self.build_minute_aggs_s3_key(date_str)
+
+            def _download_from_s3() -> bytes:
+                client = self._build_flatfiles_s3_client()
+                try:
+                    response = client.get_object(Bucket=bucket, Key=key)
+                except Exception as exc:  # pragma: no cover - exercised through botocore at runtime
+                    response_meta = getattr(exc, "response", {}) or {}
+                    status_code = (response_meta.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+                    if status_code in (401, 403):
+                        raise AdapterError(
+                            "massive",
+                            "Authentication failed — check Massive flat-file S3 credentials and entitlements",
+                            status_code=status_code,
+                        ) from exc
+                    if status_code == 404:
+                        raise AdapterError(
+                            "massive",
+                            "Flat-file day not found on Massive S3 surface",
+                            status_code=status_code,
+                        ) from exc
+                    raise AdapterError(
+                        "massive",
+                        f"Massive flat-file S3 download failed: {exc}",
+                        status_code=status_code,
+                    ) from exc
+                body = response["Body"].read()
+                return body
+
+            return await asyncio.to_thread(_download_from_s3)
+
         url = self.build_minute_aggs_url(date_str)
         headers = {
             "Authorization": f"Bearer {self.settings.massive_flatfiles_key or self.settings.massive_api_key}",

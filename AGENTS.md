@@ -31,6 +31,7 @@
 ## Repo Surface Quick Routing
 - `prd.json` and `progress.txt` = canonical story and carry-forward truth.
 - `.ai/dropbox/` = live working exchange, receipts, lane outputs, and machine-visible status.
+- `.codex/` = repo-local Codex profiles and hook plumbing for the named `trader` and `task` lanes.
 - `docs/handoff/` = verbose human-readable continuation notes after a bounded slice is complete.
 - `docs/` and repo code/config/tests = durable repo truth; handoff notes and dropbox receipts must point back here instead of replacing it.
 

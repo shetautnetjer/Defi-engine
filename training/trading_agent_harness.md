@@ -14,6 +14,16 @@ The harness should:
 - keep, revert, or shadow candidates based on evidence
 - optimize for the best evidence-driven trading system, not the most active agent
 
+## Named Lanes
+
+The current control plane uses:
+
+- a named persistent `trader` lane for resumed paper-session, experiment, and condition review continuity
+- a fresh `task` lane for one-shot feature review and repair work
+
+The `trader` lane is the only lane that should accumulate Codex session
+continuity by default.
+
 ## Required Read Order
 
 When a bounded training or trading-review event wakes the harness, read in this
@@ -23,11 +33,13 @@ order:
 2. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/training/AGENTS.md`
 3. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/training/README.md`
 4. this file
-5. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/training/program.md`
-6. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/training/rubrics/training_regime_rubric.md`
-7. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/task/trading_qmd_report_contract.md`
-8. latest relevant QMD packet
-9. latest comparable SQL baseline or training status
+5. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/.ai/profiles.toml`
+6. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/.ai/schemas/profile.schema.json`
+7. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/training/program.md`
+8. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/training/rubrics/training_regime_rubric.md`
+9. `/home/netjer/Projects/AI-Frame/Brain/Defi-engine/docs/task/trading_qmd_report_contract.md`
+10. latest relevant QMD packet
+11. latest comparable SQL baseline or training status
 
 ## First Questions
 
@@ -36,8 +48,9 @@ Before doing work, the harness should answer:
 1. What event woke me up?
 2. What is the current accepted baseline?
 3. What is the active paper-practice profile revision?
-4. What single bounded surface am I allowed to change?
-5. What is the keep, revert, or shadow rule for this event?
+4. What research profile is active and what bias does it imply?
+5. What single bounded surface am I allowed to change?
+6. What is the keep, revert, or shadow rule for this event?
 
 If those answers are not available, the harness should reconstruct them from SQL,
 QMD, and the existing training status surfaces before proposing changes.
@@ -68,6 +81,21 @@ law:
 - timeframe selection flags
 
 Everything else should stay proposal-only or no-op.
+
+## Research Profile Bias
+
+The selected research profile is a training and autoresearch bias only. It may:
+
+- prioritize which hypotheses are interesting
+- prefer certain sources, surfaces, and metrics
+- bias proposal generation and comparison as a weak tie-breaker
+
+It may not:
+
+- grant runtime strategy authority
+- widen risk authority
+- override SQL or QMD evidence
+- silently control live execution behavior
 
 ## Explicitly Forbidden
 

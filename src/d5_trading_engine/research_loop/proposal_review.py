@@ -13,6 +13,14 @@ from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.research_loop.profile_governor import (
+    GovernorCandidate,
+    ProfileGovernor,
+)
+from d5_trading_engine.research_loop.research_profiles import (
+    get_research_profile,
+    summarize_research_profile,
+)
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ArtifactReference,
@@ -117,10 +125,19 @@ class ProposalReviewer:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
+        self._governor = ProfileGovernor(repo_root=self.settings.repo_root)
+
+    def _selected_research_profile(self) -> dict[str, Any]:
+        profile = get_research_profile(
+            self.settings.trader_research_profile,
+            repo_root=self.settings.repo_root,
+        )
+        return summarize_research_profile(profile)
 
     def review_proposal(self, proposal_id: str) -> dict[str, Any]:
         session = get_session(self.settings)
         review_time = utcnow()
+        selected_research_profile = self._selected_research_profile()
         try:
             proposal = (
                 session.query(ImprovementProposalV1)
@@ -147,6 +164,18 @@ class ProposalReviewer:
                 proposal_metrics=proposal_metrics,
                 proposal_reason_codes=proposal_reason_codes,
                 source_context=source_context,
+            )
+            governor_result = self._governor.evaluate_candidates(
+                [
+                    self._governor_candidate(
+                        proposal=proposal,
+                        selected_research_profile_name=selected_research_profile["name"],
+                        proposal_metrics=proposal_metrics,
+                        source_context=source_context,
+                        decision_payload=decision_payload,
+                    )
+                ],
+                selected_research_profile_name=selected_research_profile["name"],
             )
 
             review_id = f"review_{proposal.proposal_kind}_{uuid.uuid4().hex[:12]}"
@@ -202,6 +231,13 @@ class ProposalReviewer:
             "source_story_id": decision_payload["source_story_id"],
             "target_story_id": decision_payload["target_story_id"],
             "stage": decision_payload["stage"],
+            "selected_research_profile": selected_research_profile,
+            "selected_research_profile_name": selected_research_profile["name"],
+            "selected_research_profile_summary": selected_research_profile["summary"],
+            "governor_policy_id": governor_result["governor_policy_id"],
+            "governor_action": governor_result["governor_action"],
+            "governor_reason_codes": governor_result["governor_reason_codes"],
+            "governor_scorecard": governor_result["governor_scorecard"],
             "reviewed_at": review_time.isoformat(),
         }
         write_json_artifact(
@@ -224,9 +260,29 @@ class ProposalReviewer:
                     f"- decision: `{decision_payload['decision']}`",
                     f"- source owner: `{proposal.source_owner_type}:{proposal.source_owner_key}`",
                     f"- governance scope: `{proposal.governance_scope}`",
+                    f"- selected research profile: `{selected_research_profile['name']}`",
                 ],
                 sections=[
                     ("Summary", [decision_payload["summary"]]),
+                    (
+                        "Research Profile Bias",
+                        [
+                            f"- summary: {selected_research_profile['summary']}",
+                            f"- primary objective: {selected_research_profile['primary_objective']}",
+                            f"- preferred sources: `{', '.join(selected_research_profile['preferred_sources'])}`",
+                            f"- preferred surfaces: `{', '.join(selected_research_profile['preferred_surfaces'])}`",
+                            f"- preferred metrics: `{', '.join(selected_research_profile['preferred_metrics'])}`",
+                        ],
+                    ),
+                    (
+                        "Profile Governor",
+                        [
+                            f"- policy id: `{governor_result['governor_policy_id']}`",
+                            f"- action: `{governor_result['governor_action']}`",
+                            f"- disagreement: `{governor_result['governor_scorecard']['disagreement_classification']}`",
+                            f"- reason codes: `{', '.join(governor_result['governor_reason_codes']) or 'none'}`",
+                        ],
+                    ),
                     (
                         "Reason Codes",
                         [
@@ -288,6 +344,12 @@ class ProposalReviewer:
             "summary": decision_payload["summary"],
             "story_class": decision_payload["story_class"],
             "stage": decision_payload["stage"],
+            "selected_research_profile_name": selected_research_profile["name"],
+            "selected_research_profile_summary": selected_research_profile["summary"],
+            "governor_policy_id": governor_result["governor_policy_id"],
+            "governor_action": governor_result["governor_action"],
+            "governor_reason_codes": governor_result["governor_reason_codes"],
+            "governor_scorecard": governor_result["governor_scorecard"],
             "metrics": decision_payload["source_metrics"],
             "updated_at": review_time.isoformat(),
         }
@@ -602,6 +664,74 @@ class ProposalReviewer:
             "target_story_id": source_context["target_story_id"],
             "stage": source_context["stage"],
         }
+
+    def _governor_candidate(
+        self,
+        *,
+        proposal: ImprovementProposalV1,
+        selected_research_profile_name: str,
+        proposal_metrics: dict[str, Any],
+        source_context: dict[str, Any],
+        decision_payload: dict[str, Any],
+    ) -> GovernorCandidate:
+        evidence_maturity = "condition_only"
+        if proposal.proposal_kind in {"paper_cycle_follow_on", "paper_profile_adjustment_follow_on"}:
+            evidence_maturity = "paper_cycle"
+        elif proposal.proposal_kind == "strategy_eval_follow_on":
+            evidence_maturity = "strategy_eval"
+        elif proposal.proposal_kind == "label_program_follow_on":
+            evidence_maturity = "label_program"
+
+        source_metrics = source_context["source_metrics"]
+        realized_pnl = max(
+            float(source_metrics.get("paper_realized_pnl_usdc", 0.0) or 0.0),
+            float(proposal_metrics.get("realized_pnl_usdc", 0.0) or 0.0),
+        )
+        valid_coverage = float(proposal_metrics.get("valid_coverage", 0.0) or 0.0)
+        patch_size = float(proposal_metrics.get("patch_size", 0.0) or 0.0)
+        out_of_sample_score = min(
+            100.0,
+            max(
+                valid_coverage * 100.0,
+                float(source_metrics.get("paper_realized_pnl_usdc", 0.0) or 0.0) * 100.0,
+                float(proposal_metrics.get("positive_expectancy", 0.0) or 0.0) * 100.0,
+            ),
+        )
+        paper_score = min(100.0, max(realized_pnl * 100.0, float(proposal_metrics.get("realized_pnl_bps", 0.0) or 0.0)))
+        if evidence_maturity != "paper_cycle":
+            paper_score = 20.0 if decision_payload["decision"] == "reviewed_accept" else 0.0
+        stability_score = 75.0 if decision_payload["decision"] == "reviewed_accept" else 40.0
+        regime_fit_score = 80.0 if decision_payload["regime_scope"].get("semantic_regime") else 45.0
+        cost_penalty = min(
+            20.0,
+            2.0 + abs(float(source_metrics.get("paper_fill_slippage_bps", 0.0) or 0.0)) / 10.0,
+        )
+        decay_penalty = 4.0 if decision_payload["decision"] == "reviewed_accept" else 10.0
+        complexity_penalty = min(12.0, patch_size * 2.0)
+        neutral_validation_state = "pending"
+        if decision_payload["decision"] == "reviewed_accept" and evidence_maturity == "paper_cycle":
+            neutral_validation_state = "confirmed"
+        elif decision_payload["decision"] == "reviewed_reject":
+            neutral_validation_state = "failed"
+
+        return GovernorCandidate(
+            candidate_id=proposal.proposal_id,
+            profile_name=selected_research_profile_name,
+            evidence_maturity=evidence_maturity,
+            out_of_sample_score=out_of_sample_score,
+            paper_score=paper_score,
+            stability_score=stability_score,
+            regime_fit_score=regime_fit_score,
+            cost_penalty=cost_penalty,
+            decay_penalty=decay_penalty,
+            complexity_penalty=complexity_penalty,
+            disagreement_index=0.08 if neutral_validation_state == "confirmed" else 0.18,
+            eligible_for_selection=decision_payload["decision"] in {"reviewed_accept", "reviewed_hold"},
+            profile_neutral_validation_state=neutral_validation_state,
+            reason_codes=list(decision_payload["reason_codes"]),
+            evidence_refs=[decision_payload["source_artifact_path"]] if decision_payload["source_artifact_path"] else [],
+            details={"proposal_kind": proposal.proposal_kind},
+        )
 
     def _load_primary_artifact_payload(
         self,

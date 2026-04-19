@@ -154,7 +154,7 @@ def _seed_walk_forward_history(settings) -> None:
         session.close()
 
 
-def test_backtest_walk_forward_replays_windows_and_adapts_profile(
+def test_backtest_walk_forward_replays_windows_and_governor_gates_profile_adaptation(
     settings,
     monkeypatch,
 ) -> None:
@@ -234,4 +234,5 @@ def test_backtest_walk_forward_replays_windows_and_adapts_profile(
     assert len(backtest_sessions) == result["window_count"]
     assert all(row.status == "closed" for row in backtest_sessions)
     assert proposals
-    assert result["active_revision_id"] != result["starting_revision_id"]
+    assert result["active_revision_id"] == result["starting_revision_id"]
+    assert result["window_results"][0]["proposal_applied"] is False

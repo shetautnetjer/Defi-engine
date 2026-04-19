@@ -8,6 +8,20 @@ import json
 from pathlib import Path
 from typing import Any
 
+from d5_trading_engine.config.settings import Settings
+from d5_trading_engine.research_loop.profile_governor import (
+    resolve_profile_governor_decision_schema_path,
+    resolve_profile_governor_policy_path,
+    resolve_profile_governor_prompt_path,
+    resolve_profile_governor_scorecard_schema_path,
+)
+from d5_trading_engine.research_loop.research_profiles import (
+    get_research_profile,
+    resolve_research_profile_schema_path,
+    resolve_research_profiles_path,
+    summarize_research_profile,
+)
+
 
 ALLOWED_CHANGE_SURFACES = [
     "preferred strategy family",
@@ -103,6 +117,25 @@ def _relative_to_repo(path: Path | None, repo_root: Path) -> str:
         return str(path.resolve())
 
 
+def _selected_research_profile(repo_root: Path) -> dict[str, Any]:
+    env_file = repo_root / ".env"
+    settings = Settings(
+        _env_file=env_file if env_file.exists() else None,
+        repo_root=repo_root,
+    )
+    profile = get_research_profile(
+        settings.trader_research_profile,
+        repo_root=repo_root,
+    )
+    payload = summarize_research_profile(profile)
+    payload["catalog_path"] = _relative_to_repo(resolve_research_profiles_path(repo_root), repo_root)
+    payload["schema_path"] = _relative_to_repo(
+        resolve_research_profile_schema_path(repo_root),
+        repo_root,
+    )
+    return payload
+
+
 def _event_payload(event: dict[str, Any]) -> dict[str, Any]:
     payload = event.get("payload")
     return payload if isinstance(payload, dict) else {}
@@ -123,11 +156,22 @@ def resolve_training_context(event: dict[str, Any], *, repo_root: Path | None = 
     training_program = training_root / "program.md"
     training_rubric = training_root / "rubrics" / "training_regime_rubric.md"
     qmd_contract = resolved_repo_root / "docs" / "task" / "trading_qmd_report_contract.md"
+    research_profiles = resolve_research_profiles_path(resolved_repo_root)
+    research_profile_schema = resolve_research_profile_schema_path(resolved_repo_root)
+    governor_policy = resolve_profile_governor_policy_path(resolved_repo_root)
+    governor_scorecard_schema = resolve_profile_governor_scorecard_schema_path(
+        resolved_repo_root
+    )
+    governor_decision_schema = resolve_profile_governor_decision_schema_path(
+        resolved_repo_root
+    )
+    governor_prompt = resolve_profile_governor_prompt_path(resolved_repo_root)
 
     training_status = _load_json(state_root / "paper_practice_status.json")
     latest_trade_receipt = _load_json(state_root / "paper_practice_latest_trade_receipt.json")
     latest_profile_revision = _load_json(state_root / "paper_practice_latest_profile_revision.json")
     latest_source_collection = _load_json(state_root / "source_collection_status.json")
+    selected_research_profile = _selected_research_profile(resolved_repo_root)
 
     backtest_summary_path, backtest_summary = _latest_json(
         data_root / "paper_practice" / "backtests",
@@ -247,6 +291,12 @@ def resolve_training_context(event: dict[str, Any], *, repo_root: Path | None = 
         _relative_to_repo(training_program, resolved_repo_root),
         _relative_to_repo(training_rubric, resolved_repo_root),
         _relative_to_repo(qmd_contract, resolved_repo_root),
+        _relative_to_repo(research_profiles, resolved_repo_root),
+        _relative_to_repo(research_profile_schema, resolved_repo_root),
+        _relative_to_repo(governor_policy, resolved_repo_root),
+        _relative_to_repo(governor_scorecard_schema, resolved_repo_root),
+        _relative_to_repo(governor_decision_schema, resolved_repo_root),
+        _relative_to_repo(governor_prompt, resolved_repo_root),
     ]
 
     resolved_sql_refs = [str(item) for item in event.get("sql_refs", [])]
@@ -263,6 +313,21 @@ def resolve_training_context(event: dict[str, Any], *, repo_root: Path | None = 
             "training_program": _relative_to_repo(training_program, resolved_repo_root),
             "training_rubric": _relative_to_repo(training_rubric, resolved_repo_root),
             "qmd_contract": _relative_to_repo(qmd_contract, resolved_repo_root),
+            "research_profiles": _relative_to_repo(research_profiles, resolved_repo_root),
+            "research_profile_schema": _relative_to_repo(
+                research_profile_schema,
+                resolved_repo_root,
+            ),
+            "governor_policy": _relative_to_repo(governor_policy, resolved_repo_root),
+            "governor_scorecard_schema": _relative_to_repo(
+                governor_scorecard_schema,
+                resolved_repo_root,
+            ),
+            "governor_decision_schema": _relative_to_repo(
+                governor_decision_schema,
+                resolved_repo_root,
+            ),
+            "governor_prompt": _relative_to_repo(governor_prompt, resolved_repo_root),
         },
         "training_doc_read_order": training_doc_read_order,
         "allowed_change_surfaces": ALLOWED_CHANGE_SURFACES,
@@ -275,6 +340,12 @@ def resolve_training_context(event: dict[str, Any], *, repo_root: Path | None = 
         "resolved_qmd_reports": [_relative_to_repo(Path(path), resolved_repo_root) for path in resolved_qmd_reports],
         "primary_qmd_path": _relative_to_repo(primary_qmd_path, resolved_repo_root),
         "resolved_sql_refs": resolved_sql_refs,
+        "selected_research_profile": selected_research_profile,
+        "selected_research_profile_name": selected_research_profile.get("name", ""),
+        "selected_research_profile_summary": selected_research_profile.get(
+            "summary",
+            "no selected research profile available",
+        ),
     }
 
 
