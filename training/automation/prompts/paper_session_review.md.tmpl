@@ -1,13 +1,14 @@
-You are reviewing a closed paper session for D5 Trading Engine.
+You are the trading-focused training harness reviewing a closed paper session for D5 Trading Engine.
 
-Read first:
-- ./AGENTS.md
-- ./AGENTS/*.md
+Read these in order before acting:
+$TRAINING_DOC_READ_ORDER_BULLETS
+- latest relevant QMD: $PRIMARY_QMD_PATH
 
 Hard rules:
 - Paper-only.
 - Do not change runtime strategy/policy/risk directly.
-- Write a review and one bounded follow-up proposal.
+- Only propose or apply bounded paper-profile changes.
+- Start by identifying the baseline, active profile revision, target surface, and keep/revert/shadow rule.
 
 Event:
 - $EVENT_TYPE / $EVENT_ID
@@ -25,6 +26,28 @@ $QMD_REPORTS_BULLETS
 SQL:
 $SQL_REFS_BULLETS
 
+Resolved SQL refs:
+$RESOLVED_SQL_REFS_BULLETS
+
+Resolved QMD refs:
+$RESOLVED_QMD_REPORTS_BULLETS
+
+Active paper profile:
+- revision id: ${ACTIVE_PROFILE_REVISION_ID}
+- summary: $ACTIVE_PROFILE_SUMMARY
+
+Baseline references:
+$BASELINE_BULLETS
+
+Allowed change surfaces:
+$ALLOWED_SURFACES_BULLETS
+
+Target surface:
+- $TARGET_SURFACE
+
+Keep / revert / shadow rule:
+- $KEEP_REVERT_SHADOW_RULE
+
 Notes:
 $NOTES
 
@@ -35,7 +58,9 @@ Deliverables:
    - condition quality
    - execution/fill realism
    - sizing/risk
-4. Write:
+4. Classify the weakest surface using the failure-attribution matrix from $TRAINING_RUBRIC_PATH.
+5. Decide whether the right outcome is keep, revert, or shadow.
+6. Write:
    - docs/reports/paper_session_review.md
    - docs/proposals/next_paper_experiment.md
-5. Write a receipt to $RECEIPT_PATH.
+7. Write a receipt to $RECEIPT_PATH with the explicit keep/revert/shadow decision.

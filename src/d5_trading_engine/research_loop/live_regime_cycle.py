@@ -15,8 +15,9 @@ from d5_trading_engine.features.materializer import FeatureMaterializer
 from d5_trading_engine.policy.global_regime_v1 import GlobalRegimePolicyEvaluator
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.research_loop.regime_model_compare import RegimeModelComparator
+from d5_trading_engine.research_loop.training_events import append_training_event_safe
 from d5_trading_engine.risk.gate import RiskGate
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import QuoteSnapshot
@@ -142,6 +143,17 @@ class LiveRegimeCycleRunner:
             render_qmd(
                 "experiment_run.qmd",
                 title="live_regime_cycle",
+                metadata=trading_report_metadata(
+                    report_kind="live_regime_cycle",
+                    run_id=cycle_id,
+                    owner_type=owner_type,
+                    owner_key=owner_key,
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=list(self.settings.coinbase_context_symbols),
+                    timeframe="15m",
+                    summary_path="live_cycle_summary.json",
+                    config_path="config.json",
+                ),
                 summary_lines=[
                     f"- cycle id: `{cycle_id}`",
                     f"- capture steps: `{len(capture_steps)}`",
@@ -154,7 +166,7 @@ class LiveRegimeCycleRunner:
                 ],
                 sections=[
                     (
-                        "Capture Steps",
+                        "Market / Source Context",
                         [
                             f"- `{row['lane']}` -> `{row['run_id']}`"
                             for row in capture_steps
@@ -162,7 +174,7 @@ class LiveRegimeCycleRunner:
                         or ["- none"],
                     ),
                     (
-                        "Condition and Comparison",
+                        "Regime / Condition / Policy / Risk",
                         [
                             f"- semantic regime: `{condition_result['latest_snapshot']['semantic_regime']}`",
                             f"- recommended candidate: `{comparison_result['recommended_candidate']}`",
@@ -171,7 +183,7 @@ class LiveRegimeCycleRunner:
                         ],
                     ),
                     (
-                        "Paper-Ready Receipt",
+                        "Bounded Next Change",
                         [
                             f"- quote snapshot id: `{paper_ready_receipt['quote_snapshot_id']}`",
                             f"- strategy report path: `{paper_ready_receipt['recommended_strategy_report_path']}`",
@@ -185,6 +197,49 @@ class LiveRegimeCycleRunner:
             artifact_type="live_regime_cycle_report_qmd",
             artifact_format="qmd",
             settings=self.settings,
+        )
+        append_training_event_safe(
+            self.settings,
+            event_type="feature_run_completed",
+            summary="Feature materialization completed for the latest live regime cycle.",
+            owner_kind="live_regime_cycle",
+            run_id=cycle_id,
+            qmd_reports=[artifact_dir / "report.qmd"],
+            sql_refs=[
+                f"feature_run:{global_feature_run_id}",
+                f"feature_run:{spot_feature_run_id}",
+            ],
+            context_files=[
+                Path("src/d5_trading_engine/research_loop/live_regime_cycle.py"),
+                Path("src/d5_trading_engine/features/materializer.py"),
+            ],
+            notes=(
+                "Review the newest feature materialization against the accepted baseline "
+                "and keep, revert, or shadow one bounded feature/source surface."
+            ),
+        )
+        append_training_event_safe(
+            self.settings,
+            event_type="condition_run_completed",
+            summary="Condition scoring, policy tracing, and risk evaluation completed for the latest live regime cycle.",
+            owner_kind="live_regime_cycle",
+            run_id=str(condition_result["run_id"]),
+            qmd_reports=[artifact_dir / "report.qmd"],
+            sql_refs=[
+                f"condition_run:{condition_result['run_id']}",
+                f"policy_trace:{policy_result['trace_id']}",
+                f"risk_verdict:{risk_result['risk_verdict_id']}",
+            ],
+            context_files=[
+                Path("src/d5_trading_engine/research_loop/live_regime_cycle.py"),
+                Path("src/d5_trading_engine/condition/scorer.py"),
+                Path("src/d5_trading_engine/policy/global_regime_v1.py"),
+                Path("src/d5_trading_engine/risk/gate.py"),
+            ],
+            notes=(
+                "Review the latest condition and regime evidence, classify the weakest "
+                "surface, and keep, revert, or shadow one bounded condition change."
+            ),
         )
         proposal = create_improvement_proposal(
             artifact_dir=artifact_dir,

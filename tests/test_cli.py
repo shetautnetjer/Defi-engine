@@ -1071,6 +1071,30 @@ def test_cli_training_group_dispatches_json(
         },
     )
     monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.hydrate_history",
+        lambda self, **kwargs: {
+            "status": "completed",
+            "run_id": "training_hydrate_history_test",
+            "artifact_dir": "/tmp/training/hydrate-history",
+            "artifact_paths": ["/tmp/training/hydrate-history/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_hydrate_history",
+            "historical_cache_status": {"complete": False},
+            "next_command": "d5 training status --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.collect",
+        lambda self, **kwargs: {
+            "status": "completed",
+            "run_id": "training_collect_test",
+            "artifact_dir": "/tmp/training/collect",
+            "artifact_paths": ["/tmp/training/collect/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_collect",
+            "historical_cache_status": {"complete": False},
+            "next_command": "d5 training status --json",
+        },
+    )
+    monkeypatch.setattr(
         "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.walk_forward",
         lambda self: {
             "status": "completed",
@@ -1120,6 +1144,20 @@ def test_cli_training_group_dispatches_json(
     bootstrap_result = cli_runner.invoke(cli, ["training", "bootstrap", "--json"])
     assert bootstrap_result.exit_code == 0
     assert json.loads(bootstrap_result.output)["run_id"] == "training_bootstrap_test"
+
+    hydrate_history_result = cli_runner.invoke(
+        cli,
+        ["training", "hydrate-history", "--json"],
+    )
+    assert hydrate_history_result.exit_code == 0
+    assert (
+        json.loads(hydrate_history_result.output)["run_id"]
+        == "training_hydrate_history_test"
+    )
+
+    collect_result = cli_runner.invoke(cli, ["training", "collect", "--json"])
+    assert collect_result.exit_code == 0
+    assert json.loads(collect_result.output)["run_id"] == "training_collect_test"
 
     walk_forward_result = cli_runner.invoke(cli, ["training", "walk-forward", "--json"])
     assert walk_forward_result.exit_code == 0

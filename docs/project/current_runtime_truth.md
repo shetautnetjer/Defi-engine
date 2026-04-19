@@ -217,7 +217,35 @@ The current historical ladder is now bounded, explicit, and evidence-first:
 
 - `d5 capture massive-minute-aggs --full-free-tier`
 - uses the repo's Massive free-tier assumption of a 2-year minute-history window
-- preserves raw `.csv.gz` files for replay
+- preserves raw replay artifacts per day as JSONL or CSV.gz source artifacts plus partitioned Parquet for replay reads
 - normalizes only `X:SOLUSD`, `X:BTCUSD`, and `X:ETHUSD` into canonical SQL
 - feeds the canonical 15-minute regime feature lane rather than a separate
   shadow-only store
+- prefers Massive flat files when those entitlements and credentials are available
+- falls back to REST minute aggregates for incremental hydration and gap repair on plans where crypto minute flat files are unavailable
+- now supports cache-first training wrappers:
+  - `d5 training hydrate-history`
+  - `d5 training collect`
+  - `d5 training status`
+- the intended operating model is:
+  - finish the local historical cache once
+  - reuse local SQL, raw CSV.gz, and Parquet artifacts for walk-forward and review
+  - append only missing/new source data afterward
+  - avoid repulling already-cached history during continuous training
+
+The incremental source-collection owner is now explicit:
+
+- `capture/source_collection.py`
+- `d5 training collect`
+- collects the configured missing Massive slice plus fresh Jupiter, optional
+  Helius, and Coinbase data
+- writes `.ai/dropbox/state/source_collection_status.json`
+- stays subordinate to the local historical cache instead of treating provider
+  history as something to repull forever
+
+The trading evidence contract is now also explicit:
+
+- trading-facing runs converge on `config.json` + `summary.json` + `report.qmd`
+- QMD remains the human-and-LLM evidence packet with small YAML frontmatter
+- SQL remains canonical truth and Parquet remains the deep-history warehouse
+- see `docs/task/trading_qmd_report_contract.md` for the required reporting sections

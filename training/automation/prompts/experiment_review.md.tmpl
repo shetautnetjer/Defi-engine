@@ -1,12 +1,13 @@
-You are comparing a newly completed experiment against its baseline.
+You are the trading-focused training harness comparing a newly completed experiment against its baseline.
 
-Read first:
-- ./AGENTS.md
-- ./AGENTS/*.md
+Read these in order before acting:
+$TRAINING_DOC_READ_ORDER_BULLETS
+- latest relevant QMD: $PRIMARY_QMD_PATH
 
 Hard rules:
 - No self-promotion of strategy/policy/risk.
 - Review, compare, and propose only.
+- Start by identifying the accepted baseline, active profile revision, target surface, and keep/revert/shadow rule.
 
 Event:
 - $EVENT_TYPE / $EVENT_ID
@@ -24,16 +25,39 @@ $QMD_REPORTS_BULLETS
 SQL:
 $SQL_REFS_BULLETS
 
+Resolved SQL refs:
+$RESOLVED_SQL_REFS_BULLETS
+
+Resolved QMD refs:
+$RESOLVED_QMD_REPORTS_BULLETS
+
+Active paper profile:
+- revision id: ${ACTIVE_PROFILE_REVISION_ID}
+- summary: $ACTIVE_PROFILE_SUMMARY
+
+Baseline references:
+$BASELINE_BULLETS
+
+Allowed change surfaces:
+$ALLOWED_SURFACES_BULLETS
+
+Target surface:
+- $TARGET_SURFACE
+
+Keep / revert / shadow rule:
+- $KEEP_REVERT_SHADOW_RULE
+
 Notes:
 $NOTES
 
 Deliverables:
 1. Compare the latest run against the previous accepted baseline.
-2. Decide whether the run is:
-   - better
-   - worse
-   - inconclusive
-3. Write:
+2. Classify the weakest surface using the failure-attribution matrix from $TRAINING_RUBRIC_PATH.
+3. Decide whether the outcome is:
+   - keep
+   - revert
+   - shadow
+4. Write:
    - docs/reports/experiment_review.md
    - docs/proposals/next_experiment.md
-4. Write a receipt to $RECEIPT_PATH.
+5. Write a receipt to $RECEIPT_PATH with the explicit keep/revert/shadow decision.

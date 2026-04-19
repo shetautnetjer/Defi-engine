@@ -34,6 +34,12 @@
 - `docs/handoff/` = verbose human-readable continuation notes after a bounded slice is complete.
 - `docs/` and repo code/config/tests = durable repo truth; handoff notes and dropbox receipts must point back here instead of replacing it.
 
+## Superpowers Routing
+- Use `superpowers:writing-plans` before multi-step design or sequencing work.
+- Use `superpowers:executing-plans` or `superpowers:subagent-driven-development` when implementing a settled plan.
+- Use `superpowers:systematic-debugging` before non-trivial bugfixes or failing verification loops.
+- Use `superpowers:verification-before-completion` before claiming success, pushing, or handing off a bounded slice.
+
 # AGENTS.md
 
 ## Mission

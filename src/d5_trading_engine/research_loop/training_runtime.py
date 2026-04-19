@@ -7,12 +7,11 @@ from pathlib import Path
 from typing import Any
 
 import orjson
-
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -56,6 +55,67 @@ class TrainingRuntime:
             "workspace_root": "training",
             "next_command": "d5 training walk-forward --json",
             "bootstrap": result,
+        }
+
+    def hydrate_history(self, *, max_days: int | None = None) -> dict[str, Any]:
+        cache_status = self.practice.historical_cache_status()
+        if cache_status["complete"]:
+            return {
+                "status": "noop",
+                "run_id": "historical_cache_complete",
+                "artifact_dir": str(self.settings.data_dir / "research" / "massive_minute_aggs"),
+                "artifact_paths": [],
+                "active_profile_revision_id": self.practice.ensure_active_profile()["active_revision_id"],
+                "workspace_root": "training",
+                "next_command": "d5 training collect --json",
+                "historical_cache_status": cache_status,
+            }
+
+        result = self.practice.hydrate_history(max_days=max_days)
+        artifact_dir = Path(result["artifact_dir"])
+        artifact_paths = [
+            str(artifact_dir / "capture_summary.json"),
+            str(artifact_dir / "report.qmd"),
+        ]
+        return {
+            "status": result.get("status", "completed"),
+            "run_id": result.get("batch_id") or result.get("run_id") or "historical_cache",
+            "artifact_dir": str(artifact_dir),
+            "artifact_paths": artifact_paths,
+            "active_profile_revision_id": self.practice.ensure_active_profile()["active_revision_id"],
+            "workspace_root": "training",
+            "next_command": "d5 training status --json",
+            "historical_cache_status": self.practice.historical_cache_status(),
+            "hydrate_history": result,
+        }
+
+    def collect(
+        self,
+        *,
+        max_massive_days: int = 1,
+        include_helius: bool = False,
+        include_jupiter: bool = True,
+    ) -> dict[str, Any]:
+        result = self.practice.run_source_collection(
+            max_massive_days=max_massive_days,
+            include_helius=include_helius,
+            include_jupiter=include_jupiter,
+        )
+        artifact_dir = Path(result["artifact_dir"])
+        artifact_paths = [
+            str(artifact_dir / "summary.json"),
+            str(artifact_dir / "report.qmd"),
+        ]
+        return {
+            "status": result.get("status", "completed"),
+            "run_id": result["collect_id"],
+            "artifact_dir": str(artifact_dir),
+            "artifact_paths": artifact_paths,
+            "active_profile_revision_id": self.practice.ensure_active_profile()["active_revision_id"],
+            "workspace_root": "training",
+            "next_command": "d5 training status --json",
+            "historical_cache_status": result["historical_cache_after"],
+            "collect": result,
         }
 
     def walk_forward(self) -> dict[str, Any]:
@@ -109,15 +169,18 @@ class TrainingRuntime:
 
     def status(self) -> dict[str, Any]:
         payload = self.practice.get_status()
+        cache_status = self.practice.historical_cache_status()
         artifact_paths = []
         for name in (
             "paper_practice_status.json",
             "paper_practice_latest_trade_receipt.json",
             "paper_practice_latest_profile_revision.json",
+            "source_collection_status.json",
         ):
             path = self._state_path(name)
             if path.exists():
                 artifact_paths.append(str(path))
+        latest_source_collection = _load_json(self._state_path("source_collection_status.json"))
         return {
             "status": "ok",
             "run_id": payload.get("latest_loop_run_id") or "training_status",
@@ -125,7 +188,13 @@ class TrainingRuntime:
             "artifact_paths": artifact_paths,
             "active_profile_revision_id": payload["active_revision_id"],
             "workspace_root": "training",
-            "next_command": "d5 training review --json",
+            "next_command": (
+                "d5 training collect --json"
+                if not cache_status["complete"]
+                else "d5 training review --json"
+            ),
+            "historical_cache_status": cache_status,
+            "latest_source_collection": latest_source_collection,
             "training_status": payload,
         }
 
@@ -181,6 +250,18 @@ class TrainingRuntime:
             render_qmd(
                 "experiment_run.qmd",
                 title="training review",
+                metadata=trading_report_metadata(
+                    report_kind="training_review",
+                    run_id=review_id,
+                    owner_type="training_review",
+                    owner_key=review_id,
+                    profile_revision_id=status_payload["active_profile_revision_id"],
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=list(self.settings.coinbase_context_symbols),
+                    timeframe="15m",
+                    summary_path="summary.json",
+                    config_path="summary.json",
+                ),
                 summary_lines=[
                     f"- review id: `{review_id}`",
                     f"- active revision: `{summary['active_profile_revision_id']}`",
@@ -190,29 +271,48 @@ class TrainingRuntime:
                 ],
                 sections=[
                     (
-                        "Status",
+                        "Market / Source Context",
                         [
-                            f"- open session: `{summary['open_session_key'] or 'none'}`",
-                            f"- workspace root: `training/`",
-                            f"- next command: `{summary['next_command']}`",
+                            f"- historical cache complete: `{status_payload['historical_cache_status']['complete']}`",
+                            f"- next missing date: `{status_payload['historical_cache_status']['next_missing_date'] or 'none'}`",
+                            f"- latest source collection run: `{status_payload['latest_source_collection'].get('collect_id', 'none')}`",
+                            "- evidence plane: SQL as truth, QMD as review packet, thin JSON only for watcher state",
                         ],
                     ),
                     (
-                        "Backtest",
+                        "Strategy / Profile",
                         [
-                            f"- windows completed: `{summary['latest_backtest_window_count']}`",
-                        ]
-                        if summary["latest_backtest_run_id"]
-                        else ["- no historical walk-forward summary found"],
+                            f"- active profile revision: `{summary['active_profile_revision_id']}`",
+                            f"- latest profile source: `{latest_profile_revision.get('revision_id', 'none')}`",
+                            f"- workspace root: `training/`",
+                        ],
                     ),
                     (
-                        "Latest Trade Receipt",
+                        "Trade / Replay Outcome",
                         [
-                            f"- session key: `{latest_trade_receipt.get('session_key', 'none')}`",
-                            f"- close reason: `{latest_trade_receipt.get('close_reason', 'n/a')}`",
+                            f"- windows completed: `{summary['latest_backtest_window_count']}`",
+                            f"- latest trade session key: `{latest_trade_receipt.get('session_key', 'none')}`",
+                            f"- latest trade close reason: `{latest_trade_receipt.get('close_reason', 'n/a')}`",
                         ]
-                        if latest_trade_receipt
-                        else ["- no latest trade receipt found"],
+                        if summary["latest_backtest_run_id"]
+                        else ["- no historical walk-forward summary found", "- no latest trade receipt found"],
+                    ),
+                    (
+                        "Failure Attribution",
+                        [
+                            (
+                                "- weakest surface: `data coverage`"
+                                if not status_payload["historical_cache_status"]["complete"]
+                                else "- weakest surface: `inconclusive / sample too small`"
+                            ),
+                        ]
+                    ),
+                    (
+                        "Bounded Next Change",
+                        [
+                            "- default action: `keep` current profile unless a bounded review proposal beats the latest accepted baseline",
+                            f"- next command: `{summary['next_command']}`",
+                        ],
                     ),
                 ],
                 generated_at=utcnow(),

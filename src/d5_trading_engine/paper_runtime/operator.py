@@ -13,7 +13,8 @@ from d5_trading_engine.execution_intent.owner import ExecutionIntentOwner
 from d5_trading_engine.policy.global_regime_v1 import GlobalRegimePolicyEvaluator
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
+from d5_trading_engine.research_loop.training_events import append_training_event_safe
 from d5_trading_engine.research_loop.registries import load_strategy_registry
 from d5_trading_engine.risk.gate import RiskGate
 from d5_trading_engine.settlement.paper import PaperSettlement
@@ -313,6 +314,17 @@ class PaperTradeOperator:
             render_qmd(
                 "paper_cycle.qmd",
                 title=f"paper close: {session_key}",
+                metadata=trading_report_metadata(
+                    report_kind="paper_trade_close",
+                    run_id=session_key,
+                    owner_type=owner_type,
+                    owner_key=owner_key,
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=["BTC/USD", "ETH/USD"],
+                    timeframe="15m",
+                    summary_path="close_summary.json",
+                    config_path="close_summary.json",
+                ),
                 summary_lines=[
                     f"- session key: `{session_key}`",
                     f"- close reason: `{close_reason}`",
@@ -322,7 +334,7 @@ class PaperTradeOperator:
                 ],
                 sections=[
                     (
-                        "Policy and Risk",
+                        "Regime / Condition / Policy / Risk",
                         [
                             f"- policy state: `{policy_result['policy_state']}`",
                             f"- risk state: `{risk_result['risk_state']}`",
@@ -330,11 +342,12 @@ class PaperTradeOperator:
                         ],
                     ),
                     (
-                        "Portfolio",
+                        "Trade / Replay Outcome",
                         [
                             f"- session status: `{portfolio_state['session_status']}`",
                             f"- cash usdc: `{portfolio_state['cash_usdc']}`",
                             f"- total value usdc: `{portfolio_state['total_value_usdc']}`",
+                            f"- quote provider: `{quote_summary['provider']}`",
                         ],
                     ),
                 ],
@@ -345,6 +358,23 @@ class PaperTradeOperator:
             artifact_type="paper_close_report_qmd",
             artifact_format="qmd",
             settings=self.settings,
+        )
+        append_training_event_safe(
+            self.settings,
+            event_type="paper_session_closed",
+            summary="Paper session closed and wrote a bounded close report.",
+            owner_kind="paper_session",
+            run_id=session_key,
+            qmd_reports=[artifact_dir / "close_report.qmd"],
+            sql_refs=[f"paper_session:{session_key}"],
+            context_files=[
+                Path("src/d5_trading_engine/paper_runtime/operator.py"),
+                Path("src/d5_trading_engine/settlement/paper.py"),
+            ],
+            notes=(
+                "Review the close report, classify the weakest surface, and propose "
+                "one bounded keep/revert/shadow outcome."
+            ),
         )
         return {
             "session_key": session_key,
@@ -519,7 +549,7 @@ class PaperTradeOperator:
             f"- allowed regimes: `{', '.join(advisory_selection['allowed_regimes']) or 'none'}`",
             f"- auto-promotion eligible: `{advisory_selection['auto_promotion_eligible']}`",
         ]
-        quote_lines = [
+        market_context_lines = [
             f"- quote snapshot id: `{quote_summary['quote_snapshot_id']}`",
             f"- pair: `{quote_summary['input_symbol']}` -> `{quote_summary['output_symbol']}`",
             f"- provider: `{quote_summary['provider']}`",
@@ -527,89 +557,94 @@ class PaperTradeOperator:
             f"- input amount: `{quote_summary['input_amount']}`",
             f"- output amount: `{quote_summary['output_amount']}`",
             f"- captured at: `{quote_summary['captured_at']}`",
+            "- execution venue remains paper-only; Coinbase futures/perps remain context-only inputs",
         ]
-        policy_lines = [
+        regime_lines = [
             f"- condition run: `{policy_result['condition_run_id']}`",
             f"- semantic regime: `{policy_result['semantic_regime']}`",
             f"- policy state: `{policy_result['policy_state']}`",
             f"- risk state: `{risk_result['risk_state']}`",
             f"- risk allowed: `{risk_result['allowed']}`",
+            f"- regime aligned: `{strategy_alignment['regime_aligned']}`",
+            f"- actionable long entry: `{strategy_alignment['actionable_long_entry']}`",
         ]
-        intent_lines = [
+        outcome_lines = [
             f"- execution intent id: `{execution_intent['execution_intent_id']}`",
             f"- intent state: `{execution_intent['intent_state']}`",
             f"- settlement model: `{execution_intent['settlement_model']}`",
             f"- quote size lamports: `{execution_intent['quote_size_lamports']}`",
-        ]
-        settlement_lines = [
             f"- session key: `{settlement_result['session_key']}`",
             f"- session status: `{settlement_result['session_status']}`",
             f"- filled: `{settlement_result['filled']}`",
             f"- session id: `{settlement_result['session_id']}`",
             f"- report id: `{settlement_result['report_id']}`",
-        ]
-        portfolio_lines = [
             f"- cash usdc: `{portfolio_state.get('cash_usdc')}`",
             f"- position value usdc: `{portfolio_state.get('position_value_usdc')}`",
             f"- total value usdc: `{portfolio_state.get('total_value_usdc')}`",
             f"- positions: `{len(portfolio_state.get('positions') or [])}`",
         ]
-        risk_lines = self._reason_lines(
-            title="Risk reason codes",
-            codes=[str(item) for item in (risk_result.get("reason_codes") or [])],
-        )
-        intent_reason_lines = self._reason_lines(
-            title="Execution intent reason codes",
-            codes=[str(item) for item in (execution_intent.get("reason_codes") or [])],
-        )
-        settlement_reason_lines = self._reason_lines(
-            title="Settlement reason codes",
-            codes=[str(item) for item in (settlement_result.get("reason_codes") or [])],
-        )
-        open_risks = [
-            "- mint selection remains explicit via `quote_snapshot_id`; the advisory selector is still family-level only",
-            "- the current runtime owner supports bounded spot long-entry semantics only; short and stand-aside advisories resolve as no-trade receipts",
+        reason_codes = [
+            *[f"- risk: `{code}`" for code in (risk_result.get("reason_codes") or [])],
+            *[
+                f"- execution intent: `{code}`"
+                for code in (execution_intent.get("reason_codes") or [])
+            ],
+            *[
+                f"- settlement: `{code}`"
+                for code in (settlement_result.get("reason_codes") or [])
+            ],
+        ] or ["- none"]
+        if not settlement_result.get("filled"):
+            failure_attribution = "- weakest surface: `no-trade was correct`"
+        elif not strategy_alignment.get("regime_aligned"):
+            failure_attribution = "- weakest surface: `regime/condition issue`"
+        elif not risk_result.get("allowed"):
+            failure_attribution = "- weakest surface: `risk issue`"
+        else:
+            failure_attribution = "- weakest surface: `inconclusive / sample too small`"
+        bounded_next_change = [
+            "- default action: `shadow` one bounded follow-on paper cycle before widening scope",
+            "- keep runtime authority paper-only and route any profile change through proposal review/comparison",
+        ]
+        artifact_refs = [
+            f"- strategy alignment trace: `{settlement_result['session_key']}`",
+            f"- paper session id: `{settlement_result['session_id']}`",
+            f"- paper session report id: `{settlement_result['report_id']}`",
+            f"- config path: `{config_payload['artifact_dir']}/config.json`",
+            f"- summary path: `{config_payload['artifact_dir']}/cycle_summary.json`",
         ]
 
         return render_qmd(
             "paper_cycle.qmd",
             title="paper_trade_cycle",
             generated_at=cycle_started_at,
+            metadata=trading_report_metadata(
+                report_kind="paper_trade_cycle",
+                run_id=str(settlement_result["session_key"]),
+                owner_type="paper_session",
+                owner_key=str(settlement_result["session_key"]),
+                instrument_scope=["SOL/USDC"],
+                context_instruments=["BTC/USD", "ETH/USD"],
+                timeframe="15m",
+                summary_path="cycle_summary.json",
+                config_path="config.json",
+            ),
             summary_lines=[
                 f"- started at utc: `{config_payload['paper_cycle_started_at_utc']}`",
                 f"- artifact dir: `{config_payload['artifact_dir']}`",
+                f"- condition run id: `{policy_result['condition_run_id']}`",
+                f"- active top family: `{advisory_selection['top_family']}`",
             ],
             sections=[
-                ("Advisory Strategy", strategy_lines),
-                ("Quote Input", quote_lines),
-                (
-                    "Policy and Risk",
-                    [
-                        *policy_lines,
-                        f"- regime aligned: `{strategy_alignment['regime_aligned']}`",
-                        f"- actionable long entry: `{strategy_alignment['actionable_long_entry']}`",
-                    ],
-                ),
-                ("Risk reason codes", [item for item in risk_lines if not item.startswith("## ")]),
-                ("Execution Intent", intent_lines),
-                (
-                    "Execution intent reason codes",
-                    [item for item in intent_reason_lines if not item.startswith("## ")],
-                ),
-                ("Settlement", settlement_lines),
-                (
-                    "Settlement reason codes",
-                    [item for item in settlement_reason_lines if not item.startswith("## ")],
-                ),
-                ("Portfolio Snapshot", portfolio_lines),
-                ("Open Risks", open_risks),
+                ("Strategy / Profile", strategy_lines),
+                ("Market / Source Context", market_context_lines),
+                ("Regime / Condition / Policy / Risk", [*regime_lines, *reason_codes]),
+                ("Trade / Replay Outcome", outcome_lines),
+                ("Failure Attribution", [failure_attribution]),
+                ("Bounded Next Change", bounded_next_change),
+                ("Artifact / SQL References", artifact_refs),
             ],
         )
-
-    def _reason_lines(self, *, title: str, codes: list[str]) -> list[str]:
-        if not codes:
-            return [f"## {title}", "", "- none"]
-        return [f"## {title}", "", *[f"- `{code}`" for code in codes]]
 
     def _symbol_for_mint(self, mint: str) -> str:
         return self.settings.token_symbol_hints.get(mint, mint[:8])

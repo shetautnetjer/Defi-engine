@@ -5,6 +5,10 @@ EVENT_FILE=""
 RULES_FILE=""
 RECEIPTS_DIR=""
 DRY_RUN=0
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AUTOMATION_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+TRAINING_ROOT="$(cd -- "${AUTOMATION_ROOT}/.." && pwd)"
+DEFAULT_REPO_ROOT="$(cd -- "${TRAINING_ROOT}/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,6 +42,7 @@ print(cfg.get('template', 'automation/prompts/generic_review.md.tmpl'))
 print(str(receipt))
 print(event.get('event_id', 'unknown'))
 print(event.get('event_type', 'unknown'))
+print(event.get('repo_root', ''))
 PY
 )
 
@@ -46,9 +51,17 @@ TEMPLATE="${META[1]}"
 RECEIPT_PATH="${META[2]}"
 EVENT_ID="${META[3]}"
 EVENT_TYPE="${META[4]}"
+TARGET_REPO_ROOT="${META[5]}"
+if [[ -z "${TARGET_REPO_ROOT}" ]]; then
+  TARGET_REPO_ROOT="${DEFAULT_REPO_ROOT}"
+fi
 
 TMP_PROMPT="$(mktemp)"
-python3 automation/bin/render_prompt.py \
+if [[ "${TEMPLATE}" != /* ]]; then
+  TEMPLATE="${TRAINING_ROOT}/${TEMPLATE}"
+fi
+
+python3 "${SCRIPT_DIR}/render_prompt.py" \
   --event-file "${EVENT_FILE}" \
   --template "${TEMPLATE}" \
   --receipt-path "${RECEIPT_PATH}" \
@@ -75,12 +88,13 @@ fi
 
 PROMPT_TEXT="$(cat "${TMP_PROMPT}")"
 CMD=()
+LAST_MESSAGE="${RECEIPTS_DIR}/codex_${EVENT_ID}.last_message.md"
 
 if [[ ${USE_EXEC} -eq 1 ]]; then
-  CMD=("${CODEX_BIN}" "exec" "${MODE_FLAGS[@]}" "${PROMPT_TEXT}")
+  CMD=("${CODEX_BIN}" "exec" "--json" "-C" "${TARGET_REPO_ROOT}" "--output-last-message" "${LAST_MESSAGE}" "${MODE_FLAGS[@]}" "${PROMPT_TEXT}")
 else
   # Best-effort fallback for builds that expose direct prompt + quiet mode.
-  CMD=("${CODEX_BIN}" "${MODE_FLAGS[@]}" "-q" "${PROMPT_TEXT}")
+  CMD=("${CODEX_BIN}" "-C" "${TARGET_REPO_ROOT}" "${MODE_FLAGS[@]}" "-q" "${PROMPT_TEXT}")
 fi
 
 LOG_JSONL="${RECEIPTS_DIR}/codex_${EVENT_ID}.jsonl"
@@ -97,6 +111,8 @@ STDERR_LOG="${RECEIPTS_DIR}/codex_${EVENT_ID}.stderr.log"
   echo "- prompt_file: ${TMP_PROMPT}"
   echo "- codex_bin: ${CODEX_BIN}"
   echo "- used_exec: ${USE_EXEC}"
+  echo "- repo_root: ${TARGET_REPO_ROOT}"
+  echo "- last_message: ${LAST_MESSAGE}"
   echo "- dry_run: ${DRY_RUN}"
   echo
   echo "## Command"
@@ -121,9 +137,13 @@ fi
 # Preserve the prompt that was used.
 cp "${TMP_PROMPT}" "${RECEIPTS_DIR}/prompt_${EVENT_ID}.md"
 
-# Execute Codex; if exec supports JSON, callers can point CODEX_BIN to a wrapper that adds extra flags.
+# Execute Codex with JSON output when exec is available.
 set +e
-"${CMD[@]}" > >(tee "${STDOUT_LOG}") 2> >(tee "${STDERR_LOG}" >&2)
+if [[ ${USE_EXEC} -eq 1 ]]; then
+  "${CMD[@]}" > >(tee "${STDOUT_LOG}" "${LOG_JSONL}") 2> >(tee "${STDERR_LOG}" >&2)
+else
+  "${CMD[@]}" > >(tee "${STDOUT_LOG}") 2> >(tee "${STDERR_LOG}" >&2)
+fi
 RC=$?
 set -e
 

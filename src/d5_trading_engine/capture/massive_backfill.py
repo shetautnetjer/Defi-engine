@@ -14,7 +14,7 @@ from d5_trading_engine.capture.runner import CaptureRunner
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import MarketCandle
 
@@ -57,6 +57,74 @@ class MassiveMinuteAggsBackfill:
         end_date = today_utc - timedelta(days=1)
         start_date = today_utc - timedelta(days=self.settings.massive_free_tier_lookback_days)
         return start_date.isoformat(), end_date.isoformat()
+
+    def historical_cache_status(self) -> dict[str, Any]:
+        """Return bounded cache completeness for the fixed free-tier history window."""
+        start_date, end_date = self.resolve_full_free_tier_window()
+        expected_tickers = list(self.settings.massive_default_tickers)
+        completed_days: list[str] = []
+        missing_days: list[str] = []
+        for current_day in _iter_dates(_parse_iso_date(start_date), _parse_iso_date(end_date)):
+            day_str = current_day.isoformat()
+            if self._day_is_complete(day_str, expected_tickers):
+                completed_days.append(day_str)
+            else:
+                missing_days.append(day_str)
+
+        return {
+            "entitlement_assumption": _ENTITLEMENT_ASSUMPTION,
+            "resolved_start_date": start_date,
+            "resolved_end_date": end_date,
+            "default_tickers": expected_tickers,
+            "requested_day_count": len(completed_days) + len(missing_days),
+            "completed_day_count": len(completed_days),
+            "missing_day_count": len(missing_days),
+            "complete": len(missing_days) == 0,
+            "earliest_completed_date": completed_days[0] if completed_days else "",
+            "latest_completed_date": completed_days[-1] if completed_days else "",
+            "next_missing_date": missing_days[0] if missing_days else "",
+        }
+
+    async def backfill_missing_full_free_tier(
+        self,
+        *,
+        max_days: int | None = None,
+        resume: bool = True,
+    ) -> dict[str, Any]:
+        """Backfill only the missing segment of the bounded free-tier window."""
+        cache_status = self.historical_cache_status()
+        if cache_status["complete"]:
+            return {
+                "batch_id": "",
+                "capture_type": "massive-minute-aggs",
+                "status": "noop",
+                "mode": "incremental_missing",
+                "resume": resume,
+                "entitlement_assumption": _ENTITLEMENT_ASSUMPTION,
+                "resolved_start_date": cache_status["resolved_start_date"],
+                "resolved_end_date": cache_status["resolved_end_date"],
+                "days": {
+                    "requested_count": 0,
+                    "captured_count": 0,
+                    "skipped_count": int(cache_status["completed_day_count"]),
+                    "failed_count": 0,
+                },
+                "historical_cache_status": cache_status,
+                "recommended_next_step": "Continue with incremental live/source collection only.",
+                "generated_at": utcnow().isoformat(),
+            }
+
+        start = _parse_iso_date(str(cache_status["next_missing_date"]))
+        end = _parse_iso_date(str(cache_status["resolved_end_date"]))
+        if max_days is not None and max_days > 0:
+            bounded_end = start + timedelta(days=max_days - 1)
+            end = min(end, bounded_end)
+        return await self.backfill_range(
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            resume=resume,
+            mode="incremental_missing",
+        )
 
     async def backfill_range(
         self,
@@ -157,19 +225,166 @@ class MassiveMinuteAggsBackfill:
             mode="full_free_tier",
         )
 
+    async def backfill_missing_full_free_tier(
+        self,
+        *,
+        max_days: int | None = None,
+        resume: bool = True,
+    ) -> dict[str, Any]:
+        cache_status = self.historical_cache_status()
+        if cache_status["complete"]:
+            start_date = cache_status["resolved_start_date"]
+            end_date = cache_status["resolved_end_date"]
+            return {
+                "status": "noop",
+                "batch_id": "historical_cache_complete",
+                "mode": "incremental_missing",
+                "resume": resume,
+                "entitlement_assumption": _ENTITLEMENT_ASSUMPTION,
+                "resolved_start_date": start_date,
+                "resolved_end_date": end_date,
+                "lookback_days": self.settings.massive_free_tier_lookback_days,
+                "default_tickers": list(self.settings.massive_default_tickers),
+                "days": {
+                    "requested_count": 0,
+                    "captured_count": 0,
+                    "skipped_count": 0,
+                    "failed_count": 0,
+                },
+                "captured_runs": [],
+                "skipped_days": [],
+                "failed_days": [],
+                "historical_cache_before": cache_status,
+                "historical_cache_after": cache_status,
+                "recommended_next_step": (
+                    "Historical Massive cache is already complete. "
+                    "Use incremental source collection instead of repulling history."
+                ),
+                "generated_at": utcnow().isoformat(),
+            }
+
+        start_date = _parse_iso_date(cache_status["next_missing_date"])
+        end_date = _parse_iso_date(cache_status["resolved_end_date"])
+        if max_days is not None:
+            if max_days <= 0:
+                raise RuntimeError("max_days must be positive when provided.")
+            bounded_end = start_date + timedelta(days=max_days - 1)
+            end_date = min(end_date, bounded_end)
+
+        return await self.backfill_range(
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            resume=resume,
+            mode="incremental_missing",
+        )
+
+    def historical_cache_status(self) -> dict[str, Any]:
+        start_date, end_date = self.resolve_full_free_tier_window()
+        start = _parse_iso_date(start_date)
+        end = _parse_iso_date(end_date)
+        expected_tickers = list(self.settings.massive_default_tickers)
+        expected_count = len(expected_tickers)
+        expected_ticker_set = {ticker.upper() for ticker in expected_tickers}
+        normalized_by_date = self._normalized_tickers_by_date(
+            start_date=start_date,
+            end_date=end_date,
+            expected_tickers=expected_tickers,
+        )
+
+        completed_dates: list[str] = []
+        next_missing_date: str | None = None
+        for current_day in _iter_dates(start, end):
+            current_date_str = current_day.isoformat()
+            raw_present = self._raw_day_present(current_date_str)
+            parquet_present = self._parquet_day_present(current_date_str)
+            normalized_tickers = normalized_by_date.get(current_date_str, set())
+            if raw_present and parquet_present and normalized_tickers == expected_ticker_set:
+                completed_dates.append(current_date_str)
+                continue
+            if next_missing_date is None:
+                next_missing_date = current_date_str
+
+        requested_day_count = (end - start).days + 1
+        completed_day_count = len(completed_dates)
+        missing_day_count = max(0, requested_day_count - completed_day_count)
+        return {
+            "entitlement_assumption": _ENTITLEMENT_ASSUMPTION,
+            "resolved_start_date": start_date,
+            "resolved_end_date": end_date,
+            "default_tickers": expected_tickers,
+            "expected_ticker_count": expected_count,
+            "requested_day_count": requested_day_count,
+            "completed_day_count": completed_day_count,
+            "parquet_complete_day_count": completed_day_count,
+            "missing_day_count": missing_day_count,
+            "complete": missing_day_count == 0,
+            "earliest_completed_date": completed_dates[0] if completed_dates else "",
+            "latest_completed_date": completed_dates[-1] if completed_dates else "",
+            "next_missing_date": next_missing_date or "",
+            "generated_at": utcnow().isoformat(),
+        }
+
+    def _raw_day_present(self, date_str: str) -> bool:
+        raw_dir = self.settings.raw_dir / "massive" / date_str
+        return any(raw_dir.glob(f"minute_aggs_{date_str}_*"))
+
+    def _parquet_day_present(self, date_str: str) -> bool:
+        parquet_dir = (
+            self.settings.parquet_dir
+            / "massive"
+            / "global_crypto"
+            / "minute_aggs_v1"
+            / f"date={date_str}"
+        )
+        return any(parquet_dir.glob("minute_aggs_*.parquet"))
+
+    def _normalized_tickers_by_date(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        expected_tickers: list[str],
+    ) -> dict[str, set[str]]:
+        session = get_session(self.settings)
+        try:
+            rows = (
+                session.query(MarketCandle.event_date_utc, MarketCandle.product_id)
+                .filter_by(venue="massive", granularity="ONE_MINUTE")
+                .filter(MarketCandle.product_id.in_(expected_tickers))
+                .filter(MarketCandle.event_date_utc >= start_date)
+                .filter(MarketCandle.event_date_utc <= end_date)
+                .distinct()
+                .all()
+            )
+        finally:
+            session.close()
+
+        normalized_by_date: dict[str, set[str]] = {}
+        for event_date_utc, product_id in rows:
+            normalized_by_date.setdefault(str(event_date_utc), set()).add(str(product_id).upper())
+        return normalized_by_date
+
     def _boundary_urls(self, start_date: str, end_date: str) -> dict[str, str]:
         from d5_trading_engine.adapters.massive.client import MassiveClient
 
         client = MassiveClient(self.settings)
+        sample_ticker = self.settings.massive_default_tickers[0]
         return {
-            "oldest_requested_url": client.build_minute_aggs_url(start_date),
-            "newest_requested_url": client.build_minute_aggs_url(end_date),
+            "historical_source_mode": "flat_files_first_with_rest_incremental_fallback",
+            "flatfile_dataset": "global_crypto/minute_aggs_v1",
+            "boundary_sample_ticker": sample_ticker,
+            "oldest_flatfile_url": client.build_minute_aggs_url(start_date),
+            "newest_flatfile_url": client.build_minute_aggs_url(end_date),
+            "oldest_requested_url": client.build_minute_aggs_rest_url(sample_ticker, start_date),
+            "newest_requested_url": client.build_minute_aggs_rest_url(sample_ticker, end_date),
         }
 
     def _day_is_complete(self, date_str: str, expected_tickers: list[str]) -> bool:
         raw_dir = self.settings.raw_dir / "massive" / date_str
-        raw_present = any(raw_dir.glob(f"minute_aggs_{date_str}_*.csv.gz"))
+        raw_present = any(raw_dir.glob(f"minute_aggs_{date_str}_*"))
         if not raw_present:
+            return False
+        if not self._parquet_day_present(date_str):
             return False
 
         expected_ticker_set = {ticker.upper() for ticker in expected_tickers}
@@ -299,6 +514,16 @@ class MassiveMinuteAggsBackfill:
             render_qmd(
                 "capture_run.qmd",
                 title="massive_minute_aggs_backfill",
+                metadata=trading_report_metadata(
+                    report_kind="massive_minute_aggs_backfill",
+                    run_id=batch_id,
+                    owner_type=owner_type,
+                    owner_key=owner_key,
+                    instrument_scope=["SOL/USD", "BTC/USD", "ETH/USD"],
+                    timeframe="1m",
+                    summary_path="capture_summary.json",
+                    config_path="config.json",
+                ),
                 summary_lines=[
                     f"- batch id: `{batch_id}`",
                     f"- status: `{payload['status']}`",
@@ -315,10 +540,13 @@ class MassiveMinuteAggsBackfill:
                         "History Window",
                         [
                             f"- entitlement assumption: `{payload['entitlement_assumption']}`",
+                            "- warehouse contract: raw `CSV.gz` + partitioned `Parquet` + normalized `SQL`",
                             f"- oldest requested day: `{payload['boundary_verification']['oldest_requested_day']}`",
                             f"- newest requested day: `{payload['boundary_verification']['newest_requested_day']}`",
-                            f"- oldest requested url: `{payload['boundary_verification']['oldest_requested_url']}`",
-                            f"- newest requested url: `{payload['boundary_verification']['newest_requested_url']}`",
+                            f"- oldest flatfile url: `{payload['boundary_verification']['oldest_flatfile_url']}`",
+                            f"- newest flatfile url: `{payload['boundary_verification']['newest_flatfile_url']}`",
+                            f"- oldest rest url: `{payload['boundary_verification']['oldest_requested_url']}`",
+                            f"- newest rest url: `{payload['boundary_verification']['newest_requested_url']}`",
                         ],
                     ),
                     (

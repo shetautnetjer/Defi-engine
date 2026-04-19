@@ -17,7 +17,8 @@ Notes:
 - `FRED` captures require `FRED_API_KEY`
 - `Helius` discovery, transaction, and websocket capture require tracked addresses to be configured
 - `Massive` reference/snapshot capture requires `MASSIVE_API_KEY`
-- `Massive` historical minute-aggregate replay requires `MASSIVE_FLATFILES_KEY`
+- `Massive` historical minute-aggregate replay prefers flat files when the account has crypto minute-flatfile entitlements and usable flat-file credentials
+- current free/basic plans may need to keep using REST minute aggregates for incremental hydration and gap repair; verify the current Massive plan before assuming bulk crypto minute flat files are available
 
 ## Setup
 
@@ -43,6 +44,12 @@ Expected outcome:
 - `data/db/d5_analytics.duckdb` is not created until you sync DuckDB
 - `data/raw/` and `data/parquet/` provider directories are created
 - `d5 status` may still show no ingest runs if you have not captured anything yet
+
+Storage contract:
+
+- raw JSONL and CSV.gz source artifacts land under `data/raw/`
+- partitioned Parquet replay artifacts land under `data/parquet/`
+- canonical normalized/runtime truth stays in SQLite
 
 ## Safe First Captures
 
@@ -81,6 +88,18 @@ d5 capture massive-minute-aggs --date 2026-04-16
 
 Massive remains bounded in scope. It is a first-pass reference and historical
 source, not a widening into live authority or unrestricted market coverage.
+
+For historical hydration:
+
+```bash
+d5 training hydrate-history --json
+```
+
+That wrapper is cache-first:
+
+- it fills only the missing slice of the bounded Massive history window
+- it preserves raw source artifacts and Parquet partitions for later replay
+- it avoids repulling already-cached history during continuous training
 
 ## Sync Into DuckDB
 

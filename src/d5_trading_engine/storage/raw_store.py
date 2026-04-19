@@ -12,7 +12,9 @@ import os
 import tempfile
 from pathlib import Path
 
+import duckdb
 import orjson
+import pandas as pd
 
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.common.logging import get_logger
@@ -45,6 +47,22 @@ class RawStore:
         """
         partition = partition or date_partition()
         d = self.settings.raw_dir / provider / partition
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _parquet_partition_dir(
+        self,
+        provider: str,
+        dataset: str,
+        partition: str | None = None,
+    ) -> Path:
+        """Get or create a partitioned parquet directory for a provider dataset."""
+        partition = partition or date_partition()
+        dataset_parts = [part for part in Path(dataset).parts if part not in {".", ""}]
+        d = self.settings.parquet_dir / provider
+        for part in dataset_parts:
+            d = d / part
+        d = d / f"date={partition}"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
@@ -181,5 +199,56 @@ class RawStore:
             capture_type=capture_type,
             path=str(target),
             size_bytes=len(content),
+        )
+        return target
+
+    def write_parquet_rows(
+        self,
+        provider: str,
+        dataset: str,
+        capture_type: str,
+        rows: list[dict],
+        *,
+        partition: str | None = None,
+    ) -> Path:
+        """Write row-oriented records to a parquet file atomically."""
+        if not rows:
+            log.warning(
+                "raw_store_parquet_empty",
+                provider=provider,
+                dataset=dataset,
+                capture_type=capture_type,
+            )
+            return Path()
+
+        partition_dir = self._parquet_partition_dir(provider, dataset, partition=partition)
+        now = utcnow()
+        filename = f"{capture_type}_{now.strftime('%H%M%S')}_{os.getpid()}.parquet"
+        target = partition_dir / filename
+        tmp_target = target.with_suffix(".parquet.tmp")
+
+        frame = pd.DataFrame(rows)
+        conn = duckdb.connect()
+        try:
+            conn.register("rows_df", frame)
+            conn.execute(
+                "COPY rows_df TO ? (FORMAT PARQUET, COMPRESSION ZSTD)",
+                [str(tmp_target)],
+            )
+            os.rename(tmp_target, str(target))
+        except Exception:
+            if tmp_target.exists():
+                tmp_target.unlink()
+            raise
+        finally:
+            conn.close()
+
+        log.info(
+            "raw_store_parquet_written",
+            provider=provider,
+            dataset=dataset,
+            capture_type=capture_type,
+            path=str(target),
+            records=len(rows),
         )
         return target

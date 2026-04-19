@@ -1,4 +1,4 @@
-You are the trading-focused training harness reviewing a newly completed condition/regime run for D5 Trading Engine.
+You are the trading-focused training harness reviewing a newly completed feature run for D5 Trading Engine.
 
 Read these in order before acting:
 $TRAINING_DOC_READ_ORDER_BULLETS
@@ -6,8 +6,8 @@ $TRAINING_DOC_READ_ORDER_BULLETS
 
 Hard rules:
 - Do not patch trading authority.
-- Do not change strategy/policy/risk in this task.
-- Review condition quality only unless the evidence clearly supports one bounded follow-on proposal.
+- Do not mutate policy YAML, risk code, or the canonical strategy registry.
+- Keep changes bounded to feature or source/timeframe selection surfaces.
 
 Event:
 - $EVENT_TYPE / $EVENT_ID
@@ -38,6 +38,9 @@ Active paper profile:
 Baseline references:
 $BASELINE_BULLETS
 
+Allowed change surfaces:
+$ALLOWED_SURFACES_BULLETS
+
 Target surface:
 - $TARGET_SURFACE
 
@@ -48,16 +51,11 @@ Notes:
 $NOTES
 
 Deliverables:
-1. Read the latest condition evidence.
-2. Check for:
-   - excessive regime flips
-   - confidence collapse
-   - stale-input failures
-   - semantic label mismatch
+1. Read the latest feature evidence.
+2. Check whether the new feature surface improves downstream trading relevance, not just offline fit.
 3. Classify the weakest surface using the failure-attribution matrix from $TRAINING_RUBRIC_PATH.
 4. Decide whether the right result is keep, revert, or shadow.
 5. Write:
-   - docs/reports/condition_review.md
-   - docs/proposals/next_condition_experiment.md
-6. Keep recommendations bounded and comparable.
-7. Also write a receipt to $RECEIPT_PATH with the explicit keep/revert/shadow decision.
+   - docs/reports/feature_review.md
+   - docs/proposals/next_feature_experiment.md
+6. Write a receipt to $RECEIPT_PATH with the explicit keep/revert/shadow decision.

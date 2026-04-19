@@ -24,7 +24,7 @@ from d5_trading_engine.common.logging import get_logger
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.storage.raw_store import RawStore
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import IngestRun, SourceHealthEvent
@@ -212,6 +212,14 @@ class CaptureRunner:
             render_qmd(
                 "capture_run.qmd",
                 title=f"capture_{run.provider}_{run.capture_type}",
+                metadata=trading_report_metadata(
+                    report_kind="capture_run",
+                    run_id=run.run_id,
+                    owner_type=owner_type,
+                    owner_key=owner_key,
+                    summary_path="capture_summary.json",
+                    config_path="config.json",
+                ),
                 summary_lines=[
                     f"- run id: `{run.run_id}`",
                     f"- provider: `{run.provider}`",
@@ -1170,7 +1178,7 @@ class CaptureRunner:
         allowed_tickers: list[str] | None = None,
         partition: str | None = None,
     ) -> str:
-        """Capture a replayable Massive minute-aggregate flat file for one UTC date."""
+        """Capture a replayable Massive minute-aggregate day for one UTC date."""
         from d5_trading_engine.adapters.massive.client import MassiveClient
         from d5_trading_engine.normalize.massive.normalizer import MassiveNormalizer
         from d5_trading_engine.storage.truth.models import RawMassiveCryptoEvent
@@ -1181,16 +1189,52 @@ class CaptureRunner:
         try:
             client = MassiveClient(self.settings)
             try:
-                raw_content = await client.download_minute_aggs(date_str)
-                rows = client.parse_minute_aggs_csv(raw_content)
+                source_mode = "flatfile"
+                parquet_dataset = "global_crypto/minute_aggs_v1"
+                try:
+                    raw_content = await client.download_minute_aggs(date_str)
+                    rows = client.parse_minute_aggs_csv(raw_content)
+                    raw_path = self.raw_store.write_bytes(
+                        "massive",
+                        f"minute_aggs_{date_str}",
+                        raw_content,
+                        suffix=".csv.gz",
+                        partition=partition or date_str,
+                    )
+                    source_event_type = "minute_aggs_flatfile"
+                except AdapterError as exc:
+                    if exc.status_code != 404:
+                        raise
+                    source_mode = "rest"
+                    payloads = await client.fetch_minute_aggs_rest(
+                        date_str,
+                        tickers=allowed_tickers or self.settings.massive_default_tickers,
+                    )
+                    rows = client.parse_minute_aggs_rest_payloads(payloads)
+                    raw_path = self.raw_store.write_jsonl(
+                        "massive",
+                        f"minute_aggs_{date_str}",
+                        [
+                            {
+                                "date": date_str,
+                                "mode": source_mode,
+                                "ticker": ticker,
+                                "response": payload,
+                            }
+                            for ticker, payload in sorted(payloads.items())
+                        ],
+                        run_id,
+                        partition=partition or date_str,
+                    )
+                    source_event_type = "minute_aggs_rest"
             finally:
                 await client.close()
 
-            raw_path = self.raw_store.write_bytes(
+            parquet_path = self.raw_store.write_parquet_rows(
                 "massive",
+                parquet_dataset,
                 f"minute_aggs_{date_str}",
-                raw_content,
-                suffix=".csv.gz",
+                rows,
                 partition=partition or date_str,
             )
             captured_at = utcnow()
@@ -1200,11 +1244,14 @@ class CaptureRunner:
                     {
                         "ingest_run_id": run_id,
                         "provider": "massive",
-                        "event_type": "minute_aggs_flatfile",
+                        "event_type": source_event_type,
                         "payload": orjson.dumps(
                             {
                                 "date": date_str,
+                                "source_mode": source_mode,
                                 "flatfile_path": str(raw_path),
+                                "parquet_path": str(parquet_path),
+                                "parquet_dataset": parquet_dataset,
                                 "row_count": len(rows),
                                 "normalized_tickers": list(
                                     allowed_tickers or self.settings.massive_default_tickers
@@ -1221,11 +1268,11 @@ class CaptureRunner:
                 allowed_tickers=allowed_tickers,
             )
             elapsed_ms = (time.monotonic() - start) * 1000
-            self._log_health("massive", "minute_aggs_flatfile", True, elapsed_ms)
+            self._log_health("massive", f"minute_aggs_{source_mode}", True, elapsed_ms)
             self._finish_ingest_run(run_id, "success", count)
         except Exception as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
-            self._log_health("massive", "minute_aggs_flatfile", False, elapsed_ms, error=str(exc))
+            self._log_health("massive", "minute_aggs_day", False, elapsed_ms, error=str(exc))
             self._finish_ingest_run(run_id, "failed", error=str(exc))
             log.error("massive_minute_aggs_failed_closed", error=str(exc), date=date_str)
             raise CaptureError(f"Massive minute aggregates capture failed closed: {exc}") from exc

@@ -13,6 +13,7 @@ import orjson
 import pandas as pd
 from sqlalchemy import desc
 
+from d5_trading_engine.capture.source_collection import BackgroundSourceCollector
 from d5_trading_engine.capture.massive_backfill import MassiveMinuteAggsBackfill
 from d5_trading_engine.capture.runner import CaptureRunner
 from d5_trading_engine.common.time_utils import ensure_utc, utcnow
@@ -22,11 +23,12 @@ from d5_trading_engine.features.materializer import FeatureMaterializer
 from d5_trading_engine.paper_runtime.operator import PaperTradeOperator
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.research_loop.live_regime_cycle import LiveRegimeCycleRunner
 from d5_trading_engine.research_loop.proposal_comparison import ProposalComparator
 from d5_trading_engine.research_loop.proposal_review import ProposalReviewer
 from d5_trading_engine.research_loop.regime_model_compare import RegimeModelComparator
+from d5_trading_engine.research_loop.training_events import append_training_event_safe
 from d5_trading_engine.settlement.backtest import BacktestTruthOwner
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
@@ -81,6 +83,30 @@ class PaperPracticeRuntime:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
+    def historical_cache_status(self) -> dict[str, Any]:
+        backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
+        return backfill.historical_cache_status()
+
+    def hydrate_history(self, *, max_days: int | None = None) -> dict[str, Any]:
+        backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
+        return asyncio.run(backfill.backfill_missing_full_free_tier(max_days=max_days, resume=True))
+
+    def run_source_collection(
+        self,
+        *,
+        max_massive_days: int = 1,
+        include_helius: bool = False,
+        include_jupiter: bool = True,
+    ) -> dict[str, Any]:
+        collector = BackgroundSourceCollector(self.settings)
+        return asyncio.run(
+            collector.collect_incremental(
+                max_massive_days=max_massive_days,
+                include_helius=include_helius,
+                include_jupiter=include_jupiter,
+            )
+        )
+
     def run_bootstrap(self) -> dict[str, Any]:
         profile = self.ensure_active_profile()
         bootstrap_id = f"paper_practice_bootstrap_{uuid.uuid4().hex[:12]}"
@@ -96,7 +122,7 @@ class PaperPracticeRuntime:
         materializer = FeatureMaterializer(self.settings)
         comparator = RegimeModelComparator(self.settings)
 
-        backfill_result = asyncio.run(backfill.backfill_full_free_tier(resume=True))
+        backfill_result = asyncio.run(backfill.backfill_missing_full_free_tier(resume=True))
         feature_run_id, feature_rows = materializer.materialize_global_regime_inputs_15m_v1()
         comparison_result = comparator.run_regime_model_compare_v1(
             history_start=start_date.isoformat(),
@@ -133,6 +159,18 @@ class PaperPracticeRuntime:
             render_qmd(
                 "experiment_run.qmd",
                 title="paper practice bootstrap",
+                metadata=trading_report_metadata(
+                    report_kind="paper_practice_bootstrap",
+                    run_id=bootstrap_id,
+                    owner_type="paper_practice_bootstrap",
+                    owner_key=bootstrap_id,
+                    profile_revision_id=profile["active_revision_id"],
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=list(self.settings.coinbase_context_symbols),
+                    timeframe="15m",
+                    summary_path="bootstrap_summary.json",
+                    config_path="config.json",
+                ),
                 summary_lines=[
                     f"- bootstrap id: `{bootstrap_id}`",
                     f"- profile id: `{profile['profile_id']}`",
@@ -143,22 +181,23 @@ class PaperPracticeRuntime:
                 ],
                 sections=[
                     (
-                        "Massive Backfill",
+                        "Market / Source Context",
                         [
                             f"- batch id: `{backfill_result['batch_id']}`",
                             f"- captured days: `{backfill_result['days']['captured_count']}`",
                             f"- skipped days: `{backfill_result['days']['skipped_count']}`",
+                            "- warehouse contract: raw `CSV.gz` + partitioned `Parquet` + normalized `SQL`",
                         ],
                     ),
                     (
-                        "Historical Compare",
+                        "Regime / Condition / Policy / Risk",
                         [
                             f"- recommended candidate: `{comparison_result['recommended_candidate']}`",
                             f"- proposal status: `{comparison_result['proposal_status']}`",
                         ],
                     ),
                     (
-                        "Walk-Forward Replay",
+                        "Trade / Replay Outcome",
                         [
                             f"- backtest run id: `{backtest_result['run_id']}`",
                             f"- windows completed: `{backtest_result['window_count']}`",
@@ -189,6 +228,39 @@ class PaperPracticeRuntime:
             },
         )
         return payload
+
+    def historical_cache_status(self) -> dict[str, Any]:
+        """Return the bounded Massive historical cache status."""
+        return MassiveMinuteAggsBackfill(
+            self.settings,
+            runner=CaptureRunner(self.settings),
+        ).historical_cache_status()
+
+    def hydrate_history(self, *, max_days: int | None = None) -> dict[str, Any]:
+        """Fill only the missing portion of the bounded Massive historical cache."""
+        backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
+        return asyncio.run(
+            backfill.backfill_missing_full_free_tier(
+                max_days=max_days,
+                resume=True,
+            )
+        )
+
+    def run_source_collection(
+        self,
+        *,
+        max_massive_days: int = 1,
+        include_helius: bool = False,
+        include_jupiter: bool = True,
+    ) -> dict[str, Any]:
+        """Run one bounded incremental collection pass against stored truth."""
+        return asyncio.run(
+            BackgroundSourceCollector(self.settings).collect_incremental(
+                max_massive_days=max_massive_days,
+                include_helius=include_helius,
+                include_jupiter=include_jupiter,
+            )
+        )
 
     def run_backtest_walk_forward(self) -> dict[str, Any]:
         profile = self.ensure_active_profile()
@@ -295,6 +367,18 @@ class PaperPracticeRuntime:
             render_qmd(
                 "experiment_run.qmd",
                 title="paper practice backtest walk-forward",
+                metadata=trading_report_metadata(
+                    report_kind="paper_practice_backtest",
+                    run_id=run_id,
+                    owner_type="paper_practice_backtest",
+                    owner_key=run_id,
+                    profile_revision_id=active_profile["active_revision_id"],
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=list(self.settings.coinbase_context_symbols),
+                    timeframe="15m",
+                    summary_path="summary.json",
+                    config_path="summary.json",
+                ),
                 summary_lines=[
                     f"- run id: `{run_id}`",
                     f"- feature run id: `{feature_run.run_id}`",
@@ -306,7 +390,7 @@ class PaperPracticeRuntime:
                 ],
                 sections=[
                     (
-                        "Window Results",
+                        "Trade / Replay Outcome",
                         [
                             (
                                 f"- `{item['window_label']}` session=`{item['session_key']}` "
@@ -318,6 +402,13 @@ class PaperPracticeRuntime:
                         ]
                         or ["- no replay windows completed"],
                     ),
+                    (
+                        "Bounded Next Change",
+                        [
+                            "- auto-apply only bounded paper-profile adjustments that beat the latest accepted baseline",
+                            f"- active revision after replay: `{active_profile['active_revision_id']}`",
+                        ],
+                    ),
                 ],
                 generated_at=utcnow(),
             ),
@@ -326,6 +417,23 @@ class PaperPracticeRuntime:
             artifact_type="paper_practice_backtest_report_qmd",
             artifact_format="qmd",
             settings=self.settings,
+        )
+        append_training_event_safe(
+            self.settings,
+            event_type="experiment_completed",
+            summary="Adaptive walk-forward replay completed for the bounded paper-practice ladder.",
+            owner_kind="paper_practice_backtest",
+            run_id=run_id,
+            qmd_reports=[artifact_dir / "report.qmd"],
+            sql_refs=[f"paper_practice_backtest:{run_id}"],
+            context_files=[
+                Path("src/d5_trading_engine/paper_runtime/practice.py"),
+                Path("src/d5_trading_engine/settlement/backtest.py"),
+            ],
+            notes=(
+                "Compare the latest replay window set against the accepted baseline and "
+                "keep, revert, or shadow one bounded paper-profile change."
+            ),
         )
         return payload
 

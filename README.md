@@ -21,18 +21,19 @@ No live trading. No wallet signing. No perps.
 ## Current Architecture
 
 ```text
-Adapter clients -> CaptureRunner -> Raw JSONL + raw SQL receipts -> source normalizers ->
+Adapter clients -> CaptureRunner -> raw JSONL / CSV.gz source artifacts + Parquet warehouse ->
 canonical SQLite truth -> bounded feature materialization -> bounded condition scoring ->
 explicit policy tracing -> explicit risk gating -> explicit paper settlement + bounded shadow evaluation ->
 DuckDB sync on demand + research artifacts
 ```
 
-- `data/raw/{provider}/{YYYY-MM-DD}/` is the raw landing zone
+- `data/raw/{provider}/{YYYY-MM-DD}/` is the raw landing zone for JSONL and CSV.gz source artifacts
+- `data/parquet/` is the partitioned deep-history warehouse for replay and walk-forward reads
 - `data/db/d5.db` is the canonical SQLite write surface
 - `data/db/d5_analytics.duckdb` is the research mirror
 - `data/db/coinbase_raw.db` is a separate raw provider store for Coinbase payloads
 
-See [docs/README.md](docs/README.md) for the full docs map, [docs/prd/crypto_backtesting_mission.md](docs/prd/crypto_backtesting_mission.md) for the north-star product target, [docs/plans/strategy_descent_and_instrument_scope.md](docs/plans/strategy_descent_and_instrument_scope.md) for the widening ladder, [docs/math/market_regime_forecast_and_labeling_program.md](docs/math/market_regime_forecast_and_labeling_program.md) for the future math program, [docs/policy/runtime_authority_and_promotion_ladder.md](docs/policy/runtime_authority_and_promotion_ladder.md) for promotion doctrine, [docs/policy/writer_story_promotion_rubric.md](docs/policy/writer_story_promotion_rubric.md) for writer-owned story curation, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded current modeling contract, and [docs/runbooks/ralph_tmux_swarm.md](docs/runbooks/ralph_tmux_swarm.md) for the repo-local four-lane orchestration workflow.
+See [docs/README.md](docs/README.md) for the full docs map, [docs/prd/crypto_backtesting_mission.md](docs/prd/crypto_backtesting_mission.md) for the north-star product target, [docs/plans/strategy_descent_and_instrument_scope.md](docs/plans/strategy_descent_and_instrument_scope.md) for the widening ladder, [docs/math/market_regime_forecast_and_labeling_program.md](docs/math/market_regime_forecast_and_labeling_program.md) for the future math program, [docs/policy/runtime_authority_and_promotion_ladder.md](docs/policy/runtime_authority_and_promotion_ladder.md) for promotion doctrine, [docs/policy/writer_story_promotion_rubric.md](docs/policy/writer_story_promotion_rubric.md) for writer-owned story curation, [docs/architecture/bootstrap_architecture.md](docs/architecture/bootstrap_architecture.md) for the current architecture write-up, [docs/math/regime_shadow_modeling_contracts.md](docs/math/regime_shadow_modeling_contracts.md) for the bounded current modeling contract, [docs/runbooks/ralph_tmux_swarm.md](docs/runbooks/ralph_tmux_swarm.md) for the repo-local four-lane orchestration workflow, and [docs/task/trading_qmd_report_contract.md](docs/task/trading_qmd_report_contract.md) for the standardized trading evidence packet contract.
 
 Project Notion surfaces:
 
@@ -96,6 +97,8 @@ d5 run-shadow regime-model-compare-v1
 
 # repo-owned training wrappers for automation and review
 d5 training bootstrap --json
+d5 training hydrate-history --json
+d5 training collect --json
 d5 training walk-forward --json
 d5 training review --json
 d5 training loop --max-iterations 1 --json
@@ -136,6 +139,8 @@ d5 run-paper-close <session_key> --quote-snapshot-id <quote_snapshot_id> --reaso
 | `d5 run-paper-close <session_key> --quote-snapshot-id <id> --reason <reason>` | Close one open paper session from an explicit exit quote |
 | `d5 run-paper-practice-bootstrap` | Build the bounded historical bootstrap for autonomous paper practice |
 | `d5 training bootstrap` | Run the repo-owned training bootstrap wrapper and return machine-readable receipts |
+| `d5 training hydrate-history` | Fill only the missing portion of the cached Massive historical backbone |
+| `d5 training collect` | Append incremental Massive/Coinbase/Jupiter/Helius source data without repulling cached history |
 | `d5 training walk-forward` | Run the repo-owned adaptive historical replay wrapper |
 | `d5 training review` | Render the latest bounded training review packet from existing receipts |
 | `d5 training loop` | Run the repo-owned training loop wrapper for bounded autonomous practice iterations |
@@ -175,6 +180,13 @@ Current `capture` provider values:
 - `--from YYYY-MM-DD --to YYYY-MM-DD`
 - `--full-free-tier`
 
+The intended training cadence is now cache-first:
+- hydrate the Massive 2-year window once
+- preserve raw CSV.gz artifacts and Parquet partitions for long-horizon replay
+- reuse local SQL + local warehouse artifacts for backtest and walk-forward
+- append only missing/new source data with `d5 training collect`
+- run the continuous paper-practice loop only after the historical ladder is complete
+
 Current `run-shadow` values:
 - `intraday-meta-stack-v1`
 - `regime-model-compare-v1`
@@ -196,7 +208,7 @@ Current `run-shadow` values:
 | Helius | partial | tracked-address discovery, enhanced transaction capture, bounded `solana_transfer_event` projection, and hardened raw websocket capture with reconnect / heartbeat |
 | Coinbase | partial | public product discovery now merges default spot inventory with filtered futures and perpetual inventories for the bounded context set; some non-crypto contracts may expose trades/candles without an L2 book |
 | FRED | implemented | series and observation capture/normalization |
-| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization; the free-tier historical ladder is currently bounded to a 2-year minute window |
+| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization plus Parquet warehousing; the runtime prefers flat files when entitled and falls back to REST for incremental/gap collection on plans where crypto minute flat files are not available |
 
 ## Bounded Model Surfaces
 
@@ -228,10 +240,18 @@ Current `run-shadow` values:
 Runtime-adjacent model helpers live under `src/d5_trading_engine/models/`, while shadow-only registries remain explicitly advisory.
 
 The persistent training surface now lives under `training/`, where the repo keeps
-vendored autoresearch references, `codex --exec`-friendly watcher adapters,
+vendored autoresearch references, `codex --exec --json`-friendly watcher adapters,
 source-set configs, rubrics, and bounded prompt templates. SQL remains
-canonical truth and QMD remains the evidence surface those training wrappers
-point back to.
+canonical truth, Parquet remains the deep-history warehouse, and QMD remains
+the evidence surface those training wrappers point back to.
+
+The control plane is intentionally hybrid:
+
+- tmux/supervisor handles long-running hydration and incremental collection
+- `codex exec --json -C <repo>` handles bounded semantic work such as review,
+  comparison, and proposal synthesis
+- `exec-server` / app-server remains a future-phase option after the event and
+  receipt contracts stabilize
 
 These surfaces remain non-promoting at runtime. The truthful claim is that the repo now has deterministic features, a bounded regime score, explicit policy eligibility traces, one hard risk gate, one bounded execution-intent owner, one quote-backed paper settlement owner, one settlement-owned spot-first backtest replay ledger, one bounded shadow evaluation lane, one bounded canonical label-program loop, one bounded strategy challenger loop, and advisory realized-feedback comparison receipts grounded in settlement truth; it does not yet have runtime model promotion, fully accepted canonical label truth, fully accepted strategy-family governance, or derivative widening.
 

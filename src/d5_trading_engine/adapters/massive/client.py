@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import gzip
 import io
+import time
+from typing import ClassVar
 from datetime import datetime
 from urllib.parse import quote
 
@@ -20,6 +23,8 @@ log = get_logger(__name__, provider="massive")
 
 class MassiveClient:
     """Massive REST and flat-file client for bounded crypto market data."""
+
+    _last_rest_minute_aggs_request_monotonic: ClassVar[float | None] = None
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
@@ -113,6 +118,14 @@ class MassiveClient:
             f"{parsed:%Y/%m}/{date_str}/{date_str}.csv.gz"
         )
 
+    def build_minute_aggs_rest_url(self, ticker: str, date_str: str) -> str:
+        """Build the bounded REST aggregates URL for one ticker and UTC date."""
+        safe_ticker = quote(ticker, safe="")
+        return (
+            f"{self.settings.massive_api_base}/v2/aggs/ticker/{safe_ticker}/range/1/minute/"
+            f"{date_str}/{date_str}"
+        )
+
     async def download_minute_aggs(self, date_str: str) -> bytes:
         """Download the gzip minute-aggregate flat file for the requested UTC date."""
         url = self.build_minute_aggs_url(date_str)
@@ -141,6 +154,76 @@ class MassiveClient:
                     "massive",
                     f"Minute aggregate download failed: {exc}",
                 ) from exc
+
+    async def fetch_minute_aggs_rest(
+        self,
+        date_str: str,
+        *,
+        tickers: list[str] | None = None,
+    ) -> dict[str, dict]:
+        """Fetch bounded one-minute aggregate payloads from REST for one UTC date."""
+        bounded_tickers = tickers or list(self.settings.massive_default_tickers)
+        payloads: dict[str, dict] = {}
+        for ticker in bounded_tickers:
+            attempts = 0
+            while True:
+                await self._throttle_rest_minute_aggs_request()
+                try:
+                    payload = await self._request(
+                        "GET",
+                        f"/v2/aggs/ticker/{quote(ticker, safe='')}/range/1/minute/{date_str}/{date_str}",
+                        params={
+                            "adjusted": "true",
+                            "sort": "asc",
+                            "limit": 50000,
+                            "apiKey": self.settings.massive_api_key,
+                        },
+                    )
+                    if isinstance(payload, dict):
+                        payloads[ticker] = payload
+                    break
+                except AdapterError as exc:
+                    if exc.status_code != 429:
+                        raise
+                    attempts += 1
+                    if attempts > self.settings.massive_rest_minute_aggs_max_retries:
+                        raise
+                    await asyncio.sleep(self.settings.massive_rest_minute_aggs_retry_sleep_seconds)
+        return payloads
+
+    async def _throttle_rest_minute_aggs_request(self) -> None:
+        """Throttle bounded REST minute-aggregate requests across the current process."""
+        spacing = max(0.0, float(self.settings.massive_rest_minute_aggs_spacing_seconds))
+        last_request_at = MassiveClient._last_rest_minute_aggs_request_monotonic
+        now = time.monotonic()
+        if last_request_at is not None and spacing > 0.0:
+            elapsed = now - last_request_at
+            if elapsed < spacing:
+                await asyncio.sleep(spacing - elapsed)
+        MassiveClient._last_rest_minute_aggs_request_monotonic = time.monotonic()
+
+    def parse_minute_aggs_rest_payloads(self, payloads: dict[str, dict]) -> list[dict[str, str]]:
+        """Normalize REST aggregate payloads into the same row shape as CSV minute aggs."""
+        rows: list[dict[str, str]] = []
+        for ticker, payload in payloads.items():
+            results = payload.get("results", []) if isinstance(payload, dict) else []
+            if not isinstance(results, list):
+                continue
+            for row in results:
+                if not isinstance(row, dict):
+                    continue
+                rows.append(
+                    {
+                        "ticker": str(row.get("ticker") or ticker),
+                        "window_start": str(row.get("t", "")),
+                        "open": str(row.get("o", "")),
+                        "high": str(row.get("h", "")),
+                        "low": str(row.get("l", "")),
+                        "close": str(row.get("c", "")),
+                        "volume": str(row.get("v", "")),
+                    }
+                )
+        return rows
 
     def parse_minute_aggs_csv(self, content: bytes) -> list[dict[str, str]]:
         """Parse a gzip CSV payload into row dictionaries."""

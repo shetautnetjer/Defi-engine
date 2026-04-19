@@ -35,7 +35,7 @@ from d5_trading_engine.models.statsmodels_regime import (
 )
 from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
-from d5_trading_engine.reporting.qmd import render_qmd
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ExperimentMetric,
@@ -133,6 +133,7 @@ class RegimeModelComparator:
         artifact_dir.mkdir(parents=True, exist_ok=True)
 
         config_payload = {
+            "run_id": run_id,
             "shadow_run": _COMPARE_RUN_NAME,
             "feature_run_id": feature_run.run_id,
             "feature_set": feature_run.feature_set,
@@ -851,6 +852,7 @@ class RegimeModelComparator:
         comparison_payload: dict[str, Any],
     ) -> str:
         history_inventory = comparison_payload["history_inventory"]
+        run_id = str(comparison_payload["run_id"])
         candidate_lines: list[str] = []
         for key in _CANDIDATE_ORDER:
             candidate = comparison_payload["candidates"].get(key)
@@ -878,6 +880,17 @@ class RegimeModelComparator:
         return render_qmd(
             "experiment_run.qmd",
             title=_COMPARE_RUN_NAME,
+            metadata=trading_report_metadata(
+                report_kind="regime_model_compare",
+                run_id=run_id,
+                owner_type="experiment_run",
+                owner_key=run_id,
+                instrument_scope=["SOL/USDC"],
+                context_instruments=["BTC/USD", "ETH/USD"],
+                timeframe="15m",
+                summary_path="comparison.json",
+                config_path="config.json",
+            ),
             summary_lines=[
                 f"- feature run: `{config_payload['feature_run_id']}`",
                 f"- feature buckets: `{config_payload['feature_bucket_rows']}`",
@@ -888,15 +901,15 @@ class RegimeModelComparator:
                 f"- status: `{comparison_payload['status']}`",
             ],
             sections=[
-                ("Feature History Inventory", [
+                ("Market / Source Context", [
                     f"- row count: `{history_inventory['feature_history']['row_count']}`",
                     f"- bucket start: `{history_inventory['feature_history']['bucket_start_utc']}`",
                     f"- bucket end: `{history_inventory['feature_history']['bucket_end_utc']}`",
                     f"- Massive history rows: `{history_inventory['massive_history']['row_count']}`",
                 ]),
-                ("Candidate Metrics", candidate_lines or ["- no candidates recorded"]),
-                ("Recommendation", recommendation_lines),
-                ("Errors", [f"- `{comparison_payload['error_message']}`"] if comparison_payload.get("error_message") else ["- none"]),
+                ("Regime / Condition / Policy / Risk", candidate_lines or ["- no candidates recorded"]),
+                ("Bounded Next Change", recommendation_lines),
+                ("Failure Attribution", [f"- `{comparison_payload['error_message']}`"] if comparison_payload.get("error_message") else ["- weakest surface: `inconclusive / sample too small`"]),
             ],
         )
 

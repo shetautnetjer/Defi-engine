@@ -157,6 +157,27 @@ class Settings(BaseSettings):
             "range backfill."
         ),
     )
+    massive_rest_minute_aggs_spacing_seconds: float = Field(
+        default=21.0,
+        description=(
+            "Conservative spacing between Massive REST minute-aggregate requests so the "
+            "free-tier historical bootstrap can stay under per-minute rate limits."
+        ),
+    )
+    massive_rest_minute_aggs_retry_sleep_seconds: float = Field(
+        default=65.0,
+        description=(
+            "Sleep applied after a Massive REST minute-aggregate 429 before retrying the "
+            "same ticker/day request."
+        ),
+    )
+    massive_rest_minute_aggs_max_retries: int = Field(
+        default=5,
+        description=(
+            "Maximum retries for a Massive REST minute-aggregate request after a rate-limit "
+            "response."
+        ),
+    )
 
     # --- FRED ---
     fred_api_key: str = Field(default="", description="FRED API key")

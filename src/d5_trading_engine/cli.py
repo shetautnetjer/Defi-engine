@@ -5,6 +5,8 @@ Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
 - d5 training ... : Repo-owned training wrappers for bootstrap, walk-forward, review, loop, and status
+- d5 training hydrate-history : Fill the missing portion of the cached Massive historical window
+- d5 training collect : Incrementally append Massive/Coinbase/Jupiter/Helius source data without repulling cached history
 - d5 materialize-features : Materialize deterministic feature tables
 - d5 score-conditions : Score bounded market conditions
 - d5 run-shadow   : Run shadow ML evaluation lanes
@@ -144,6 +146,67 @@ def training_bootstrap(json_output: bool) -> None:
         )
     except Exception as exc:
         click.echo(f"✗ Training bootstrap failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("hydrate-history")
+@click.option("--max-days", type=int, default=None)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_hydrate_history(max_days: int | None, json_output: bool) -> None:
+    """Fill only the missing portion of the cached historical Massive window."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.hydrate_history(max_days=max_days)
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training hydrate-history: "
+                f"{result['run_id']} cache_complete={result['historical_cache_status']['complete']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training hydrate-history failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("collect")
+@click.option("--max-massive-days", type=int, default=1)
+@click.option("--include-helius/--no-include-helius", default=False)
+@click.option("--include-jupiter/--no-include-jupiter", default=True)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_collect(
+    max_massive_days: int,
+    include_helius: bool,
+    include_jupiter: bool,
+    json_output: bool,
+) -> None:
+    """Incrementally append source data without repulling the cached historical backbone."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.collect(
+            max_massive_days=max_massive_days,
+            include_helius=include_helius,
+            include_jupiter=include_jupiter,
+        )
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training collect: "
+                f"{result['run_id']} cache_complete={result['historical_cache_status']['complete']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training collect failed: {exc}", err=True)
         sys.exit(1)
 
 

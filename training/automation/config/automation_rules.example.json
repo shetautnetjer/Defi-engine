@@ -5,6 +5,11 @@
     "receipt_prefix": "receipt"
   },
   "event_types": {
+    "feature_run_completed": {
+      "mode": "suggest",
+      "template": "automation/prompts/feature_review.md.tmpl",
+      "receipt_prefix": "feature"
+    },
     "condition_run_completed": {
       "mode": "suggest",
       "template": "automation/prompts/condition_review.md.tmpl",

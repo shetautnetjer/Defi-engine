@@ -16,6 +16,7 @@ ACTIVE_DOCS = [
     REPO_ROOT / "docs" / "plans" / "strategy_descent_and_instrument_scope.md",
     REPO_ROOT / "docs" / "plans" / "autonomous_paper_practice_loop.md",
     REPO_ROOT / "docs" / "task" / "bootstrap_truth_sync.md",
+    REPO_ROOT / "docs" / "task" / "trading_qmd_report_contract.md",
     REPO_ROOT / "docs" / "architecture" / "bootstrap_architecture.md",
     REPO_ROOT / "docs" / "architecture" / "backtest_truth_contract.md",
     REPO_ROOT / "docs" / "runbooks" / "first_capture.md",
@@ -31,10 +32,13 @@ ACTIVE_DOCS = [
 TRAINING_WORKSPACE_DOCS = [
     REPO_ROOT / "training" / "README.md",
     REPO_ROOT / "training" / "AGENTS.md",
+    REPO_ROOT / "training" / "trading_agent_harness.md",
+    REPO_ROOT / "training" / "program.md",
     REPO_ROOT / "training" / "vendor" / "autoresearch" / "UPSTREAM.md",
     REPO_ROOT / "training" / "automation" / "README.md",
     REPO_ROOT / "training" / "config" / "source_sets.example.json",
     REPO_ROOT / "training" / "rubrics" / "paper_practice_default.json",
+    REPO_ROOT / "training" / "rubrics" / "training_regime_rubric.md",
     REPO_ROOT / "training" / "prompts" / "training_review.md.tmpl",
     REPO_ROOT / "training" / "bin" / "emit_training_event.py",
 ]
@@ -65,6 +69,72 @@ def test_required_bootstrap_docs_exist() -> None:
 def test_training_workspace_docs_exist() -> None:
     missing = [path for path in TRAINING_WORKSPACE_DOCS if not path.exists()]
     assert not missing
+
+
+def test_training_workspace_grounding_docs_link_notion_and_local_doctrine() -> None:
+    training_agents = (REPO_ROOT / "training" / "AGENTS.md").read_text()
+    training_readme = (REPO_ROOT / "training" / "README.md").read_text()
+    training_harness = (REPO_ROOT / "training" / "trading_agent_harness.md").read_text()
+    training_program = (REPO_ROOT / "training" / "program.md").read_text()
+    training_rubric = (
+        REPO_ROOT / "training" / "rubrics" / "training_regime_rubric.md"
+    ).read_text()
+
+    notion_url = "https://www.notion.so/Training-regime-347936b02c25803d8ec4cb77cf4040d6?source=copy_link"
+
+    assert notion_url in training_agents
+    assert "Repo-owned files in `training/` remain the durable" in training_agents
+    assert "`training/trading_agent_harness.md`" in training_agents
+    assert notion_url in training_readme
+    assert "The Notion page is stronger on rubric and autoresearch program framing." in training_readme
+    assert "`training/trading_agent_harness.md`" in training_readme
+    assert "`training/program.md`" in training_readme
+    assert "`training/rubrics/training_regime_rubric.md`" in training_readme
+    assert "`docs/task/trading_qmd_report_contract.md`" in training_readme
+    assert "Trading Agent Harness" in training_harness
+    assert "Required Read Order" in training_harness
+    assert "keep, revert, or shadow" in training_harness
+    assert "paper-only" in training_harness
+    assert "trading_qmd_report_contract.md" in training_harness
+    assert "repo-owned operating contract" in training_program
+    assert "best evidence-driven trading system" in training_program
+    assert "Allowed Surfaces" in training_program
+    assert "Training Regime Rubric" in training_rubric
+    assert "Failure Attribution Matrix" in training_rubric
+
+
+def test_agents_files_include_superpowers_routing() -> None:
+    root_agents = (REPO_ROOT / "AGENTS.md").read_text()
+    training_agents = (REPO_ROOT / "training" / "AGENTS.md").read_text()
+
+    for contents in (root_agents, training_agents):
+        assert "Superpowers Routing" in contents
+        assert "superpowers:writing-plans" in contents
+        assert "superpowers:executing-plans" in contents
+        assert "superpowers:systematic-debugging" in contents
+        assert "superpowers:verification-before-completion" in contents
+
+
+def test_readme_and_runbooks_reference_flatfile_warehouse_and_qmd_contract() -> None:
+    readme = (REPO_ROOT / "README.md").read_text()
+    current_truth = (REPO_ROOT / "docs" / "project" / "current_runtime_truth.md").read_text()
+    first_capture = (REPO_ROOT / "docs" / "runbooks" / "first_capture.md").read_text()
+    qmd_contract = (REPO_ROOT / "docs" / "task" / "trading_qmd_report_contract.md").read_text()
+    training_automation = (REPO_ROOT / "training" / "automation" / "README.md").read_text()
+
+    assert "data/parquet/" in readme
+    assert "docs/task/trading_qmd_report_contract.md" in readme
+    assert "codex exec --json -C <repo>" in readme
+    assert "Parquet" in current_truth
+    assert "falls back to REST minute aggregates" in current_truth
+    assert "Storage contract:" in first_capture
+    assert "raw JSONL and CSV.gz source artifacts" in first_capture
+    assert "data/parquet/" in first_capture
+    assert "Flat Files Quickstart" in qmd_contract
+    assert "https://massive.com/docs/flat-files/quickstart" in qmd_contract
+    assert "https://developers.openai.com/codex/changelog" in qmd_contract
+    assert "`AGENTS.md`" in training_automation
+    assert "exec-server" in training_automation
 
 
 def test_navigation_agents_exist_only_in_high_value_runtime_roots() -> None:

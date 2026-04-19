@@ -202,6 +202,63 @@ def test_massive_parse_minute_aggs_csv_handles_gzip_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_massive_fetch_minute_aggs_rest_uses_v2_aggs_range(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        json={
+            "ticker": "X:SOLUSD",
+            "results": [{"t": 1713350400000, "o": 150.0, "h": 151.0, "l": 149.0, "c": 150.5, "v": 42.0}],
+        },
+    )
+
+    client = MassiveClient(Settings(_env_file=None, massive_api_key="test-massive-key"))
+    try:
+        payloads = await client.fetch_minute_aggs_rest("2026-04-16", tickers=["X:SOLUSD"])
+    finally:
+        await client.close()
+
+    assert payloads["X:SOLUSD"]["ticker"] == "X:SOLUSD"
+    request = httpx_mock.get_requests()[0]
+    assert request.url.path == "/v2/aggs/ticker/X:SOLUSD/range/1/minute/2026-04-16/2026-04-16"
+    assert request.url.params["limit"] == "50000"
+    assert request.url.params["apiKey"] == "test-massive-key"
+
+
+def test_massive_parse_minute_aggs_rest_payloads_matches_csv_shape() -> None:
+    client = MassiveClient(Settings(_env_file=None, massive_api_key="test-massive-key"))
+
+    rows = client.parse_minute_aggs_rest_payloads(
+        {
+            "X:SOLUSD": {
+                "ticker": "X:SOLUSD",
+                "results": [
+                    {
+                        "t": 1713350400000,
+                        "o": 150.0,
+                        "h": 151.0,
+                        "l": 149.0,
+                        "c": 150.5,
+                        "v": 42.0,
+                    }
+                ],
+            }
+        }
+    )
+
+    assert rows == [
+        {
+            "ticker": "X:SOLUSD",
+            "window_start": "1713350400000",
+            "open": "150.0",
+            "high": "151.0",
+            "low": "149.0",
+            "close": "150.5",
+            "volume": "42.0",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_coinbase_list_public_products_uses_market_products_path(httpx_mock) -> None:
     httpx_mock.add_response(method="GET", json={"products": [{"product_id": "SOL-USD"}]})
 
@@ -239,6 +296,65 @@ async def test_coinbase_list_public_products_forwards_filter_params(httpx_mock) 
     assert request.url.params["futures_underlying_type"] == "FUTURES_UNDERLYING_TYPE_COMMOD"
     assert request.url.params["limit"] == "25"
     assert request.url.params["get_all_products"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_capture_massive_minute_aggs_falls_back_to_rest_on_flatfile_404(
+    settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from d5_trading_engine.common.errors import AdapterError
+    from d5_trading_engine.storage.truth.engine import get_session
+    from d5_trading_engine.storage.truth.engine import run_migrations_to_head
+    from d5_trading_engine.storage.truth.models import IngestRun, RawMassiveCryptoEvent
+
+    run_migrations_to_head(settings)
+
+    async def _fake_download(self, date_str: str) -> bytes:
+        raise AdapterError("massive", "not included", status_code=404)
+
+    async def _fake_rest(self, date_str: str, *, tickers=None):
+        assert date_str == "2026-04-16"
+        assert tickers == settings.massive_default_tickers
+        return {
+            "X:SOLUSD": {
+                "ticker": "X:SOLUSD",
+                "results": [
+                    {
+                        "t": 1776297600000,
+                        "o": 150.0,
+                        "h": 151.0,
+                        "l": 149.0,
+                        "c": 150.5,
+                        "v": 42.0,
+                    }
+                ],
+            },
+            "X:BTCUSD": {"ticker": "X:BTCUSD", "results": []},
+            "X:ETHUSD": {"ticker": "X:ETHUSD", "results": []},
+        }
+
+    monkeypatch.setattr(MassiveClient, "download_minute_aggs", _fake_download)
+    monkeypatch.setattr(MassiveClient, "fetch_minute_aggs_rest", _fake_rest)
+
+    runner = CaptureRunner(settings)
+    run_id = await runner.capture_massive_minute_aggs("2026-04-16")
+
+    raw_dir = settings.raw_dir / "massive" / "2026-04-16"
+    raw_files = list(raw_dir.glob("minute_aggs_2026-04-16_*.jsonl"))
+    assert len(raw_files) == 1
+
+    session = get_session(settings)
+    try:
+        ingest_run = session.query(IngestRun).filter_by(run_id=run_id).one()
+        raw_event = session.query(RawMassiveCryptoEvent).filter_by(ingest_run_id=run_id).one()
+    finally:
+        session.close()
+
+    assert ingest_run.status == "success"
+    assert ingest_run.records_captured == 1
+    assert raw_event.event_type == "minute_aggs_rest"
+    assert '"source_mode":"rest"' in raw_event.payload
 
 
 def test_coinbase_context_selection_includes_spot_futures_and_perps() -> None:
