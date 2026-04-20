@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import csv
 import json
 import math
 from datetime import timedelta
+from pathlib import Path
 
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.features.materializer import _GLOBAL_REGIME_FEATURE_SET_NAME
@@ -21,7 +23,11 @@ from tests.test_backtest_truth import _seed_tracked_tokens
 
 def _seed_strategy_report(settings) -> None:
     report_path = (
-        settings.repo_root / ".ai" / "dropbox" / "research" / "STRAT-001__strategy_challenger_report.json"
+        settings.repo_root
+        / ".ai"
+        / "dropbox"
+        / "research"
+        / "STRAT-001__strategy_challenger_report.json"
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -154,18 +160,12 @@ def _seed_walk_forward_history(settings) -> None:
         session.close()
 
 
-def test_backtest_walk_forward_replays_windows_and_governor_gates_profile_adaptation(
-    settings,
-    monkeypatch,
-) -> None:
-    run_migrations_to_head(settings)
-    _seed_tracked_tokens(settings)
-    _seed_strategy_report(settings)
-    _seed_walk_forward_history(settings)
-
+def _install_stub_walk_forward_scoring(settings, monkeypatch) -> None:
     def _fake_walk_forward_history(self, history, *, macro_context_state):
         scored = history.copy()
-        scored["raw_state_id"] = scored["market_return_mean_15m"].apply(lambda value: 0 if value >= 0 else 1)
+        scored["raw_state_id"] = scored["market_return_mean_15m"].apply(
+            lambda value: 0 if value >= 0 else 1
+        )
         scored["confidence"] = scored["market_return_mean_15m"].apply(
             lambda value: 0.82 if value >= 0 else 0.78
         )
@@ -200,6 +200,36 @@ def test_backtest_walk_forward_replays_windows_and_governor_gates_profile_adapta
     )
     monkeypatch.setattr(
         PaperPracticeRuntime,
+        "_ensure_advisory_strategy_report",
+        lambda self: {
+            "status": "test_stub",
+            "strategy_report_path": str(
+                settings.repo_root
+                / ".ai"
+                / "dropbox"
+                / "research"
+                / "STRAT-001__strategy_challenger_report.json"
+            ),
+            "strategy_report_exists": True,
+            "run_id": "strategy_eval_test",
+            "top_family": "test_stub",
+            "proposal_status": "proposed",
+        },
+    )
+
+
+def test_backtest_walk_forward_replays_windows_and_governor_gates_profile_adaptation(
+    settings,
+    monkeypatch,
+) -> None:
+    run_migrations_to_head(settings)
+    _seed_tracked_tokens(settings)
+    _seed_strategy_report(settings)
+    _seed_walk_forward_history(settings)
+
+    _install_stub_walk_forward_scoring(settings, monkeypatch)
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
         "_load_profile_strategy_selection",
         lambda self, payload: {
             "top_family": "trend_continuation_long_v1",
@@ -210,7 +240,7 @@ def test_backtest_walk_forward_replays_windows_and_governor_gates_profile_adapta
 
     runtime = PaperPracticeRuntime(settings)
     runtime.ensure_active_profile()
-    result = runtime.run_backtest_walk_forward()
+    result = runtime.run_backtest_walk_forward(training_profile_name="full_730d")
 
     assert result["status"] == "completed"
     assert result["completed_ladder"] is True
@@ -236,3 +266,67 @@ def test_backtest_walk_forward_replays_windows_and_governor_gates_profile_adapta
     assert proposals
     assert result["active_revision_id"] == result["starting_revision_id"]
     assert result["window_results"][0]["proposal_applied"] is False
+
+
+def test_backtest_walk_forward_writes_replay_audit_for_missed_long_entries(
+    settings,
+    monkeypatch,
+) -> None:
+    run_migrations_to_head(settings)
+    _seed_tracked_tokens(settings)
+    _seed_strategy_report(settings)
+    _seed_walk_forward_history(settings)
+    _install_stub_walk_forward_scoring(settings, monkeypatch)
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
+        "_load_profile_strategy_selection",
+        lambda self, payload: {
+            "top_family": "flat_regime_stand_aside_v1",
+            "target_label": "flat",
+            "allowed_regimes": ["no_trade", "risk_off"],
+        },
+    )
+
+    runtime = PaperPracticeRuntime(settings)
+    runtime.ensure_active_profile()
+    result = runtime.run_backtest_walk_forward(training_profile_name="full_730d")
+
+    first_window = result["window_results"][0]
+    audit_summary = first_window["replay_audit_summary"]
+    audit_csv_path = Path(first_window["replay_audit_csv_path"])
+
+    assert audit_summary["row_count"] > 0
+    assert audit_summary["market_return_direction_counts"]["up"] > 0
+    assert audit_summary["semantic_regime_counts"]["long_friendly"] > 0
+    assert audit_summary["would_open_runtime_long_count"] == 0
+    assert (
+        audit_summary["blocked_reason_counts"]["strategy_target_not_runtime_long:flat"]
+        == audit_summary["row_count"]
+    )
+    assert audit_csv_path.exists()
+
+    with audit_csv_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    assert rows
+    assert {
+        "bucket_start_utc",
+        "close_price_usdc",
+        "market_return_mean_15m",
+        "market_return_direction",
+        "semantic_regime",
+        "confidence",
+        "strategy_target_label",
+        "strategy_allowed_regimes",
+        "profile_regime_allowed",
+        "strategy_runtime_long_supported",
+        "strategy_regime_allowed",
+        "would_open_runtime_long",
+        "no_trade_reason_codes",
+    }.issubset(rows[0])
+    assert any(row["market_return_direction"] == "up" for row in rows)
+    assert all(row["would_open_runtime_long"] == "false" for row in rows)
+    assert any(
+        "strategy_target_not_runtime_long:flat" in row["no_trade_reason_codes"]
+        for row in rows
+    )

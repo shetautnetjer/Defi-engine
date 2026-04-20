@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import time
 import uuid
+from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,9 +16,9 @@ import orjson
 import pandas as pd
 from sqlalchemy import desc
 
-from d5_trading_engine.capture.source_collection import BackgroundSourceCollector
 from d5_trading_engine.capture.massive_backfill import MassiveMinuteAggsBackfill
 from d5_trading_engine.capture.runner import CaptureRunner
+from d5_trading_engine.capture.source_collection import BackgroundSourceCollector
 from d5_trading_engine.common.time_utils import ensure_utc, utcnow
 from d5_trading_engine.condition.scorer import ConditionScorer
 from d5_trading_engine.config.settings import Settings, get_settings
@@ -27,7 +30,11 @@ from d5_trading_engine.paper_runtime.training_profiles import (
     get_training_profile,
     summarize_training_profile_readiness,
 )
-from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
+from d5_trading_engine.reporting.artifacts import (
+    record_artifact_reference,
+    write_json_artifact,
+    write_text_artifact,
+)
 from d5_trading_engine.reporting.proposals import create_improvement_proposal
 from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.research_loop.live_regime_cycle import LiveRegimeCycleRunner
@@ -40,13 +47,12 @@ from d5_trading_engine.storage.truth.engine import get_session
 from d5_trading_engine.storage.truth.models import (
     ConditionGlobalRegimeSnapshotV1,
     MarketCandle,
+    PaperPosition,
     PaperPracticeDecisionV1,
     PaperPracticeLoopRunV1,
     PaperPracticeProfileRevisionV1,
     PaperPracticeProfileV1,
-    PaperPosition,
     PaperSession,
-    PaperSessionReport,
     QuoteSnapshot,
     TokenMetadataSnapshot,
     TokenRegistry,
@@ -81,6 +87,27 @@ def _as_utc_timestamp(value) -> pd.Timestamp:
     if timestamp.tzinfo is None:
         return timestamp.tz_localize("UTC")
     return timestamp.tz_convert("UTC")
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _market_return_direction(value: float) -> str:
+    if value > 0:
+        return "up"
+    if value < 0:
+        return "down"
+    return "flat"
+
+
+def _csv_bool(value: bool) -> str:
+    return "true" if value else "false"
 
 
 def _source_collection_status_path(settings: Settings) -> Path:
@@ -562,6 +589,27 @@ class PaperPracticeRuntime:
             window_start = next_window_start
 
         active_profile = self.ensure_active_profile()
+        replay_audit_summaries = [
+            {
+                "window_label": item["window_label"],
+                "csv_path": item.get("replay_audit_csv_path", ""),
+                "parquet_path": item.get("replay_audit_parquet_path", ""),
+                **(item.get("replay_audit_summary") or {}),
+            }
+            for item in window_results
+        ]
+        replay_audit_lines = []
+        for item in window_results:
+            audit_summary = item.get("replay_audit_summary") or {}
+            replay_audit_lines.append(
+                (
+                    f"- `{item['window_label']}` rows=`{audit_summary.get('row_count', 0)}` "
+                    f"would_open_long="
+                    f"`{audit_summary.get('would_open_runtime_long_count', 0)}` "
+                    f"close_return_pct=`{audit_summary.get('close_return_pct', 0.0)}` "
+                    f"csv=`{item.get('replay_audit_csv_path', '')}`"
+                )
+            )
         payload = {
             "run_id": run_id,
             "status": "completed",
@@ -585,6 +633,7 @@ class PaperPracticeRuntime:
             "active_profile_id": active_profile["profile_id"],
             "active_revision_id": active_profile["active_revision_id"],
             "window_results": window_results,
+            "replay_audit_summaries": replay_audit_summaries,
             "artifact_dir": str(artifact_dir),
             "next_command": "d5 run-paper-practice-loop --max-iterations 1 --json",
         }
@@ -644,6 +693,10 @@ class PaperPracticeRuntime:
                             for item in window_results
                         ]
                         or ["- no replay windows completed"],
+                    ),
+                    (
+                        "Replay Audit",
+                        replay_audit_lines or ["- no replay audit emitted"],
                     ),
                     (
                         "Bounded Next Change",
@@ -1234,6 +1287,17 @@ class PaperPracticeRuntime:
             closed_at=window_end.to_pydatetime(),
             reason_codes=[f"close_reason:{latest_close_reason or 'window_end'}"],
         )
+        artifact_dir = self.settings.data_dir / "research" / "paper_practice" / "backtests" / run_id
+        replay_audit = self._write_backtest_replay_audit(
+            artifact_dir=artifact_dir,
+            run_id=run_id,
+            session_key=session_key,
+            window_index=window_index,
+            profile_payload=payload,
+            strategy_selection=strategy_selection,
+            window_frame=window_frame,
+            price_history=price_history,
+        )
         proposal_result = self._review_and_apply_backtest_window(
             profile=profile,
             session_key=session_key,
@@ -1248,7 +1312,6 @@ class PaperPracticeRuntime:
             },
         )
 
-        artifact_dir = self.settings.data_dir / "research" / "paper_practice" / "backtests" / run_id
         window_payload = {
             "run_id": run_id,
             "window_index": window_index,
@@ -1262,6 +1325,9 @@ class PaperPracticeRuntime:
             "starting_revision_id": profile["active_revision_id"],
             "proposal_id": proposal_result.get("proposal_id", ""),
             "proposal_applied": bool(proposal_result.get("applied")),
+            "replay_audit_csv_path": replay_audit["csv_path"],
+            "replay_audit_parquet_path": replay_audit["parquet_path"],
+            "replay_audit_summary": replay_audit["summary"],
         }
         write_json_artifact(
             artifact_dir / f"window_{window_index:02d}.json",
@@ -1922,17 +1988,193 @@ class PaperPracticeRuntime:
         semantic_regime: str,
         confidence: float,
     ) -> bool:
+        return bool(
+            self._historical_entry_reason_codes(
+                profile_payload=profile_payload,
+                strategy_selection=strategy_selection,
+                semantic_regime=semantic_regime,
+                confidence=confidence,
+            )
+        )
+
+    def _historical_entry_reason_codes(
+        self,
+        *,
+        profile_payload: dict[str, Any],
+        strategy_selection: dict[str, Any],
+        semantic_regime: str,
+        confidence: float,
+    ) -> list[str]:
+        reason_codes: list[str] = []
         if semantic_regime not in set(profile_payload["regime_allowlist"]):
-            return True
+            reason_codes.append(f"regime_not_allowed:{semantic_regime or 'unknown'}")
         if confidence < float(profile_payload["minimum_condition_confidence"]):
-            return True
+            reason_codes.append("condition_confidence_below_profile_minimum")
         target_label = str(strategy_selection.get("target_label") or "")
         if target_label != "up":
-            return True
+            reason_codes.append(f"strategy_target_not_runtime_long:{target_label or 'unknown'}")
         allowed_regimes = {
             str(item) for item in (strategy_selection.get("allowed_regimes") or [])
         }
-        return semantic_regime not in allowed_regimes
+        if semantic_regime not in allowed_regimes:
+            reason_codes.append(f"strategy_regime_not_allowed:{semantic_regime or 'unknown'}")
+        return reason_codes
+
+    def _write_backtest_replay_audit(
+        self,
+        *,
+        artifact_dir: Path,
+        run_id: str,
+        session_key: str,
+        window_index: int,
+        profile_payload: dict[str, Any],
+        strategy_selection: dict[str, Any],
+        window_frame: pd.DataFrame,
+        price_history: pd.DataFrame,
+    ) -> dict[str, Any]:
+        target_label = str(strategy_selection.get("target_label") or "")
+        top_family = str(strategy_selection.get("top_family") or "")
+        allowed_regimes = sorted(
+            {str(item) for item in (strategy_selection.get("allowed_regimes") or [])}
+        )
+        profile_allowlist = {str(item) for item in profile_payload["regime_allowlist"]}
+        rows: list[dict[str, Any]] = []
+        reason_counter: Counter[str] = Counter()
+        direction_counter: Counter[str] = Counter()
+        regime_counter: Counter[str] = Counter()
+        confidence_values: list[float] = []
+        close_prices: list[float] = []
+        profile_regime_allowed_count = 0
+        strategy_runtime_long_supported_count = 0
+        strategy_regime_allowed_count = 0
+        would_open_runtime_long_count = 0
+
+        for row in window_frame.itertuples(index=False):
+            bucket_time = _as_utc_timestamp(row.bucket_start_utc)
+            close_price = self._lookup_backtest_price(price_history, bucket_time)
+            market_return = _safe_float(getattr(row, "market_return_mean_15m", 0.0))
+            market_direction = _market_return_direction(market_return)
+            semantic_regime = str(getattr(row, "semantic_regime", "") or "")
+            confidence = _safe_float(getattr(row, "confidence", 0.0))
+            reason_codes = self._historical_entry_reason_codes(
+                profile_payload=profile_payload,
+                strategy_selection=strategy_selection,
+                semantic_regime=semantic_regime,
+                confidence=confidence,
+            )
+            profile_regime_allowed = semantic_regime in profile_allowlist
+            strategy_runtime_long_supported = target_label == "up"
+            strategy_regime_allowed = semantic_regime in set(allowed_regimes)
+            would_open_runtime_long = not reason_codes
+
+            direction_counter[market_direction] += 1
+            regime_counter[semantic_regime or "unknown"] += 1
+            reason_counter.update(reason_codes)
+            confidence_values.append(confidence)
+            close_prices.append(close_price)
+            profile_regime_allowed_count += int(profile_regime_allowed)
+            strategy_runtime_long_supported_count += int(strategy_runtime_long_supported)
+            strategy_regime_allowed_count += int(strategy_regime_allowed)
+            would_open_runtime_long_count += int(would_open_runtime_long)
+
+            rows.append(
+                {
+                    "bucket_start_utc": bucket_time.isoformat(),
+                    "close_price_usdc": close_price,
+                    "market_return_mean_15m": market_return,
+                    "market_return_direction": market_direction,
+                    "semantic_regime": semantic_regime,
+                    "confidence": confidence,
+                    "raw_state_id": getattr(row, "raw_state_id", ""),
+                    "model_family": str(getattr(row, "model_family", "") or ""),
+                    "strategy_top_family": top_family,
+                    "strategy_target_label": target_label,
+                    "strategy_allowed_regimes": "|".join(allowed_regimes),
+                    "profile_regime_allowed": _csv_bool(profile_regime_allowed),
+                    "strategy_runtime_long_supported": _csv_bool(strategy_runtime_long_supported),
+                    "strategy_regime_allowed": _csv_bool(strategy_regime_allowed),
+                    "would_open_runtime_long": _csv_bool(would_open_runtime_long),
+                    "no_trade_reason_codes": "|".join(reason_codes),
+                }
+            )
+
+        csv_path = artifact_dir / f"window_{window_index:02d}_replay_audit.csv"
+        fieldnames = list(rows[0].keys()) if rows else []
+        csv_buffer = io.StringIO()
+        writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+        write_text_artifact(
+            csv_path,
+            csv_buffer.getvalue(),
+            owner_type="backtest_session",
+            owner_key=session_key,
+            artifact_type="backtest_window_replay_audit_csv",
+            artifact_format="csv",
+            settings=self.settings,
+            metadata={"run_id": run_id, "window_index": window_index},
+        )
+
+        row_count = len(rows)
+        first_close = close_prices[0] if close_prices else 0.0
+        last_close = close_prices[-1] if close_prices else 0.0
+        close_return_pct = (
+            ((last_close - first_close) / first_close) * 100.0 if first_close > 0 else 0.0
+        )
+        summary = {
+            "row_count": row_count,
+            "strategy_top_family": top_family,
+            "strategy_target_label": target_label,
+            "strategy_allowed_regimes": allowed_regimes,
+            "market_return_direction_counts": dict(direction_counter),
+            "semantic_regime_counts": dict(regime_counter),
+            "blocked_reason_counts": dict(reason_counter),
+            "profile_regime_allowed_count": profile_regime_allowed_count,
+            "strategy_runtime_long_supported_count": strategy_runtime_long_supported_count,
+            "strategy_regime_allowed_count": strategy_regime_allowed_count,
+            "would_open_runtime_long_count": would_open_runtime_long_count,
+            "close_price_start_usdc": first_close,
+            "close_price_end_usdc": last_close,
+            "close_return_pct": close_return_pct,
+            "confidence_min": min(confidence_values) if confidence_values else 0.0,
+            "confidence_max": max(confidence_values) if confidence_values else 0.0,
+            "confidence_mean": (
+                sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
+            ),
+        }
+        parquet_path = artifact_dir / f"window_{window_index:02d}_replay_audit.parquet"
+        try:
+            pd.DataFrame(rows).to_parquet(parquet_path, index=False)
+            record_artifact_reference(
+                settings=self.settings,
+                owner_type="backtest_session",
+                owner_key=session_key,
+                artifact_type="backtest_window_replay_audit_parquet",
+                artifact_format="parquet",
+                artifact_path=parquet_path,
+                content=parquet_path.read_bytes(),
+                metadata={"run_id": run_id, "window_index": window_index},
+            )
+            summary["parquet_written"] = True
+            summary["parquet_path"] = str(parquet_path)
+        except Exception as exc:  # pragma: no cover - depends on optional parquet engine
+            summary["parquet_written"] = False
+            summary["parquet_error"] = str(exc)
+
+        write_json_artifact(
+            artifact_dir / f"window_{window_index:02d}_replay_audit_summary.json",
+            summary,
+            owner_type="backtest_session",
+            owner_key=session_key,
+            artifact_type="backtest_window_replay_audit_summary",
+            settings=self.settings,
+            metadata={"run_id": run_id, "window_index": window_index},
+        )
+        return {
+            "csv_path": str(csv_path),
+            "parquet_path": str(parquet_path) if summary.get("parquet_written") else "",
+            "summary": summary,
+        }
 
     def _historical_exit_reason(
         self,
