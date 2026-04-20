@@ -141,6 +141,13 @@ Treat `.ai/dropbox/` as active exchange, not as a substitute for stable docs or
 canonical story state. When a slice needs a durable human handoff, write that
 under `docs/handoff/` and point it back to the current runtime-truth packet.
 
+Generated `.ai/dropbox` output is not automatically durable. Keep it as live
+exchange until a receipt is explicitly accepted, promoted, or summarized into a
+stable docs/config/test surface. If the live exchange needs to be preserved for
+audit but removed from the active workspace, archive a copy under ignored
+`data/archive/ai_dropbox/` and record the archive path in a handoff or journal
+entry before changing tracked docs.
+
 The bounded research review packet now has three durable surfaces:
 
 - `improvement_proposal_v1`

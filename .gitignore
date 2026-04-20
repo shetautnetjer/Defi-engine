@@ -68,3 +68,19 @@ htmlcov/
 scripts/ralph/.last-branch
 scripts/ralph/runs/
 .gitnexus
+
+# Repo-understanding and local agent helper output
+.claude/
+.codegraph/
+graphify-out/cache/
+
+# Generated review/proposal packets; promote explicitly before committing.
+docs/proposals/next_*.md
+docs/reports/*_review.md
+docs/plans/*.zip
+
+# Automation runtime output
+automation/state/
+training/automation/logs/
+training/automation/receipts/
+training/automation/state/

@@ -41,6 +41,21 @@
 - `docs/handoff/` = verbose human-readable continuation notes after a bounded slice is complete.
 - `docs/` and repo code/config/tests = durable repo truth; handoff notes and dropbox receipts must point back here instead of replacing it.
 
+## Artifact Hygiene
+- Do not commit repo-understanding caches, local automation logs, raw receipts,
+  or generated proposal/review packets unless a human explicitly promotes them
+  into durable repo truth.
+- Generated helpers such as `.codegraph/`, `.claude/`, `graphify-out/cache/`,
+  `automation/state/`, and `training/automation/{logs,receipts,state}/` are
+  local working artifacts.
+- Generated docs under `docs/proposals/next_*.md` and
+  `docs/reports/*_review.md` are draft packets until promoted into a stable
+  `docs/task/`, `docs/issues/`, `docs/gaps/`, `docs/handoff/`, or canonical
+  evidence surface.
+- If a cleanup needs to preserve generated output, compress it under ignored
+  `data/archive/` first; do not move tracked docs or `.ai/dropbox` history into
+  an archive without a dedicated cleanup slice.
+
 ## Superpowers Routing
 - Use `superpowers:writing-plans` before multi-step design or sequencing work.
 - Use `superpowers:executing-plans` or `superpowers:subagent-driven-development` when implementing a settled plan.

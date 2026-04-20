@@ -69,3 +69,13 @@ bot.
 
 Training may recommend or auto-apply bounded paper-profile revisions only when
 they pass the existing proposal review and comparison flow.
+
+## Runtime Artifact Hygiene
+
+- `training/automation/logs/`, `training/automation/receipts/`, and
+  `training/automation/state/` are runtime output, not durable source.
+- Promote only summarized decisions, accepted receipts, or stable config changes
+  into tracked docs/config/tests.
+- When a training loop produces useful but noisy artifacts, copy or compress
+  them under ignored `data/archive/training/` and reference that archive from a
+  handoff, journal entry, or accepted receipt.

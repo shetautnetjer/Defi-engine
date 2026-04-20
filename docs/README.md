@@ -149,6 +149,17 @@ Across all of these classes, writer should review the full docs surface on every
 accepted loop and update every affected file category needed to keep repo truth
 current.
 
+## Generated Drafts And Archives
+
+- `docs/proposals/next_*.md` and `docs/reports/*_review.md` are generated draft
+  packets until a human or accepted automation slice promotes them.
+- `docs/plans/*.zip` is a local transfer/archive artifact, not planning truth.
+- Keep promoted durable findings in the existing routed docs folders rather
+  than letting generated packets accumulate as source of truth.
+- Preserve noisy generated output under ignored `data/archive/` when useful for
+  audit; do not move tracked docs into an archive without a dedicated cleanup
+  task and an updated docs index.
+
 ## Which Surface Do I Use?
 
 - Update `.ai/dropbox/` when the work needs live exchange, receipts, mailbox
