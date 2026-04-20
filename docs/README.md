@@ -28,6 +28,18 @@ promotion before the next slice is treated as backlog truth.
   - authority order and promotion contract for moving advisory research into governed runtime owners
 - `policy/writer_story_promotion_rubric.md`
   - writer-owned routing, promotion, and north-star prioritization rules
+- `harness/codex_trader_harness_v2.md`
+  - governed Codex trader-lane doctrine for runtime/research/promotion separation
+- `harness/evidence_to_experiment_loop_v1_1.md`
+  - evidence-unit, evidence-rollup, failure-family, and experiment-batch learning loop
+- `harness/decision_funnel_and_no_trade_diagnostics.md`
+  - no-trade diagnostic funnel from training coverage through paper settlement
+- `harness/continuous_learning_governor_v2.md`
+  - future candidate-overlay and micro-live promotion ladder doctrine; docs only, not current live authority
+- `harness/build_process_harness.md`
+  - one-slice build process and agent work rules for harness implementation
+- `harness/repo_surface_map.md`
+  - navigation map for runtime, research/training, policy, docs, and machine-control surfaces
 - `sdd/d5_trading_engine_sdd.md`
   - current software design for the source-truth stack plus bounded feature, condition, policy, and shadow owners
 - `architecture/backtest_truth_contract.md`
@@ -119,6 +131,8 @@ promotion before the next slice is treated as backlog truth.
   - product requirements and milestone intent
 - `docs/policy/`
   - runtime authority, governance, and promotion doctrine
+- `docs/harness/`
+  - Codex trader harness, evidence-to-experiment, decision-funnel, and continuous-learning governor doctrine
 - `docs/sdd/`
   - software and system design surfaces
 - `docs/plans/`

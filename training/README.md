@@ -10,6 +10,10 @@ This workspace is the repo-owned training surface for adaptive paper practice.
 - Local grounding guide: `training/AGENTS.md`
 - Trading harness doctrine: `training/trading_agent_harness.md`
 - Local operating contract: `training/program.md`
+- Evidence-first harness upgrade: `training/program_v2.md`
+- Persistent trader-lane prompts: `training/prompts/trader_turn_v2.md`,
+  `training/prompts/evidence_rollup_turn.md`, and
+  `training/prompts/no_trade_diagnostic_turn.md`
 - Local rubric mirror: `training/rubrics/training_regime_rubric.md`
 - QMD evidence contract: `docs/task/trading_qmd_report_contract.md`
 
@@ -24,13 +28,17 @@ repo-owned docs first.
 2. this README
 3. `training/trading_agent_harness.md`
 4. `training/program.md`
-5. `training/rubrics/training_regime_rubric.md`
-6. `docs/task/trading_qmd_report_contract.md`
-7. `.ai/profiles.toml`
-8. `.ai/schemas/profile.schema.json`
-9. `.ai/policies/profile_router_policy.v1.json`
-10. `.ai/prompts/profile_governor_turn.md`
-11. `docs/project/current_runtime_truth.md`
+5. `training/program_v2.md`
+6. `docs/harness/codex_trader_harness_v2.md`
+7. `docs/harness/evidence_to_experiment_loop_v1_1.md`
+8. `docs/harness/decision_funnel_and_no_trade_diagnostics.md`
+9. `training/rubrics/training_regime_rubric.md`
+10. `docs/task/trading_qmd_report_contract.md`
+11. `.ai/profiles.toml`
+12. `.ai/schemas/profile.schema.json`
+13. `.ai/policies/profile_router_policy.v1.json`
+14. `.ai/prompts/profile_governor_turn.md`
+15. `docs/project/current_runtime_truth.md`
 
 It exists to keep the long-running automation lane clean:
 
@@ -69,6 +77,7 @@ The current automation split is:
 - `prompts/` — bounded prompt templates for reviews
 - `bin/` — repo-owned helper scripts that bridge receipts into automation events
 - `program.md` — repo-owned governed autoresearch contract for this training lane
+- `program_v2.md` — evidence-first harness upgrade for continuous candidate-overlay learning without hidden runtime authority
 
 ## Repo-owned CLI
 

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/evidence_rollup.schema.json",
+  "title": "D5 Evidence Rollup",
+  "type": "object",
+  "required": [
+    "rollup_id",
+    "created_at_utc",
+    "window",
+    "maturity_counts",
+    "top_failure_families",
+    "recommended_batch_type",
+    "refs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "rollup_id": {
+      "type": "string"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "start_utc",
+        "end_utc"
+      ],
+      "properties": {
+        "start_utc": {
+          "type": "string"
+        },
+        "end_utc": {
+          "type": "string"
+        },
+        "regimen": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "corpus_health": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "trading_loop_health": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "maturity_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "top_failure_families": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "family",
+          "score"
+        ],
+        "properties": {
+          "family": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "evidence_count": {
+            "type": "integer"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "selected_failure_family": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selection_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "alternative_failure_families": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "falsification_required": {
+      "type": "boolean"
+    },
+    "recommended_batch_type": {
+      "type": "string"
+    },
+    "refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "uri"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

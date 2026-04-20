@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/decision_funnel.schema.json",
+  "title": "D5 Decision Funnel Diagnostic",
+  "type": "object",
+  "required": [
+    "diagnostic_id",
+    "created_at_utc",
+    "run_ref",
+    "counts",
+    "primary_failure_surface",
+    "top_reason_codes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "diagnostic_id": {
+      "type": "string"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_ref": {
+      "type": "string"
+    },
+    "window_days": {
+      "type": "integer"
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "decision_cycles",
+        "valid_data",
+        "valid_features",
+        "valid_conditions",
+        "strategy_candidates",
+        "policy_allowed",
+        "risk_approved",
+        "quote_available",
+        "paper_filled",
+        "settled"
+      ],
+      "properties": {
+        "decision_cycles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_data": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_features": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_conditions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "strategy_candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policy_allowed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "risk_approved": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quote_available": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "paper_filled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "settled": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "primary_failure_surface": {
+      "type": "string",
+      "enum": [
+        "data_coverage_gap",
+        "feature_materialization_gap",
+        "condition_churn_or_staleness",
+        "strategy_candidate_generation_failure",
+        "policy_overblocking",
+        "risk_overblocking",
+        "quote_fill_unavailability",
+        "settlement_feedback_gap",
+        "unknown"
+      ]
+    },
+    "top_reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "recommended_next_action": {
+      "type": "string"
+    }
+  }
+}

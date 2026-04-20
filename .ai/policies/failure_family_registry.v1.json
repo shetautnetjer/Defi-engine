@@ -2,6 +2,84 @@
   "version": "v1",
   "description": "Maps ranked evidence-gap failure families to bounded candidate-overlay experiment templates. These templates are research/shadow only and do not grant runtime authority.",
   "families": {
+    "data_coverage_gap": {
+      "batch_type": "data_coverage_gap_batch",
+      "selection_goal": "Prove the selected training window has raw, Parquet, SQL, and feature coverage before strategy comparisons are trusted.",
+      "templates": [
+        {
+          "template_id": "training_window_reconciliation_v1",
+          "candidate_overlay_type": "candidate_source_transform_overlay_v1",
+          "target_surface": "source_coverage",
+          "title": "Reconcile training-window data coverage",
+          "hypothesis": "If raw, Parquet, SQL, or feature-day counts disagree, the next learning batch must repair coverage before tuning strategy, policy, or risk.",
+          "overlay": {
+            "base_source": "training_window_manifest",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose training-window --regimen quickstart_300d --json",
+          "success_gate": {
+            "requires_missing_day_list": true,
+            "requires_sql_feature_reconciliation": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "feature_materialization_gap": {
+      "batch_type": "feature_materialization_gap_batch",
+      "selection_goal": "Separate missing or stale features from downstream condition, policy, or strategy failures.",
+      "templates": [
+        {
+          "template_id": "feature_null_rate_audit_v1",
+          "candidate_overlay_type": "candidate_feature_toggle_overlay_v1",
+          "target_surface": "features",
+          "title": "Audit feature coverage and null-rate health",
+          "hypothesis": "If feature materialization is incomplete or null-heavy, candidate generation failures may be downstream symptoms rather than strategy failures.",
+          "overlay": {
+            "base_feature_set": "global-regime-inputs-15m-v1",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose training-window --regimen quickstart_300d --json",
+          "success_gate": {
+            "requires_feature_days_present": true,
+            "requires_null_rate_summary": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "condition_churn_or_staleness": {
+      "batch_type": "condition_churn_or_staleness_batch",
+      "selection_goal": "Test whether condition/regime state is stale, unavailable, or flipping too aggressively before changing strategy logic.",
+      "templates": [
+        {
+          "template_id": "condition_staleness_audit_v1",
+          "candidate_overlay_type": "candidate_condition_overlay_v1",
+          "target_surface": "condition",
+          "title": "Audit condition staleness and regime churn",
+          "hypothesis": "If valid features do not produce stable conditions, the strategy layer is being asked to trade without a trustworthy regime context.",
+          "overlay": {
+            "base_condition_set": "global-regime-v1",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose gate-funnel --run latest --json",
+          "success_gate": {
+            "requires_condition_valid_count": true,
+            "requires_reason_code_histogram": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
     "strategy_runtime_mismatch": {
       "batch_type": "strategy_runtime_mismatch_batch",
       "selection_goal": "Test whether paper runtime is blocked because strategy candidates are incompatible with the currently observed long-friendly regime.",
@@ -99,6 +177,33 @@
         }
       ]
     },
+    "policy_overblocking": {
+      "batch_type": "policy_overblocking_batch",
+      "selection_goal": "Separate true policy ineligibility from overly conservative strategy-regime mapping.",
+      "templates": [
+        {
+          "template_id": "policy_reason_histogram_v1",
+          "candidate_overlay_type": "candidate_policy_overlay_v1",
+          "target_surface": "policy",
+          "title": "Break down policy block reasons",
+          "hypothesis": "If strategy candidates exist but policy blocks dominate, the next test should inspect strategy eligibility mapping before risk or source changes.",
+          "overlay": {
+            "base_policy": "policy_global_regime_trace_v1",
+            "changes": {
+              "diagnostic_only": true,
+              "risk_gate_bypass": false,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose gate-funnel --run latest --json",
+          "success_gate": {
+            "requires_policy_block_histogram": true,
+            "requires_no_runtime_promotion": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
     "risk_overblocking": {
       "batch_type": "risk_overblocking_batch",
       "selection_goal": "Separate true unsafe risk rejects from missing data or stale quote failures.",
@@ -144,6 +249,58 @@
           "test_command": "d5 diagnose gate-funnel --run latest --json",
           "success_gate": {
             "requires_quote_missing_count": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "settlement_feedback_gap": {
+      "batch_type": "settlement_feedback_gap_batch",
+      "selection_goal": "Prove paper fills and exits settle into feedback rows before treating paper results as learning evidence.",
+      "templates": [
+        {
+          "template_id": "paper_settlement_feedback_audit_v1",
+          "candidate_overlay_type": "candidate_strategy_policy_overlay_v1",
+          "target_surface": "settlement_feedback",
+          "title": "Audit paper settlement feedback continuity",
+          "hypothesis": "If paper sessions fill but do not settle into evidence feedback, the learning loop cannot adapt safely from paper results.",
+          "overlay": {
+            "base_settlement": "paper_practice_feedback_v1",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 training evidence-gap --json",
+          "success_gate": {
+            "requires_evidence_feedback_count": true,
+            "requires_qmd_or_json_receipt": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "proposal_not_converted_to_test": {
+      "batch_type": "proposal_not_converted_to_test_batch",
+      "selection_goal": "Convert accumulated advisory proposals into a small comparable test batch instead of generating more untested artifacts.",
+      "templates": [
+        {
+          "template_id": "proposal_to_comparison_backlog_v1",
+          "candidate_overlay_type": "candidate_strategy_policy_overlay_v1",
+          "target_surface": "proposal_review",
+          "title": "Build a comparable-test backlog from existing proposals",
+          "hypothesis": "If proposals accumulate without challenger reports or paper evidence, the next useful move is comparison pressure rather than more proposal generation.",
+          "overlay": {
+            "base_research_loop": "proposal_review_v1",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 training experiment-batch --json",
+          "success_gate": {
+            "requires_candidate_batch": true,
+            "requires_falsification_candidate": true
           },
           "falsification_candidate": true
         }

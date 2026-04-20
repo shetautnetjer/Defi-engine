@@ -1,0 +1,41 @@
+{
+  "version": "v1",
+  "current_authority": "paper_only",
+  "runtime_law": [
+    "SQL is canonical truth",
+    "Risk gate is non-bypassable",
+    "No live order routing in current scope",
+    "No private-key use by Codex",
+    "LLM/Codex cannot place paper or live orders",
+    "Candidate overlays are non-authoritative until promoted"
+  ],
+  "candidate_overlay_allowed_surfaces": [
+    "labels",
+    "features",
+    "condition_thresholds",
+    "strategy_policy_mapping",
+    "risk_thresholds",
+    "source_transforms"
+  ],
+  "requires_manual_or_explicit_operator_scope": [
+    "live_trading",
+    "wallet_signing",
+    "risk_limit_weakening",
+    "runtime_policy_promotion",
+    "provider_scope_widening",
+    "strategy_family_promotion"
+  ],
+  "micro_live_gate": {
+    "enabled_now": false,
+    "future_requirements": {
+      "min_trade_count": 20,
+      "rolling_paper_win_rate_min": 0.8,
+      "filled_trades_per_week_min": 1,
+      "net_expectancy_after_costs": "> 0",
+      "profit_factor_min": 1.5,
+      "decision_reconstructability": "required",
+      "rollback_target": "required",
+      "hard_kill_switch": "required"
+    }
+  }
+}

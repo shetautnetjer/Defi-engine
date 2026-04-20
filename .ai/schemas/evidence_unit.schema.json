@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/evidence_unit.schema.json",
+  "title": "D5 Evidence Unit",
+  "type": "object",
+  "required": [
+    "evidence_unit_id",
+    "created_at_utc",
+    "source_kind",
+    "maturity_stage",
+    "surface",
+    "summary",
+    "refs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "evidence_unit_id": {
+      "type": "string"
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "sql_run",
+        "qmd_report",
+        "json_receipt",
+        "proposal",
+        "review",
+        "comparison",
+        "paper_session",
+        "backtest",
+        "walk_forward",
+        "issue",
+        "notion_context",
+        "github_doc"
+      ]
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "maturity_stage": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "reviewed",
+        "compared",
+        "backtested",
+        "walk_forward_tested",
+        "paper_tested",
+        "superseded",
+        "rejected"
+      ]
+    },
+    "surface": {
+      "type": "string"
+    },
+    "failure_family": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "uri"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}
