@@ -1,0 +1,40 @@
+{
+  "row_count": 8545,
+  "strategy_top_family": "flat_regime_stand_aside_v1",
+  "strategy_target_label": "flat",
+  "strategy_allowed_regimes": [
+    "no_trade",
+    "risk_off"
+  ],
+  "market_return_direction_counts": {
+    "up": 4318,
+    "down": 4227
+  },
+  "semantic_regime_counts": {
+    "long_friendly": 4338,
+    "no_trade": 2895,
+    "short_friendly": 955,
+    "risk_off": 357
+  },
+  "blocked_reason_counts": {
+    "strategy_target_not_runtime_long:flat": 8545,
+    "strategy_regime_not_allowed:long_friendly": 4338,
+    "regime_not_allowed:no_trade": 2895,
+    "regime_not_allowed:short_friendly": 955,
+    "strategy_regime_not_allowed:short_friendly": 955,
+    "condition_confidence_below_profile_minimum": 460,
+    "regime_not_allowed:risk_off": 357
+  },
+  "profile_regime_allowed_count": 4338,
+  "strategy_runtime_long_supported_count": 0,
+  "strategy_regime_allowed_count": 3252,
+  "would_open_runtime_long_count": 0,
+  "close_price_start_usdc": 127.63,
+  "close_price_end_usdc": 83.54,
+  "close_return_pct": -34.5451696309645,
+  "confidence_min": 0.4996564253122761,
+  "confidence_max": 1.0,
+  "confidence_mean": 0.9229149966727923,
+  "parquet_written": true,
+  "source_local_path": "data/research/paper_practice/backtests/backtest_walk_forward_afbdb062864a/window_01_replay_audit_summary.json"
+}
