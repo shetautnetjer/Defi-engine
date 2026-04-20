@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/micro_live_arm_state.schema.json",
+  "title": "D5 Micro-Live Arm State",
+  "type": "object",
+  "required": ["armed", "status", "reason_codes"],
+  "additionalProperties": true,
+  "properties": {
+    "armed": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["armed", "blocked", "not_armed", "paused", "expired"]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "armed_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "max_notional_usdc": {
+      "type": "number",
+      "minimum": 0
+    },
+    "daily_loss_limit_usdc": {
+      "type": "number",
+      "minimum": 0
+    },
+    "weekly_loss_limit_usdc": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

@@ -1140,6 +1140,18 @@ def test_cli_training_group_dispatches_json(
             "next_command": "d5 training review --json",
         },
     )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.evidence_gap",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_evidence_gap_test",
+            "artifact_dir": "/tmp/training/evidence-gap",
+            "artifact_paths": ["/tmp/training/evidence-gap/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_evidence_gap",
+            "selected_batch_type": "strategy_runtime_mismatch_batch",
+            "next_command": "d5 training evidence-gap --json",
+        },
+    )
 
     bootstrap_result = cli_runner.invoke(cli, ["training", "bootstrap", "--json"])
     assert bootstrap_result.exit_code == 0
@@ -1180,3 +1192,34 @@ def test_cli_training_group_dispatches_json(
     assert status_result.exit_code == 0
     status_payload = json.loads(status_result.output)
     assert status_payload["workspace_root"] == "training"
+
+    evidence_gap_result = cli_runner.invoke(cli, ["training", "evidence-gap", "--json"])
+    assert evidence_gap_result.exit_code == 0
+    assert json.loads(evidence_gap_result.output)["run_id"] == "training_evidence_gap_test"
+
+
+def test_cli_diagnose_group_dispatches_json(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "d5_trading_engine.runtime.diagnostics.diagnose_no_trades",
+        lambda settings, **kwargs: {
+            "status": "completed",
+            "run_id": "diagnose_no_trades_test",
+            "loop_run_id": kwargs["run"],
+            "window_days": 300,
+            "paper_trades": 0,
+            "primary_failure_surface": "strategy_candidate_generation",
+        },
+    )
+
+    result = cli_runner.invoke(
+        cli,
+        ["diagnose", "no-trades", "--run", "latest", "--window", "300d", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["run_id"] == "diagnose_no_trades_test"
+    assert payload["primary_failure_surface"] == "strategy_candidate_generation"

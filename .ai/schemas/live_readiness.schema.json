@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/live_readiness.schema.json",
+  "title": "D5 Micro-Live Readiness Decision",
+  "type": "object",
+  "required": [
+    "status",
+    "passed",
+    "micro_live_candidate",
+    "reason_codes",
+    "thresholds",
+    "metrics",
+    "evaluated_at_utc"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["passed", "failed"]
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "micro_live_candidate": {
+      "type": "boolean"
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "thresholds": {
+      "type": "object"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "metrics_path": {
+      "type": "string"
+    },
+    "evaluated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

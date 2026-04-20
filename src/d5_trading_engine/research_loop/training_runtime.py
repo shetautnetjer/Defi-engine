@@ -11,6 +11,7 @@ import orjson
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+from d5_trading_engine.research_loop.evidence_rollup import build_training_evidence_gap
 from d5_trading_engine.research_loop.research_profiles import (
     get_research_profile,
     resolve_research_profile_schema_path,
@@ -425,6 +426,46 @@ class TrainingRuntime:
             "governor_status": governor_status,
             "training_status": merged_training_status,
         }
+
+    def evidence_gap(self) -> dict[str, Any]:
+        rollup_id = f"evidence_gap_{uuid.uuid4().hex[:12]}"
+        artifact_dir = (
+            self.settings.data_dir
+            / "research"
+            / "training"
+            / "evidence_rollups"
+            / rollup_id
+        )
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        summary = build_training_evidence_gap(self.settings)
+        summary.update(
+            {
+                "run_id": rollup_id,
+                "artifact_dir": str(artifact_dir),
+                "artifact_paths": [str(artifact_dir / "summary.json")],
+                "workspace_root": "training",
+                "active_profile_revision_id": self.practice.ensure_active_profile()[
+                    "active_revision_id"
+                ],
+            }
+        )
+        write_json_artifact(
+            artifact_dir / "summary.json",
+            summary,
+            owner_type="training_evidence_gap",
+            owner_key=rollup_id,
+            artifact_type="training_evidence_gap_summary",
+            settings=self.settings,
+        )
+        write_json_artifact(
+            self.state_root / "training_latest_evidence_gap.json",
+            summary,
+            owner_type="training_evidence_gap",
+            owner_key=rollup_id,
+            artifact_type="training_latest_evidence_gap",
+            settings=self.settings,
+        )
+        return summary
 
     def review(self) -> dict[str, Any]:
         review_id = f"training_review_{uuid.uuid4().hex[:12]}"

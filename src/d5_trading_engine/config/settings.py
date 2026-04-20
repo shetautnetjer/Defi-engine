@@ -78,10 +78,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Solana (reserved — inert in v0) ---
+    # --- Solana / micro-live signing ---
     solana_private_key: str = Field(
         default="",
-        description="Reserved for future sender scaffolding. Inert.",
+        description="Deprecated reserved field. Do not use for micro-live signing.",
+    )
+    solana_keypair_path: Path | None = Field(
+        default=None,
+        description=(
+            "Optional operator-owned Solana CLI keypair path for an external signer command. "
+            "The engine does not read or store raw private-key material."
+        ),
     )
 
     # --- RPC Providers ---
@@ -91,9 +98,38 @@ class Settings(BaseSettings):
 
     # --- Jupiter ---
     jupiter_api_key: str = Field(default="", description="Jupiter Developer Platform API key")
+    jupiter_swap_v2_base_url: str = Field(
+        default="https://api.jup.ag",
+        description="Jupiter Swap V2 base URL for guarded micro-live order/execute calls.",
+    )
     jupiter_min_request_interval_seconds: float = Field(
         default=2.0,
         description="Minimum spacing between live Jupiter API requests.",
+    )
+
+    # --- Micro-live execution gates ---
+    micro_live_signer_command: str = Field(
+        default="",
+        description=(
+            "Operator-owned command that signs an unsigned Jupiter transaction from stdin "
+            "and emits JSON containing signed_transaction and signer_pubkey."
+        ),
+    )
+    micro_live_signer_pubkey: str = Field(
+        default="",
+        description="Expected signer/taker public key for gated Jupiter micro-live orders.",
+    )
+    micro_live_signer_timeout_seconds: float = Field(
+        default=10.0,
+        description="Timeout for the external transaction signer command.",
+    )
+    micro_live_kill_switch: bool = Field(
+        default=False,
+        description="Fail-closed micro-live kill switch.",
+    )
+    micro_live_max_drawdown_pct: float = Field(
+        default=5.0,
+        description="Maximum paper drawdown allowed by the micro-live readiness gate.",
     )
 
     # --- Helius ---
@@ -332,6 +368,20 @@ class Settings(BaseSettings):
             return Path(stripped).expanduser()
         return value
 
+    @field_validator("solana_keypair_path", mode="before")
+    @classmethod
+    def _parse_solana_keypair_path(cls, value: object) -> object:
+        """Normalize blank values and allow a simple string path."""
+
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            return Path(stripped).expanduser()
+        return value
+
     @model_validator(mode="after")
     def _load_coinbase_secrets_file(self) -> Settings:
         """Populate Coinbase credentials from an env-like secrets file when present."""
@@ -413,6 +463,21 @@ class Settings(BaseSettings):
     def jupiter_api_base(self) -> str:
         """Jupiter API base URL."""
         return "https://api.jup.ag"
+
+    @property
+    def jupiter_swap_v2_base(self) -> str:
+        """Jupiter Swap V2 base URL used by the micro-live executor."""
+        return self.jupiter_swap_v2_base_url.rstrip("/")
+
+    @property
+    def sol_mint(self) -> str:
+        """Canonical wrapped SOL mint."""
+        return _DEFAULT_SOL_MINT
+
+    @property
+    def usdc_mint(self) -> str:
+        """Canonical Solana USDC mint."""
+        return _DEFAULT_USDC_MINT
 
     @property
     def coinbase_api_base(self) -> str:

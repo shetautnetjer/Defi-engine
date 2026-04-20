@@ -103,10 +103,13 @@ def isolate_runtime(
     if not run_integration:
         for key in (
             "SOLANA_PRIVATE_KEY",
+            "SOLANA_KEYPAIR_PATH",
             "QUICKNODES_HTTPS",
             "QUICKNODES_WSS",
             "ALCHEMY_HTTPS",
             "JUPITER_API_KEY",
+            "MICRO_LIVE_SIGNER_COMMAND",
+            "MICRO_LIVE_SIGNER_PUBKEY",
             "HELIUS_API_KEY",
             "HELIUS_SENDER_HTTP",
             "HELIUS_TIPS",
@@ -121,6 +124,13 @@ def isolate_runtime(
             "FRED_API_KEY",
         ):
             monkeypatch.setenv(key, "")
+        for key in (
+            "JUPITER_SWAP_V2_BASE_URL",
+            "MICRO_LIVE_SIGNER_TIMEOUT_SECONDS",
+            "MICRO_LIVE_KILL_SWITCH",
+            "MICRO_LIVE_MAX_DRAWDOWN_PCT",
+        ):
+            monkeypatch.delenv(key, raising=False)
         monkeypatch.setenv("TRADER_RESEARCH_PROFILE", "execution_cost_minimizer")
 
     get_settings.cache_clear()

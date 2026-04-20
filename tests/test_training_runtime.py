@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import json
 
+import orjson
+
+from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.research_loop.training_runtime import (
     TrainingRuntime,
     _summarize_governor_status,
     _merge_historical_cache_status,
     _merge_training_status,
     _summarize_trader_lane_status,
+)
+from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
+from d5_trading_engine.storage.truth.models import (
+    PaperPracticeDecisionV1,
+    PaperPracticeLoopRunV1,
+    PaperPracticeProfileRevisionV1,
+    PaperPracticeProfileV1,
 )
 
 
@@ -132,6 +142,125 @@ def test_summarize_governor_status_reads_latest_review_and_priority_receipts() -
     assert summary["latest_action"] == "SELECT_PROFILE"
     assert summary["latest_review_action"] == "SHADOW_ONLY"
     assert summary["latest_priority_action"] == "SELECT_PROFILE"
+
+
+def test_training_evidence_gap_ranks_no_trade_failure_families(settings) -> None:
+    run_migrations_to_head(settings)
+    now = utcnow()
+    session = get_session(settings)
+    try:
+        profile = PaperPracticeProfileV1(
+            profile_id="paper_practice_profile_test",
+            status="active",
+            active_revision_id=None,
+            instrument_pair="SOL/USDC",
+            context_anchors_json="[]",
+            cadence_minutes=15,
+            max_open_sessions=1,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(profile)
+        session.flush()
+        session.add(
+            PaperPracticeProfileRevisionV1(
+                revision_id="paper_practice_revision_test",
+                profile_id="paper_practice_profile_test",
+                revision_index=1,
+                status="active",
+                mutation_source="bootstrap",
+                applied_parameter_json="{}",
+                allowed_mutation_keys_json="[]",
+                summary="test revision",
+                created_at=now,
+            )
+        )
+        session.flush()
+        profile.active_revision_id = "paper_practice_revision_test"
+        session.flush()
+        session.add(
+            PaperPracticeLoopRunV1(
+                loop_run_id="paper_practice_loop_test",
+                mode="bounded",
+                status="completed",
+                active_profile_id="paper_practice_profile_test",
+                active_revision_id="paper_practice_revision_test",
+                with_helius_ws=0,
+                max_iterations=3,
+                iterations_completed=3,
+                started_at=now,
+                finished_at=now,
+                created_at=now,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                PaperPracticeDecisionV1(
+                    decision_id="decision_strategy_mismatch",
+                    loop_run_id="paper_practice_loop_test",
+                    profile_id="paper_practice_profile_test",
+                    profile_revision_id="paper_practice_revision_test",
+                    decision_type="no_trade",
+                    decision_payload_json=orjson.dumps(
+                        {
+                            "evidence_feedback": {
+                                "primary_failure_surface": "strategy_runtime_mismatch",
+                                "candidate_overlay_type": "candidate_strategy_policy_overlay_v1",
+                            }
+                        }
+                    ).decode(),
+                    reason_codes_json=orjson.dumps(
+                        ["strategy_target_not_runtime_long:down"]
+                    ).decode(),
+                    created_at=now,
+                ),
+                PaperPracticeDecisionV1(
+                    decision_id="decision_confidence",
+                    loop_run_id="paper_practice_loop_test",
+                    profile_id="paper_practice_profile_test",
+                    profile_revision_id="paper_practice_revision_test",
+                    decision_type="no_trade",
+                    decision_payload_json=orjson.dumps({}).decode(),
+                    reason_codes_json=orjson.dumps(
+                        ["condition_confidence_below_profile_minimum"]
+                    ).decode(),
+                    created_at=now,
+                ),
+                PaperPracticeDecisionV1(
+                    decision_id="decision_trade_opened",
+                    loop_run_id="paper_practice_loop_test",
+                    profile_id="paper_practice_profile_test",
+                    profile_revision_id="paper_practice_revision_test",
+                    decision_type="paper_trade_opened",
+                    decision_payload_json=orjson.dumps({}).decode(),
+                    reason_codes_json=orjson.dumps(["paper_trade_opened"]).decode(),
+                    created_at=now,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    result = TrainingRuntime(settings).evidence_gap()
+
+    assert (
+        result["primary_learning_gap"]
+        == "proposals_not_being_converted_to_comparable_tests"
+    )
+    assert result["selected_batch_type"] == "strategy_runtime_mismatch_batch"
+    assert result["recommended_batch_type"] == "strategy_runtime_mismatch_batch"
+    assert result["top_failure_families"][0]["family"] == "strategy_runtime_mismatch"
+    assert (
+        result["top_reason_codes"][0]["reason_code"]
+        == "strategy_target_not_runtime_long:down"
+    )
+    assert result["decision_funnel"]["decision_cycles"] == 3
+    assert result["decision_funnel"]["no_trade_cycles"] == 2
+    assert result["decision_funnel"]["paper_filled_cycles"] == 1
+    assert result["falsification_required"] is True
+    assert result["next_command"] == "d5 training evidence-gap --json"
 
 
 def test_training_status_prefers_bootstrap_when_selected_regimen_is_ready(

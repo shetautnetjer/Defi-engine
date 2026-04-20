@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/micro_live_transaction_receipt.schema.json",
+  "title": "D5 Micro-Live Transaction Receipt",
+  "type": "object",
+  "required": ["status", "reason_codes", "executed_at_utc"],
+  "additionalProperties": true,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["success", "failed", "blocked"]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "signature": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "input_mint": {
+      "type": "string"
+    },
+    "output_mint": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "slippage_bps": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executed_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

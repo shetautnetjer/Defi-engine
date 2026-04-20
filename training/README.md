@@ -40,9 +40,16 @@ It exists to keep the long-running automation lane clean:
 - `.ai/` as the live control plane
 - `training/` as the durable code/config/prompt layer for autoresearch and evaluation
 
-The training loop remains paper-only. It may adapt the active paper-practice
-profile through bounded proposal review/comparison, but it must not widen into
-live trading, mutate YAML policy, or self-edit runtime code.
+The default training loop remains paper-first. It may adapt the active
+paper-practice profile through bounded proposal review/comparison, and later
+V2 candidate overlays may test labels, features, strategy policy, and risk
+variants in research or paper lanes. Those overlays do not grant runtime
+authority by themselves.
+
+Micro-live Jupiter execution is a separate governed ladder. It may only run
+after readiness gates pass, an explicit expiring arm state exists, and an
+external signer is configured. The repo must not store or print raw Solana
+private-key material.
 
 The current automation split is:
 
@@ -75,10 +82,30 @@ Use the `d5 training ...` wrapper layer instead of ad hoc shell choreography:
 - `d5 training review --json`
 - `d5 training loop --max-iterations 1 --json`
 - `d5 training status --json`
+- `d5 training evidence-gap --json`
+- `d5 diagnose training-window --regimen quickstart_300d --json`
+- `d5 diagnose gate-funnel --run latest --json`
+- `d5 diagnose no-trades --run latest --window 300d --json`
+- `d5 live-readiness --json`
+- `d5 micro-live status --json`
+- `d5 micro-live arm --max-notional-usdc 2 --daily-loss-limit-usdc 1 --weekly-loss-limit-usdc 2 --json`
 
 These wrappers sit on top of the adaptive paper-practice runtime and standardize
 machine-readable receipts for `codex --exec`, tmux lanes, and watcher-driven
 training review.
+
+`d5 training evidence-gap --json` is the first evidence-rollup seam. It reads
+paper-practice SQL decisions and the latest no-trade feedback receipts, ranks
+current failure families, and selects the next tiny comparable experiment batch.
+It should produce revisable hypotheses and candidate-overlay targets, not runtime
+authority.
+
+`d5 diagnose ... --json` is the runtime funnel seam. It answers whether the
+selected training window has enough SQL/features, how far the latest
+paper-practice run moved through condition/policy/risk/quote/fill gates, and why
+the current window produced no or few trades. These commands write JSON/QMD
+diagnostic receipts under `data/research/training/diagnostics/` and latest-state
+copies under `.ai/dropbox/state/`.
 
 The paper-practice training regimen is now selectable:
 
@@ -113,6 +140,8 @@ The intended operating shape is:
 - append only the missing historical days for the selected regimen or the full cache when explicitly requested
 - after that, keep running incremental source collection for Massive/Coinbase/Jupiter/Helius
 - once the selected training regimen is ready and bootstrapped, run the continuous live paper-practice loop
+- after paper-practice decisions accumulate, run `d5 training evidence-gap --json`
+  so no-trade cycles become comparable experiment batches instead of passive logs
 
 In other words, `training collect` should append new source data. It should not
 repull the full historical window once the cache is complete.

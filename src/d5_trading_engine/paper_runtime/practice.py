@@ -1418,6 +1418,24 @@ class PaperPracticeRuntime:
             }
             latest_session_key = result["session_key"]
 
+        decision_payload = {
+            "cycle_id": cycle_result["cycle_id"],
+            "semantic_regime": semantic_regime,
+            "condition_confidence": confidence,
+            "paper_ready": bool(cycle_result["ready_for_paper_cycle"]),
+            "latest_trade_receipt": latest_trade_receipt,
+        }
+        evidence_feedback: dict[str, Any] = {}
+        if decision_type == "no_trade":
+            evidence_feedback = self._build_no_trade_evidence_feedback(
+                reason_codes=reason_codes,
+                cycle_result=cycle_result,
+                semantic_regime=semantic_regime,
+                condition_confidence=confidence,
+                strategy_selection=strategy_selection,
+            )
+            decision_payload["evidence_feedback"] = evidence_feedback
+
         decision = self._record_decision(
             loop_run_id=loop_run_id,
             profile=profile,
@@ -1427,22 +1445,110 @@ class PaperPracticeRuntime:
             condition_run_id=str(cycle_result["condition_run_id"]),
             policy_trace_id=policy_trace_id,
             risk_verdict_id=risk_verdict_id,
-            decision_payload={
-                "cycle_id": cycle_result["cycle_id"],
-                "semantic_regime": semantic_regime,
-                "condition_confidence": confidence,
-                "paper_ready": bool(cycle_result["ready_for_paper_cycle"]),
-                "latest_trade_receipt": latest_trade_receipt,
-            },
+            decision_payload=decision_payload,
             reason_codes=reason_codes or ["paper_trade_opened"],
         )
         if latest_trade_receipt:
             self._write_trade_receipt(latest_trade_receipt)
+        if evidence_feedback:
+            self._write_evidence_feedback_receipt(
+                {
+                    "decision_id": decision["decision_id"],
+                    "decision_type": decision_type,
+                    "loop_run_id": loop_run_id,
+                    "profile_id": profile["profile_id"],
+                    "profile_revision_id": profile["active_revision_id"],
+                    "evidence_feedback": evidence_feedback,
+                    "updated_at": utcnow().isoformat(),
+                }
+            )
         return {
             "latest_decision_id": decision["decision_id"],
             "latest_session_key": latest_session_key,
             "cycle_id": cycle_result["cycle_id"],
             "latest_trade_receipt": latest_trade_receipt,
+        }
+
+    def _build_no_trade_evidence_feedback(
+        self,
+        *,
+        reason_codes: list[str],
+        cycle_result: dict[str, Any],
+        semantic_regime: str,
+        condition_confidence: float,
+        strategy_selection: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        primary_failure_surface = "unknown_no_trade_surface"
+        candidate_overlay_type = "candidate_diagnostic_overlay_v1"
+        recommended_next_command = "d5 training review --json"
+        recommended_next_action = (
+            "Review the no-trade reason codes and generate a bounded diagnostic overlay before "
+            "changing runtime authority."
+        )
+
+        if any(
+            code.startswith("strategy_target_not_runtime_long")
+            or code.startswith("strategy_regime_not_allowed")
+            for code in reason_codes
+        ):
+            primary_failure_surface = "strategy_runtime_mismatch"
+            candidate_overlay_type = "candidate_strategy_policy_overlay_v1"
+            recommended_next_command = "d5 run-strategy-eval governed-challengers-v1 --json"
+            recommended_next_action = (
+                "Run a governed strategy challenger focused on runtime-compatible candidates "
+                "before changing risk or live authority."
+            )
+        elif "paper_ready_receipt_not_actionable" in reason_codes:
+            primary_failure_surface = "data_or_capture_readiness"
+            candidate_overlay_type = "candidate_source_or_feature_repair_v1"
+            recommended_next_command = "d5 training collect --json"
+            recommended_next_action = (
+                "Repair source collection, quote capture, and feature readiness before evaluating "
+                "strategy changes."
+            )
+        elif "condition_confidence_below_profile_minimum" in reason_codes:
+            primary_failure_surface = "condition_threshold_overblocking"
+            candidate_overlay_type = "candidate_condition_overlay_v1"
+            recommended_next_command = "d5 training walk-forward --json"
+            recommended_next_action = (
+                "Run a bounded threshold sensitivity test for the condition gate in shadow."
+            )
+        elif any(code.startswith("regime_not_allowed") for code in reason_codes):
+            primary_failure_surface = "policy_regime_eligibility"
+            candidate_overlay_type = "candidate_policy_overlay_v1"
+            recommended_next_command = "d5 compare-proposals --choose-top --json"
+            recommended_next_action = (
+                "Compare policy eligibility candidates against the current profile and keep "
+                "changes shadow-only until evidence improves."
+            )
+        elif "profile_cooldown_active" in reason_codes:
+            primary_failure_surface = "paper_profile_cooldown"
+            candidate_overlay_type = "candidate_paper_profile_overlay_v1"
+            recommended_next_command = "d5 training review --json"
+            recommended_next_action = (
+                "Review cooldown settings against actual paper cadence before proposing a profile "
+                "overlay."
+            )
+
+        selection_payload = strategy_selection or {}
+        return {
+            "primary_failure_surface": primary_failure_surface,
+            "candidate_overlay_type": candidate_overlay_type,
+            "recommended_next_command": recommended_next_command,
+            "recommended_next_action": recommended_next_action,
+            "reason_codes": reason_codes,
+            "semantic_regime": semantic_regime or "unknown",
+            "condition_confidence": condition_confidence,
+            "paper_ready": bool(cycle_result.get("ready_for_paper_cycle")),
+            "strategy_selection": {
+                "top_family": str(selection_payload.get("top_family") or ""),
+                "target_label": str(selection_payload.get("target_label") or ""),
+                "allowed_regimes": [
+                    str(item) for item in (selection_payload.get("allowed_regimes") or [])
+                ],
+            },
+            "authority": "proposal_only",
+            "governance_scope": "paper_practice",
         }
 
     def _handle_open_session_iteration(
@@ -2398,6 +2504,20 @@ class PaperPracticeRuntime:
             owner_type="paper_practice",
             owner_key=str(payload.get("session_key") or "no_session"),
             artifact_type="paper_practice_latest_trade_receipt",
+            settings=self.settings,
+        )
+
+    def _write_evidence_feedback_receipt(self, payload: dict[str, Any]) -> None:
+        write_json_artifact(
+            self.settings.repo_root
+            / ".ai"
+            / "dropbox"
+            / "state"
+            / "paper_practice_latest_evidence_feedback.json",
+            payload,
+            owner_type="paper_practice",
+            owner_key=str(payload.get("decision_id") or "no_decision"),
+            artifact_type="paper_practice_latest_evidence_feedback",
             settings=self.settings,
         )
 

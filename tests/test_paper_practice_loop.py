@@ -140,6 +140,90 @@ def test_paper_practice_loop_max_iterations_one_records_open_decision(
     assert status_receipt["loop_state"]["historical_ladder_completed"] is True
 
 
+def test_paper_practice_loop_turns_no_trade_reason_into_evidence_feedback(
+    settings,
+    monkeypatch,
+) -> None:
+    run_migrations_to_head(settings)
+    _seed_strategy_report(settings)
+    condition_run_id = _seed_condition_run(
+        settings,
+        run_id="condition_no_trade_feedback",
+        semantic_regime="long_friendly",
+    )
+    usdc_mint = _tracked_mint(settings, "USDC")
+    sol_mint = _tracked_mint(settings, "SOL")
+    quote_snapshot_id = _seed_quote_snapshot(
+        settings,
+        run_id="quote_no_trade_feedback",
+        request_direction="usdc_to_token",
+        input_mint=usdc_mint,
+        output_mint=sol_mint,
+        input_amount="10000000",
+        output_amount="100000000",
+    )
+
+    async def _fake_live_cycle(self, *, with_helius_ws=False):
+        return {
+            "cycle_id": "live_cycle_no_trade_feedback",
+            "quote_snapshot_id": quote_snapshot_id,
+            "condition_run_id": condition_run_id,
+            "ready_for_paper_cycle": True,
+            "risk_state": "allowed",
+        }
+
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.live_regime_cycle.LiveRegimeCycleRunner.run_live_regime_cycle",
+        _fake_live_cycle,
+    )
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
+        "_ensure_historical_ladder_completed",
+        lambda self: {"bootstrap_id": "paper_practice_bootstrap_test", "completed_ladder": True},
+    )
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
+        "_load_profile_strategy_selection",
+        lambda self, payload: {
+            "top_family": "mean_reversion_short_v1",
+            "target_label": "down",
+            "allowed_regimes": ["long_friendly"],
+        },
+    )
+
+    runtime = PaperPracticeRuntime(settings)
+    result = runtime.run_loop(max_iterations=1)
+
+    assert result["status"] == "completed"
+
+    session = get_session(settings)
+    try:
+        decision = session.query(PaperPracticeDecisionV1).one()
+        decision_payload = json.loads(decision.decision_payload_json)
+        reason_codes = json.loads(decision.reason_codes_json)
+    finally:
+        session.close()
+
+    assert decision.decision_type == "no_trade"
+    assert "strategy_target_not_runtime_long:down" in reason_codes
+    feedback = decision_payload["evidence_feedback"]
+    assert feedback["primary_failure_surface"] == "strategy_runtime_mismatch"
+    assert feedback["candidate_overlay_type"] == "candidate_strategy_policy_overlay_v1"
+    assert feedback["recommended_next_command"] == "d5 run-strategy-eval governed-challengers-v1 --json"
+
+    feedback_receipt = json.loads(
+        (
+            settings.repo_root
+            / ".ai"
+            / "dropbox"
+            / "state"
+            / "paper_practice_latest_evidence_feedback.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert feedback_receipt["decision_type"] == "no_trade"
+    assert feedback_receipt["evidence_feedback"]["primary_failure_surface"] == "strategy_runtime_mismatch"
+
+
 def test_paper_practice_loop_requires_completed_historical_ladder(settings) -> None:
     run_migrations_to_head(settings)
     _seed_strategy_report(settings)

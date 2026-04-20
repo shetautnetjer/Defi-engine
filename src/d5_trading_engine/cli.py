@@ -5,6 +5,7 @@ Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
 - d5 training ... : Repo-owned training wrappers for bootstrap, walk-forward, review, loop, and status
+- d5 diagnose ... : Explain training-window coverage, gate funnels, and no-trade windows
 - d5 hydrate-history : Hydrate a selected Massive-backed training-regimen window
 - d5 training hydrate-history : Fill selected-regimen history or the missing full historical window
 - d5 training collect : Incrementally append Massive/Coinbase/Jupiter/Helius source data without repulling cached history
@@ -20,6 +21,8 @@ Commands:
 - d5 run-backtest-walk-forward : Replay the adaptive historical ladder over 3-month windows
 - d5 run-paper-practice-loop : Run the autonomous paper-only practice loop
 - d5 paper-practice-status : Show the active paper-practice profile and loop state
+- d5 live-readiness : Evaluate the governed micro-live promotion gate
+- d5 micro-live ... : Arm, pause, inspect, or execute the gated Jupiter micro-live seam
 - d5 compare-proposals : Rank reviewed proposals and optionally choose the next bounded experiment
 - d5 capture massive-minute-aggs --date YYYY-MM-DD : Replay one historical Massive day
 - d5 capture massive-minute-aggs --from YYYY-MM-DD --to YYYY-MM-DD : Replay a bounded Massive history range
@@ -357,6 +360,238 @@ def training_status(json_output: bool) -> None:
     except Exception as exc:
         click.echo(f"✗ Training status failed: {exc}", err=True)
         sys.exit(1)
+
+
+@training_group.command("evidence-gap")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_evidence_gap(json_output: bool) -> None:
+    """Rank learning gaps from paper decisions and recommend the next experiment batch."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.evidence_gap()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training evidence-gap: "
+                f"{result['run_id']} selected_batch={result['selected_batch_type']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training evidence-gap failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.group("diagnose")
+def diagnose_group() -> None:
+    """Explain data coverage and paper decision-funnel failures."""
+
+
+@diagnose_group.command("training-window")
+@click.option(
+    "--regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default="quickstart_300d",
+    help="Training regimen to evaluate.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def diagnose_training_window(regimen: str, json_output: bool) -> None:
+    """Summarize SQL and feature coverage for a training regimen."""
+    from d5_trading_engine.runtime.diagnostics import diagnose_training_window
+
+    try:
+        result = diagnose_training_window(get_settings(), regimen=regimen)
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ diagnose training-window: "
+                f"regimen={result['regimen']} status={result['status']} "
+                f"sql_days={result['sql_days_present']} "
+                f"feature_days={result['feature_days_present']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training-window diagnostic failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@diagnose_group.command("gate-funnel")
+@click.option("--run", default="latest", help="Paper-practice loop run id or latest.")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def diagnose_gate_funnel(run: str, json_output: bool) -> None:
+    """Summarize how decisions moved through condition, policy, risk, and fill gates."""
+    from d5_trading_engine.runtime.diagnostics import diagnose_gate_funnel
+
+    try:
+        result = diagnose_gate_funnel(get_settings(), run=run)
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ diagnose gate-funnel: "
+                f"run={result['loop_run_id']} cycles={result['cycles']} "
+                f"paper_filled={result['paper_filled']} "
+                f"primary={result['primary_failure_surface']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Gate-funnel diagnostic failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@diagnose_group.command("no-trades")
+@click.option("--run", default="latest", help="Paper-practice loop run id or latest.")
+@click.option("--window", default="300d", help="Lookback window such as 300d.")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def diagnose_no_trades(run: str, window: str, json_output: bool) -> None:
+    """Explain why a paper/training window produced no or few paper trades."""
+    from d5_trading_engine.runtime.diagnostics import diagnose_no_trades
+
+    try:
+        result = diagnose_no_trades(get_settings(), run=run, window=window)
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ diagnose no-trades: "
+                f"run={result['loop_run_id']} window={result['window_days']}d "
+                f"paper_trades={result['paper_trades']} "
+                f"primary={result['primary_failure_surface']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ No-trades diagnostic failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("live-readiness")
+@click.option(
+    "--metrics-path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=None,
+    help="Optional readiness metrics JSON path. Defaults to data/research/training/live_readiness/latest_metrics.json.",
+)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def live_readiness(metrics_path: Path | None, json_output: bool) -> None:
+    """Evaluate whether paper evidence is eligible for micro-live arming."""
+    from d5_trading_engine.live_execution.readiness import LiveReadinessService
+
+    result = LiveReadinessService(get_settings()).evaluate(metrics_path=metrics_path)
+    status = "passed" if result["passed"] else "failed"
+    _emit_cli_result(
+        result,
+        json_output=json_output,
+        text=f"micro-live readiness {status}: reasons={result['reason_codes']}",
+    )
+
+
+@cli.group("micro-live")
+def micro_live_group() -> None:
+    """Guarded Jupiter micro-live controls."""
+
+
+@micro_live_group.command("arm")
+@click.option("--max-notional-usdc", type=float, required=True)
+@click.option("--daily-loss-limit-usdc", type=float, required=True)
+@click.option("--weekly-loss-limit-usdc", type=float, required=True)
+@click.option("--ttl-minutes", type=int, default=60, show_default=True)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def micro_live_arm(
+    max_notional_usdc: float,
+    daily_loss_limit_usdc: float,
+    weekly_loss_limit_usdc: float,
+    ttl_minutes: int,
+    json_output: bool,
+) -> None:
+    """Write an expiring arm state only if live-readiness currently passes."""
+    from d5_trading_engine.live_execution.arm_state import MicroLiveArmStore
+    from d5_trading_engine.live_execution.readiness import LiveReadinessService
+
+    settings = get_settings()
+    readiness = LiveReadinessService(settings).evaluate()
+    result = MicroLiveArmStore(settings).arm(
+        readiness=readiness,
+        max_notional_usdc=max_notional_usdc,
+        daily_loss_limit_usdc=daily_loss_limit_usdc,
+        weekly_loss_limit_usdc=weekly_loss_limit_usdc,
+        ttl_minutes=ttl_minutes,
+    )
+    status = "armed" if result["armed"] else "blocked"
+    _emit_cli_result(
+        result,
+        json_output=json_output,
+        text=f"micro-live arm {status}: reasons={result['reason_codes']}",
+    )
+
+
+@micro_live_group.command("status")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def micro_live_status(json_output: bool) -> None:
+    """Show current micro-live arm state."""
+    from d5_trading_engine.live_execution.arm_state import MicroLiveArmStore
+
+    result = MicroLiveArmStore(get_settings()).status()
+    status = "armed" if result.get("armed") else result.get("status", "blocked")
+    _emit_cli_result(
+        result,
+        json_output=json_output,
+        text=f"micro-live status {status}: reasons={result.get('reason_codes', [])}",
+    )
+
+
+@micro_live_group.command("pause")
+@click.option("--reason", default="operator_pause", show_default=True)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def micro_live_pause(reason: str, json_output: bool) -> None:
+    """Pause micro-live execution by clearing the arm state."""
+    from d5_trading_engine.live_execution.arm_state import MicroLiveArmStore
+
+    result = MicroLiveArmStore(get_settings()).pause(reason=reason)
+    _emit_cli_result(
+        result,
+        json_output=json_output,
+        text=f"micro-live paused: reasons={result['reason_codes']}",
+    )
+
+
+@micro_live_group.command("execute")
+@click.option("--input-mint", required=True)
+@click.option("--output-mint", required=True)
+@click.option("--amount", type=int, required=True, help="Input amount in base units.")
+@click.option("--slippage-bps", type=int, default=50, show_default=True)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def micro_live_execute(
+    input_mint: str,
+    output_mint: str,
+    amount: int,
+    slippage_bps: int,
+    json_output: bool,
+) -> None:
+    """Attempt one gated Jupiter micro-live swap.
+
+    This command fails closed unless readiness, explicit arming, and external
+    signing are all configured and passing.
+    """
+    from d5_trading_engine.live_execution.jupiter_micro import JupiterMicroLiveExecutor
+
+    result = asyncio.run(
+        JupiterMicroLiveExecutor(settings=get_settings()).execute_swap(
+            input_mint=input_mint,
+            output_mint=output_mint,
+            amount=amount,
+            slippage_bps=slippage_bps,
+        ),
+    )
+    _emit_cli_result(
+        result,
+        json_output=json_output,
+        text=f"micro-live execute {result['status']}: reasons={result.get('reason_codes', [])}",
+    )
 
 
 @cli.command("hydrate-history")
@@ -753,7 +988,8 @@ def run_label_program(label_program: str) -> None:
 
 @cli.command("run-strategy-eval")
 @click.argument("strategy_eval", type=click.Choice(_STRATEGY_EVAL_CHOICES, case_sensitive=False))
-def run_strategy_eval(strategy_eval: str) -> None:
+@click.option("--json", "json_output", is_flag=True, default=False)
+def run_strategy_eval(strategy_eval: str, json_output: bool) -> None:
     """Run the bounded named strategy-family challenger loop."""
     from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
 
@@ -762,11 +998,15 @@ def run_strategy_eval(strategy_eval: str) -> None:
     try:
         if strategy_eval == "governed-challengers-v1":
             result = runner.run_strategy_eval_v1()
-            click.echo(
-                "✓ governed_challengers_v1: "
-                f"{result['run_id']} artifacts={result['artifact_dir']} "
-                f"top_family={result['top_family'] or 'none'} "
-                f"proposal={result['proposal_status']}"
+            _emit_cli_result(
+                result,
+                json_output=json_output,
+                text=(
+                    "✓ governed_challengers_v1: "
+                    f"{result['run_id']} artifacts={result['artifact_dir']} "
+                    f"top_family={result['top_family'] or 'none'} "
+                    f"proposal={result['proposal_status']}"
+                ),
             )
             return
         raise click.ClickException(f"Unsupported strategy eval: {strategy_eval}")

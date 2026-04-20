@@ -20,10 +20,12 @@ or shadow one bounded change at a time.
 - QMD is required evidence.
 - `.ai/` is the live control plane, not a second training database.
 - `training/` owns prompts, rubrics, wrappers, automation adapters, and program doctrine.
-- Paper trading only unless scope is explicitly widened elsewhere.
-- No live order routing, secret printing, or hidden runtime promotion.
+- Paper trading remains the default until scope is explicitly widened through the governed promotion ladder.
+- No secret printing, hidden runtime promotion, or direct use of raw private-key material.
 - No silent mutation of policy YAML, risk code, or canonical strategy registry.
-- No broad self-editing loop; all accepted adaptation must pass the existing proposal review and comparison flow.
+- Candidate overlays may test labels, features, policy, risk, and source-transform variants in research, shadow, or paper lanes; they do not become authority until promoted.
+- Jupiter micro-live execution may only run after readiness gates pass, an explicit expiring arm state exists, and an external signer is configured.
+- No broad self-editing loop; all accepted adaptation must pass proposal, comparison, evidence, and promotion controls.
 
 ## Event Triggers
 
@@ -51,6 +53,7 @@ Prefer the repo-owned CLI instead of ad hoc shell choreography:
 - `d5 training review`
 - `d5 training loop`
 - `d5 training status`
+- `d5 training evidence-gap`
 - bounded `d5 capture`, `materialize-features`, `score-conditions`, `run-shadow`, `run-live-regime-cycle`, and `run-paper-cycle` subcommands when the training wrapper calls for them
 
 If the CLI is missing a needed surface, propose or add the smallest missing wrapper instead of inventing a second workflow.
@@ -104,6 +107,17 @@ Every review packet should classify the primary failure surface:
 - execution or fill-model failure
 - settlement or evaluation failure
 - automation or governance failure
+
+`d5 training evidence-gap` should be the fast machine-readable version of this
+classification. It ranks multiple failure families, records the selected
+experiment batch type, requires a falsification candidate, and leaves promotion
+to the governed review/comparison ladder.
+
+`d5 diagnose training-window`, `d5 diagnose gate-funnel`, and
+`d5 diagnose no-trades` should be the fast runtime-funnel version of the same
+discipline. They must explain whether the system failed at data coverage,
+feature materialization, condition validity, strategy candidate generation,
+policy eligibility, risk approval, quote/fill availability, or settlement.
 
 Change the weakest surface, not the whole system.
 

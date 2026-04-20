@@ -14,6 +14,7 @@ Runtime authority descends through explicit owners:
 5. hard risk gating
 6. explicit execution intent
 7. settlement and realized paper truth
+8. gated micro-live execution after explicit promotion and arming
 
 Anything outside that chain is advisory until promoted.
 
@@ -51,6 +52,53 @@ Promotion must also state:
 - what owner layer receives it
 - what old behavior it replaces, if anything
 - what rollback path exists
+
+## Continuous learning ladder
+
+The adaptive research system may evolve trading behavior only through versioned
+candidate overlays:
+
+- label-program overlays
+- feature toggles or materializer overlays
+- condition and regime-threshold overlays
+- strategy-policy compatibility overlays
+- risk-threshold or veto-sensitivity overlays
+- source-normalization overlays
+
+Candidate overlays are research, shadow, or paper evidence until a promotion
+decision accepts them. They may not directly mutate authoritative runtime files
+or bypass the risk gate.
+
+## Micro-live gate
+
+Jupiter micro-live is allowed only after all of the following are true:
+
+- rolling paper win rate is at least 80%
+- at least 20 settled paper trades exist in the evaluated window
+- at least 1 settled trade per week is sustained for 4 consecutive weeks
+- net expectancy after fees and slippage is positive
+- profit factor is at least 1.5
+- drawdown remains within the configured micro-live cap
+- quote and fill-health checks are clean
+- unexplained decision gaps are zero
+- at least one candidate comparison is accepted
+- an operator writes an explicit expiring arm state
+- signing is delegated to an external signer or wallet command
+
+The engine must not read, store, print, or derive raw Solana private-key
+material. Micro-live receipts may include signatures, request IDs, mints,
+amounts, and public keys, but not private keys or seed material.
+
+The initial micro-live ladder is:
+
+1. `research`
+2. `shadow`
+3. `paper`
+4. `micro_live`
+5. `scaled_live`
+
+Automation may auto-promote only into bounded paper-runtime candidates. Promotion
+from paper to `micro_live` requires passing gates and explicit operator arming.
 
 ## Writer-integrator authority
 
