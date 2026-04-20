@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 
+import pandas as pd
 import pytest
 
 from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+from d5_trading_engine.capture.massive_backfill import MassiveMinuteAggsBackfill
 from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
 from d5_trading_engine.storage.truth.models import (
     PaperPracticeDecisionV1,
@@ -13,6 +15,7 @@ from d5_trading_engine.storage.truth.models import (
     PaperPracticeProfileV1,
 )
 from tests.test_backtest_walk_forward import _seed_strategy_report
+from tests.test_label_strategy_loop import _seed_research_repo_truth
 from tests.test_paper_runtime_operator import _seed_condition_run
 from tests.test_settlement_paper import _seed_quote_snapshot, _tracked_mint
 
@@ -124,6 +127,18 @@ def test_paper_practice_loop_max_iterations_one_records_open_decision(
     assert decision.decision_type == "paper_trade_opened"
     assert decision.session_key == "paper_session_test"
 
+    status_receipt = json.loads(
+        (
+            settings.repo_root
+            / ".ai"
+            / "dropbox"
+            / "state"
+            / "paper_practice_status.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert status_receipt["loop_state"]["status"] == "completed"
+    assert status_receipt["loop_state"]["historical_ladder_completed"] is True
+
 
 def test_paper_practice_loop_requires_completed_historical_ladder(settings) -> None:
     run_migrations_to_head(settings)
@@ -135,11 +150,78 @@ def test_paper_practice_loop_requires_completed_historical_ladder(settings) -> N
         runtime.run_loop(max_iterations=1)
 
 
+def test_ensure_advisory_strategy_report_runs_governed_strategy_eval_when_missing(
+    settings,
+    monkeypatch,
+) -> None:
+    run_migrations_to_head(settings)
+    _seed_research_repo_truth(settings.repo_root)
+    report_path = (
+        settings.repo_root
+        / ".ai"
+        / "dropbox"
+        / "research"
+        / "STRAT-001__strategy_challenger_report.json"
+    )
+    if report_path.exists():
+        report_path.unlink()
+
+    observed: dict[str, object] = {}
+
+    class FakeShadowRunner:
+        def __init__(self, runner_settings):
+            observed["settings"] = runner_settings
+
+        def run_strategy_eval_v1(self):
+            observed["ran_strategy_eval"] = True
+            _seed_strategy_report(settings)
+            return {
+                "run_id": "strategy_eval_generated",
+                "artifact_dir": str(settings.data_dir / "research" / "strategy_eval_runs" / "generated"),
+                "top_family": "trend_continuation_long_v1",
+                "proposal_status": "proposed",
+            }
+
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.shadow_runner.ShadowRunner",
+        FakeShadowRunner,
+    )
+
+    result = PaperPracticeRuntime(settings)._ensure_advisory_strategy_report()
+
+    assert result["status"] == "generated"
+    assert result["run_id"] == "strategy_eval_generated"
+    assert result["top_family"] == "trend_continuation_long_v1"
+    assert result["strategy_report_exists"] is True
+    assert observed["ran_strategy_eval"] is True
+
+
+def test_lookup_backtest_price_uses_nearest_prior_or_next_price(settings) -> None:
+    runtime = PaperPracticeRuntime(settings)
+    price_history = pd.DataFrame(
+        [
+            {"start_time_utc": pd.Timestamp("2026-01-01T00:00:00Z"), "close": 100.0},
+            {"start_time_utc": pd.Timestamp("2026-01-01T00:01:00Z"), "close": 101.0},
+            {"start_time_utc": pd.Timestamp("2026-01-01T00:02:00Z"), "close": 102.0},
+        ]
+    )
+
+    assert runtime._lookup_backtest_price(
+        price_history,
+        pd.Timestamp("2026-01-01T00:01:30Z"),
+    ) == 101.0
+    assert runtime._lookup_backtest_price(
+        price_history,
+        pd.Timestamp("2025-12-31T23:59:00Z"),
+    ) == 100.0
+
+
 def test_paper_practice_status_exposes_training_profile_readiness(
     settings,
     monkeypatch,
 ) -> None:
     run_migrations_to_head(settings)
+    settings.paper_practice_training_profile = "auto"
     runtime = PaperPracticeRuntime(settings)
 
     monkeypatch.setattr(
@@ -147,16 +229,91 @@ def test_paper_practice_status_exposes_training_profile_readiness(
         "historical_cache_status",
         lambda self: {
             "complete": False,
-            "completed_day_count": 335,
-            "missing_day_count": 395,
+            "completed_day_count": 0,
+            "capture_completed_day_count": 335,
+            "missing_day_count": 730,
             "next_missing_date": "2025-03-20",
         },
     )
 
     status = runtime.get_status()
 
-    assert status["selected_training_profile"]["name"] == "full_730d"
-    assert status["selected_training_regimen"]["name"] == "full_730d"
-    assert status["selected_training_profile"]["ready"] is False
+    assert status["selected_training_profile"]["name"] == "quickstart_300d"
+    assert status["selected_training_regimen"]["name"] == "quickstart_300d"
+    assert status["selected_training_profile"]["ready"] is True
     assert status["training_profile_readiness"]["profiles"]["quickstart_300d"]["ready"] is True
     assert status["training_regimen_readiness"]["profiles"]["quickstart_300d"]["ready"] is True
+
+
+def test_bootstrap_hydrates_selected_quickstart_regimen_window(settings, monkeypatch) -> None:
+    run_migrations_to_head(settings)
+    settings.paper_practice_training_profile = "quickstart_300d"
+
+    def _cache_status(self):
+        return {
+            "complete": False,
+            "completed_day_count": 2,
+            "capture_completed_day_count": 340,
+            "missing_day_count": 728,
+            "capture_missing_day_count": 390,
+            "next_missing_date": "2025-06-01",
+            "warehouse_completed_day_count": 2,
+        }
+
+    async def _forbid_full_tier_backfill(self, **kwargs):
+        raise AssertionError("bootstrap must not call the full free-tier missing backfill")
+
+    observed: dict[str, str] = {}
+
+    async def _fake_backfill_range(self, *, start_date: str, end_date: str, resume: bool = True, mode: str = "range"):
+        observed.update(
+            {
+                "start_date": start_date,
+                "end_date": end_date,
+                "resume": str(resume),
+                "mode": mode,
+            }
+        )
+        return {
+            "status": "success",
+            "batch_id": "capture_batch_quickstart",
+            "mode": mode,
+            "resume": resume,
+            "resolved_start_date": start_date,
+            "resolved_end_date": end_date,
+            "days": {"requested_count": 300, "captured_count": 298, "skipped_count": 2, "failed_count": 0},
+        }
+
+    monkeypatch.setattr(PaperPracticeRuntime, "historical_cache_status", _cache_status)
+    monkeypatch.setattr(MassiveMinuteAggsBackfill, "backfill_missing_full_free_tier", _forbid_full_tier_backfill)
+    monkeypatch.setattr(MassiveMinuteAggsBackfill, "backfill_range", _fake_backfill_range)
+    monkeypatch.setattr(
+        "d5_trading_engine.features.materializer.FeatureMaterializer.materialize_global_regime_inputs_15m_v1",
+        lambda self: ("feature_quickstart", 1234),
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.regime_model_compare.RegimeModelComparator.run_regime_model_compare_v1",
+        lambda self, **kwargs: {
+            "run_id": "comparison_quickstart",
+            "recommended_candidate": "baseline",
+            "proposal_status": "shadow",
+        },
+    )
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
+        "run_backtest_walk_forward",
+        lambda self, training_profile_name=None: {
+            "run_id": "backtest_quickstart",
+            "window_count": 1,
+            "completed_ladder": True,
+            "history_window": {"ready": True},
+            "active_revision_id": "paper_profile_revision_test",
+        },
+    )
+
+    runtime = PaperPracticeRuntime(settings)
+    result = runtime.run_bootstrap()
+
+    assert result["training_profile"]["name"] == "quickstart_300d"
+    assert observed["mode"] == "quickstart_300d"
+    assert observed["resume"] == "True"

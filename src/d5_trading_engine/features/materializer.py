@@ -91,6 +91,14 @@ _FOUR_HOUR_BUCKET_COUNT = 16
 log = get_logger(__name__)
 
 
+def _infer_massive_symbols(product_id: str) -> tuple[str | None, str | None]:
+    ticker = product_id.replace("X:", "").upper()
+    for quote_symbol in ("USDC", "USD", "BTC", "ETH"):
+        if ticker.endswith(quote_symbol) and len(ticker) > len(quote_symbol):
+            return ticker[: -len(quote_symbol)], quote_symbol
+    return None, None
+
+
 def _minute_bucket(dt: datetime | None) -> datetime | None:
     normalized = ensure_utc(dt)
     if normalized is None:
@@ -859,6 +867,13 @@ class FeatureMaterializer:
             if venue in venue_products:
                 continue
             venue_products[venue] = instrument.product_id
+
+        for product_id in self.settings.massive_default_tickers:
+            base_symbol, quote_symbol = _infer_massive_symbols(str(product_id))
+            if not base_symbol or quote_symbol not in {"USD", "USDC"}:
+                continue
+            venue_products = product_by_symbol.setdefault(base_symbol, {})
+            venue_products.setdefault("massive", str(product_id))
 
         selected: dict[str, dict[str, str]] = {}
         for symbol in _REGIME_PROXY_PREFERENCE:

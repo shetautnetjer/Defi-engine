@@ -111,6 +111,12 @@ def main():
             "keep_revert_shadow_rule",
             "Keep the current accepted baseline unless a bounded candidate clearly improves evidence; otherwise revert or shadow.",
         ),
+        "AUTOMATION_NAVIGATION_NOTE": (
+            "Automation sandbox note:\n"
+            "- use shell-first navigation and bounded file reads for this turn\n"
+            "- do not attempt tmux-based JetBrains bootstrap\n"
+            "- do not rely on mcp__idea__ tools for this unattended watcher run"
+        ),
         "ACTIVE_PROFILE_REVISION_ID": context.get("active_profile_revision_id", ""),
         "ACTIVE_PROFILE_SUMMARY": context.get(
             "active_profile_summary",

@@ -61,6 +61,30 @@ def test_merge_training_status_prefers_runtime_receipt_and_records_conflicts() -
     assert len(merged["status_conflicts"]) == 2
 
 
+def test_merge_training_status_prefers_terminal_db_status_over_stale_running_receipt() -> None:
+    db_status = {
+        "latest_loop_run_id": "loop_shared",
+        "latest_loop_status": "completed",
+        "latest_decision_id": "decision_db",
+    }
+    status_receipt = {
+        "loop_state": {
+            "loop_run_id": "loop_shared",
+            "status": "running",
+            "latest_decision_id": "decision_receipt",
+            "latest_session_key": "paper_session_1",
+        }
+    }
+
+    merged = _merge_training_status(db_status, status_receipt)
+
+    assert merged["effective_loop_run_id"] == "loop_shared"
+    assert merged["effective_loop_status"] == "completed"
+    assert merged["effective_latest_decision_id"] == "decision_receipt"
+    assert merged["effective_latest_session_key"] == "paper_session_1"
+    assert len(merged["status_conflicts"]) == 1
+
+
 def test_summarize_trader_lane_status_combines_lane_and_watcher_surfaces() -> None:
     lane_sessions = {
         "trader": {
@@ -161,9 +185,10 @@ def test_training_status_prefers_bootstrap_when_selected_regimen_is_ready(
         "historical_cache_status",
         lambda: {
             "complete": False,
-            "completed_day_count": 335,
-            "missing_day_count": 395,
-            "next_missing_date": "2025-03-20",
+            "completed_day_count": 0,
+            "capture_completed_day_count": 335,
+            "capture_missing_day_count": 395,
+            "capture_next_missing_date": "2025-03-20",
         },
     )
 
@@ -177,3 +202,51 @@ def test_training_status_prefers_bootstrap_when_selected_regimen_is_ready(
     assert status["training_regimen_readiness"]["selected_profile_name"] == "quickstart_300d"
     assert status["governor_status"]["policy_id"] == "profile_router_policy_v1"
     assert status["governor_status"]["latest_action"] == "SELECT_PROFILE"
+
+
+def test_training_status_prefers_loop_after_historical_ladder_completed(
+    settings,
+    monkeypatch,
+) -> None:
+    runtime = TrainingRuntime(settings)
+    state_root = settings.repo_root / ".ai" / "dropbox" / "state"
+    state_root.mkdir(parents=True, exist_ok=True)
+    (state_root / "paper_practice_status.json").write_text(
+        json.dumps({"loop_state": {"historical_ladder_completed": True, "status": "completed"}})
+    )
+
+    monkeypatch.setattr(
+        runtime.practice,
+        "get_status",
+        lambda: {
+            "active_profile_id": "paper_profile_test",
+            "active_revision_id": "paper_profile_revision_test",
+            "profile_payload": {"instrument_pair": "SOL/USDC"},
+            "selected_training_profile": {"name": "quickstart_300d", "ready": True},
+            "training_profile_readiness": {
+                "selected_profile_name": "quickstart_300d",
+                "profiles": {},
+            },
+            "open_session_key": "",
+            "open_session_status": "",
+            "latest_loop_run_id": "",
+            "latest_loop_status": "",
+            "latest_decision_id": "",
+            "latest_decision_type": "",
+        },
+    )
+    monkeypatch.setattr(
+        runtime.practice,
+        "historical_cache_status",
+        lambda: {
+            "complete": False,
+            "completed_day_count": 0,
+            "capture_completed_day_count": 340,
+            "missing_day_count": 390,
+            "next_missing_date": "2025-03-25",
+        },
+    )
+
+    status = runtime.status()
+
+    assert status["next_command"] == "d5 training loop --json"

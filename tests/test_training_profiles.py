@@ -22,11 +22,23 @@ def test_summarize_training_profile_readiness_marks_quickstart_ready_before_full
     assert summary["profiles"]["full_730d"]["shortfall_days"] == 120
 
 
-def test_get_training_profile_auto_selects_strongest_ready_profile() -> None:
+def test_get_training_profile_auto_selects_fastest_ready_profile() -> None:
     selected = get_training_profile("auto", available_history_days=335)
 
     assert selected.name == "quickstart_300d"
     assert selected.confidence_label == "quickstart"
+
+
+def test_get_training_profile_auto_prefers_quickstart_when_full_is_ready() -> None:
+    selected = get_training_profile("auto", available_history_days=729)
+    summary = summarize_training_profile_readiness(
+        available_history_days=729,
+        selected_profile_name="auto",
+    )
+
+    assert selected.name == "quickstart_300d"
+    assert summary["selected_profile_name"] == "quickstart_300d"
+    assert summary["strongest_ready_profile_name"] == "full_730d"
 
 
 def test_assess_training_history_window_requires_profile_thresholds() -> None:

@@ -5,7 +5,8 @@ Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
 - d5 training ... : Repo-owned training wrappers for bootstrap, walk-forward, review, loop, and status
-- d5 training hydrate-history : Fill the missing portion of the cached Massive historical window
+- d5 hydrate-history : Hydrate a selected Massive-backed training-regimen window
+- d5 training hydrate-history : Fill selected-regimen history or the missing full historical window
 - d5 training collect : Incrementally append Massive/Coinbase/Jupiter/Helius source data without repulling cached history
 - d5 materialize-features : Materialize deterministic feature tables
 - d5 score-conditions : Score bounded market conditions
@@ -77,6 +78,11 @@ _LABEL_PROGRAM_CHOICES = [
 _STRATEGY_EVAL_CHOICES = [
     "governed-challengers-v1",
 ]
+_TRAINING_REGIMEN_CHOICES = [
+    "auto",
+    "quickstart_300d",
+    "full_730d",
+]
 
 
 def _emit_cli_result(payload: dict[str, object], *, json_output: bool, text: str) -> None:
@@ -126,15 +132,25 @@ def training_group() -> None:
 
 
 @training_group.command("bootstrap")
+@click.option(
+    "--training-regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default=None,
+    help="Optional paper-practice history regimen for bootstrap hydration.",
+)
 @click.option("--json", "json_output", is_flag=True, default=False)
-def training_bootstrap(json_output: bool) -> None:
+def training_bootstrap(training_regimen: str | None, json_output: bool) -> None:
     """Run the repo-owned historical bootstrap wrapper."""
     from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
 
     runtime = TrainingRuntime(get_settings())
 
     try:
-        result = runtime.bootstrap()
+        result = (
+            runtime.bootstrap(training_profile_name=training_regimen)
+            if training_regimen
+            else runtime.bootstrap()
+        )
         _emit_cli_result(
             result,
             json_output=json_output,
@@ -150,16 +166,29 @@ def training_bootstrap(json_output: bool) -> None:
 
 
 @training_group.command("hydrate-history")
+@click.option(
+    "--training-regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default=None,
+    help="Optional history regimen to hydrate instead of the full free-tier missing window.",
+)
 @click.option("--max-days", type=int, default=None)
 @click.option("--json", "json_output", is_flag=True, default=False)
-def training_hydrate_history(max_days: int | None, json_output: bool) -> None:
+def training_hydrate_history(
+    training_regimen: str | None,
+    max_days: int | None,
+    json_output: bool,
+) -> None:
     """Fill only the missing portion of the cached historical Massive window."""
     from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
 
     runtime = TrainingRuntime(get_settings())
 
     try:
-        result = runtime.hydrate_history(max_days=max_days)
+        result = runtime.hydrate_history(
+            max_days=max_days,
+            training_profile_name=training_regimen,
+        )
         _emit_cli_result(
             result,
             json_output=json_output,
@@ -211,15 +240,25 @@ def training_collect(
 
 
 @training_group.command("walk-forward")
+@click.option(
+    "--training-regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default=None,
+    help="Optional paper-practice history regimen for walk-forward replay.",
+)
 @click.option("--json", "json_output", is_flag=True, default=False)
-def training_walk_forward(json_output: bool) -> None:
+def training_walk_forward(training_regimen: str | None, json_output: bool) -> None:
     """Run the repo-owned adaptive historical walk-forward wrapper."""
     from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
 
     runtime = TrainingRuntime(get_settings())
 
     try:
-        result = runtime.walk_forward()
+        result = (
+            runtime.walk_forward(training_profile_name=training_regimen)
+            if training_regimen
+            else runtime.walk_forward()
+        )
         _emit_cli_result(
             result,
             json_output=json_output,
@@ -317,6 +356,45 @@ def training_status(json_output: bool) -> None:
         )
     except Exception as exc:
         click.echo(f"✗ Training status failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("hydrate-history")
+@click.option(
+    "--training-regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Paper-practice history regimen to hydrate.",
+)
+@click.option("--max-days", type=int, default=None)
+@click.option("--json", "json_output", is_flag=True, default=False)
+def hydrate_history(
+    training_regimen: str,
+    max_days: int | None,
+    json_output: bool,
+) -> None:
+    """Hydrate a bounded Massive history window for the selected training regimen."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.hydrate_history(
+            max_days=max_days,
+            training_profile_name=training_regimen,
+        )
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ hydrate-history: "
+                f"{result['run_id']} regimen={training_regimen} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Hydrate history failed: {exc}", err=True)
         sys.exit(1)
 
 
@@ -555,10 +633,12 @@ def score_conditions(condition_set: str, json_output: bool) -> None:
 )
 @click.option(
     "--refit-cadence-buckets",
-    default=4,
+    default=None,
     type=int,
-    show_default=True,
-    help="Refit cadence for walk-forward shadow regime comparison.",
+    help=(
+        "Optional refit cadence for walk-forward shadow regime comparison. "
+        "Defaults to REGIME_COMPARE_REFIT_CADENCE_BUCKETS."
+    ),
 )
 @click.option("--json", "json_output", is_flag=True, default=False)
 def run_shadow(
@@ -566,7 +646,7 @@ def run_shadow(
     history_start: str | None,
     history_end: str | None,
     use_massive_context: bool,
-    refit_cadence_buckets: int,
+    refit_cadence_buckets: int | None,
     json_output: bool,
 ) -> None:
     """Run a bounded shadow ML evaluation lane."""
@@ -790,15 +870,25 @@ def run_paper_close(
 
 
 @cli.command("run-paper-practice-bootstrap")
+@click.option(
+    "--training-regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default=None,
+    help="Optional paper-practice history regimen for bootstrap hydration.",
+)
 @click.option("--json", "json_output", is_flag=True, default=False)
-def run_paper_practice_bootstrap(json_output: bool) -> None:
+def run_paper_practice_bootstrap(training_regimen: str | None, json_output: bool) -> None:
     """Run the bounded historical bootstrap for autonomous paper practice."""
     from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 
     runtime = PaperPracticeRuntime(get_settings())
 
     try:
-        result = runtime.run_bootstrap()
+        result = (
+            runtime.run_bootstrap(training_profile_name=training_regimen)
+            if training_regimen
+            else runtime.run_bootstrap()
+        )
         _emit_cli_result(
             result,
             json_output=json_output,
@@ -816,15 +906,25 @@ def run_paper_practice_bootstrap(json_output: bool) -> None:
 
 
 @cli.command("run-backtest-walk-forward")
+@click.option(
+    "--training-regimen",
+    type=click.Choice(_TRAINING_REGIMEN_CHOICES, case_sensitive=False),
+    default=None,
+    help="Optional paper-practice history regimen for walk-forward replay.",
+)
 @click.option("--json", "json_output", is_flag=True, default=False)
-def run_backtest_walk_forward(json_output: bool) -> None:
+def run_backtest_walk_forward(training_regimen: str | None, json_output: bool) -> None:
     """Run the adaptive historical walk-forward replay ladder."""
     from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 
     runtime = PaperPracticeRuntime(get_settings())
 
     try:
-        result = runtime.run_backtest_walk_forward()
+        result = (
+            runtime.run_backtest_walk_forward(training_profile_name=training_regimen)
+            if training_regimen
+            else runtime.run_backtest_walk_forward()
+        )
         _emit_cli_result(
             result,
             json_output=json_output,

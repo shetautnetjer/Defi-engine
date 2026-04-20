@@ -221,9 +221,15 @@ cp "${TMP_PROMPT}" "${RECEIPTS_DIR}/prompt_${EVENT_ID}.md"
 set +e
 pushd "${TARGET_REPO_ROOT}" >/dev/null
 if [[ ${USE_EXEC} -eq 1 ]]; then
-  "${CMD[@]}" > >(tee "${STDOUT_LOG}" "${LOG_JSONL}") 2> >(tee "${STDERR_LOG}" >&2)
+  "${CMD[@]}" \
+    < /dev/null \
+    > >(tee "${STDOUT_LOG}" "${LOG_JSONL}") \
+    2> >(tee "${STDERR_LOG}" >&2)
 else
-  "${CMD[@]}" > >(tee "${STDOUT_LOG}") 2> >(tee "${STDERR_LOG}" >&2)
+  "${CMD[@]}" \
+    < /dev/null \
+    > >(tee "${STDOUT_LOG}") \
+    2> >(tee "${STDERR_LOG}" >&2)
 fi
 RC=$?
 popd >/dev/null

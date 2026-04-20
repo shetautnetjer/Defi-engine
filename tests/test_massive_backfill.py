@@ -15,17 +15,20 @@ def test_massive_backfill_range_writes_artifacts(settings, monkeypatch) -> None:
     runner = CaptureRunner(settings)
     backfill = MassiveMinuteAggsBackfill(settings, runner=runner)
 
-    async def _fake_capture(self, date_str: str, **kwargs) -> str:
+    async def _fake_capture(self, start_date: str, end_date: str, **kwargs) -> dict:
         assert kwargs["allowed_tickers"] == settings.massive_default_tickers
-        assert kwargs["partition"] == date_str
-        return f"run_{date_str}"
+        return {
+            "run_id": f"run_{start_date}_{end_date}",
+            "captured_dates": ["2026-04-14", "2026-04-15"],
+            "row_count": 2,
+        }
 
     def _noop_receipts(self, run_id: str, *, context=None):
         assert run_id.startswith("run_")
         assert context is not None
         return None
 
-    monkeypatch.setattr(CaptureRunner, "capture_massive_minute_aggs", _fake_capture)
+    monkeypatch.setattr(CaptureRunner, "capture_massive_minute_aggs_range", _fake_capture)
     monkeypatch.setattr(CaptureRunner, "write_capture_receipts", _noop_receipts)
 
     payload = asyncio.run(
@@ -41,6 +44,8 @@ def test_massive_backfill_range_writes_artifacts(settings, monkeypatch) -> None:
     assert payload["days"]["skipped_count"] == 0
 
     artifact_dir = settings.data_dir / "research" / "massive_minute_aggs" / payload["batch_id"]
+    assert payload["artifact_dir"] == str(artifact_dir)
+    assert str(artifact_dir / "capture_summary.json") in payload["artifact_paths"]
     summary = json.loads((artifact_dir / "capture_summary.json").read_text(encoding="utf-8"))
     history_window = json.loads((artifact_dir / "history_window.json").read_text(encoding="utf-8"))
     assert summary["batch_id"] == payload["batch_id"]
@@ -63,6 +68,52 @@ def test_massive_backfill_range_writes_artifacts(settings, monkeypatch) -> None:
         "massive_minute_aggs_backfill_summary",
         "massive_minute_aggs_backfill_report_qmd",
     }
+
+
+def test_massive_backfill_range_uses_multi_day_rest_chunks(settings, monkeypatch) -> None:
+    run_migrations_to_head(settings)
+    settings.massive_rest_minute_aggs_range_chunk_days = 30
+    runner = CaptureRunner(settings)
+    backfill = MassiveMinuteAggsBackfill(settings, runner=runner)
+
+    observed_ranges: list[tuple[str, str]] = []
+
+    async def _fake_range_capture(self, start_date: str, end_date: str, **kwargs) -> dict:
+        assert kwargs["allowed_tickers"] == settings.massive_default_tickers
+        observed_ranges.append((start_date, end_date))
+        return {
+            "run_id": f"range_{start_date}_{end_date}",
+            "captured_dates": [
+                row.date
+                for row in backfill._iter_missing_windows(start_date=start_date, end_date=end_date)
+            ],
+            "row_count": 1,
+        }
+
+    def _noop_receipts(self, run_id: str, *, context=None):
+        assert run_id.startswith("range_")
+        assert context is not None
+        return None
+
+    monkeypatch.setattr(CaptureRunner, "capture_massive_minute_aggs_range", _fake_range_capture)
+    monkeypatch.setattr(CaptureRunner, "write_capture_receipts", _noop_receipts)
+    monkeypatch.setattr(MassiveMinuteAggsBackfill, "_day_is_complete", lambda self, date_str, tickers: False)
+
+    payload = asyncio.run(
+        backfill.backfill_range(
+            start_date="2026-01-01",
+            end_date="2026-03-05",
+            resume=True,
+        )
+    )
+
+    assert observed_ranges == [
+        ("2026-01-01", "2026-01-30"),
+        ("2026-01-31", "2026-03-01"),
+        ("2026-03-02", "2026-03-05"),
+    ]
+    assert payload["days"]["captured_count"] == 64
+    assert payload["range_chunks"]["requested_count"] == 3
 
 
 def test_massive_historical_cache_status_reports_next_missing_day(settings, monkeypatch) -> None:

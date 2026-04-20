@@ -491,7 +491,7 @@ def test_cli_materializes_global_regime_with_massive_candle_fallback(cli_runner,
     assert any("X:BTCUSD" in (row.proxy_products_json or "") for row in feature_rows)
 
 
-def test_regime_proxy_selection_stays_spot_only_with_coinbase_context_derivatives(settings) -> None:
+def test_regime_proxy_selection_stays_spot_only_with_context_derivatives(settings) -> None:
     run_migrations_to_head(settings)
     session = get_session(settings)
     now = utcnow().replace(second=0, microsecond=0)
@@ -572,9 +572,22 @@ def test_regime_proxy_selection_stays_spot_only_with_coinbase_context_derivative
         session.close()
 
     assert selected == {
-        "BTC": {"coinbase": "BTC-USD"},
-        "ETH": {"coinbase": "ETH-USDC"},
-        "SOL": {"coinbase": "SOL-USD"},
+        "BTC": {"coinbase": "BTC-USD", "massive": "X:BTCUSD"},
+        "ETH": {"coinbase": "ETH-USDC", "massive": "X:ETHUSD"},
+        "SOL": {"coinbase": "SOL-USD", "massive": "X:SOLUSD"},
+    }
+    assert "BTC-PERP-INTX" not in set(selected["BTC"].values())
+    assert "ETH-PERP-INTX" not in set(selected["ETH"].values())
+    assert "SOL-PERP-INTX" not in set(selected["SOL"].values())
+
+
+def test_regime_proxy_selection_falls_back_to_configured_massive_tickers(settings) -> None:
+    selected = FeatureMaterializer(settings)._select_regime_proxy_products([])
+
+    assert selected == {
+        "BTC": {"massive": "X:BTCUSD"},
+        "ETH": {"massive": "X:ETHUSD"},
+        "SOL": {"massive": "X:SOLUSD"},
     }
 
 
@@ -667,6 +680,10 @@ def test_walk_forward_regime_history_is_point_in_time_safe(cli_runner, settings)
 
 
 def test_walk_forward_regime_history_refits_every_four_buckets(cli_runner, settings) -> None:
+    settings.condition_walk_forward_refit_cadence_buckets = 4
+    settings.condition_walk_forward_max_refits = 0
+    settings.condition_walk_forward_max_history_days = 0
+
     assert cli_runner.invoke(cli, ["init"]).exit_code == 0
     _seed_global_regime_inputs(settings)
     assert (

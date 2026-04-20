@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import orjson
@@ -1203,7 +1204,7 @@ class CaptureRunner:
                     )
                     source_event_type = "minute_aggs_flatfile"
                 except AdapterError as exc:
-                    if exc.status_code != 404:
+                    if exc.status_code not in {401, 403, 404}:
                         raise
                     source_mode = "rest"
                     payloads = await client.fetch_minute_aggs_rest(
@@ -1278,3 +1279,130 @@ class CaptureRunner:
             raise CaptureError(f"Massive minute aggregates capture failed closed: {exc}") from exc
 
         return run_id
+
+    async def capture_massive_minute_aggs_range(
+        self,
+        start_date: str,
+        end_date: str,
+        *,
+        allowed_tickers: list[str] | None = None,
+    ) -> dict[str, object]:
+        """Capture Massive minute aggregates through bounded multi-day REST range calls."""
+        from d5_trading_engine.adapters.massive.client import MassiveClient
+        from d5_trading_engine.normalize.massive.normalizer import MassiveNormalizer
+        from d5_trading_engine.storage.truth.models import RawMassiveCryptoEvent
+
+        run_id = self._start_ingest_run("massive", "minute_aggs_range")
+        start = time.monotonic()
+        bounded_tickers = list(allowed_tickers or self.settings.massive_default_tickers)
+        parquet_dataset = "global_crypto/minute_aggs_v1"
+
+        try:
+            client = MassiveClient(self.settings)
+            try:
+                payloads = await client.fetch_minute_aggs_rest_range(
+                    start_date,
+                    end_date,
+                    tickers=bounded_tickers,
+                )
+                rows = client.parse_minute_aggs_rest_payloads(payloads)
+            finally:
+                await client.close()
+
+            rows_by_date: dict[str, list[dict[str, str]]] = {}
+            for row in rows:
+                event_date = self._massive_minute_row_date(row)
+                if event_date:
+                    rows_by_date.setdefault(event_date, []).append(row)
+
+            raw_paths: dict[str, str] = {}
+            parquet_paths: dict[str, str] = {}
+            for event_date, day_rows in sorted(rows_by_date.items()):
+                raw_path = self.raw_store.write_jsonl(
+                    "massive",
+                    f"minute_aggs_{event_date}",
+                    [
+                        {
+                            "date": event_date,
+                            "mode": "rest_range",
+                            "range_start_date": start_date,
+                            "range_end_date": end_date,
+                            "row_count": len(day_rows),
+                            "rows": day_rows,
+                        }
+                    ],
+                    run_id,
+                    partition=event_date,
+                )
+                parquet_path = self.raw_store.write_parquet_rows(
+                    "massive",
+                    parquet_dataset,
+                    f"minute_aggs_{event_date}",
+                    day_rows,
+                    partition=event_date,
+                )
+                raw_paths[event_date] = str(raw_path)
+                parquet_paths[event_date] = str(parquet_path)
+
+            captured_at = utcnow()
+            self._write_raw_rows(
+                RawMassiveCryptoEvent,
+                [
+                    {
+                        "ingest_run_id": run_id,
+                        "provider": "massive",
+                        "event_type": "minute_aggs_rest_range",
+                        "payload": orjson.dumps(
+                            {
+                                "start_date": start_date,
+                                "end_date": end_date,
+                                "source_mode": "rest_range",
+                                "parquet_dataset": parquet_dataset,
+                                "raw_paths": raw_paths,
+                                "parquet_paths": parquet_paths,
+                                "row_count": len(rows),
+                                "captured_dates": sorted(rows_by_date),
+                                "normalized_tickers": bounded_tickers,
+                            }
+                        ).decode(),
+                        "captured_at": captured_at,
+                    }
+                ],
+            )
+            count = MassiveNormalizer(self.settings).normalize_minute_aggs(
+                rows,
+                run_id,
+                allowed_tickers=bounded_tickers,
+            )
+            elapsed_ms = (time.monotonic() - start) * 1000
+            self._log_health("massive", "minute_aggs_rest_range", True, elapsed_ms)
+            self._finish_ingest_run(run_id, "success", count)
+            return {
+                "run_id": run_id,
+                "captured_dates": sorted(rows_by_date),
+                "row_count": len(rows),
+                "source_mode": "rest_range",
+            }
+        except Exception as exc:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            self._log_health("massive", "minute_aggs_range", False, elapsed_ms, error=str(exc))
+            self._finish_ingest_run(run_id, "failed", error=str(exc))
+            log.error(
+                "massive_minute_aggs_range_failed_closed",
+                error=str(exc),
+                start_date=start_date,
+                end_date=end_date,
+            )
+            raise CaptureError(
+                f"Massive minute aggregate range capture failed closed: {exc}"
+            ) from exc
+
+    @staticmethod
+    def _massive_minute_row_date(row: dict[str, str]) -> str:
+        """Resolve the UTC event date from a Massive minute aggregate row."""
+        raw_window_start = row.get("window_start", "")
+        try:
+            timestamp_ms = int(float(raw_window_start))
+        except (TypeError, ValueError):
+            return ""
+        return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).date().isoformat()

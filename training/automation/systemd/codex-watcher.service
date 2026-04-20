@@ -4,8 +4,8 @@ After=default.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/projects/defi-engine
-ExecStart=/usr/bin/env python automation/bin/codex_event_watcher.py --queue automation/state/events.jsonl --rules automation/config/automation_rules.json --receipts-dir automation/receipts
+WorkingDirectory=%h/Projects/AI-Frame/Brain/Defi-engine
+ExecStart=/usr/bin/env python training/automation/bin/codex_event_watcher.py --queue training/automation/state/events.jsonl --rules training/automation/config/automation_rules.json --receipts-dir training/automation/receipts
 Restart=on-failure
 RestartSec=2
 

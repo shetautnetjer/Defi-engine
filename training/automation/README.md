@@ -29,7 +29,9 @@ Event JSON should stay thin and point back to SQL truth plus QMD evidence.
 
 The intended split is:
 
-- tmux/supervisor owns long-running hydration and incremental collection
+- `training/automation/bin/training_supervisor.py` owns long-running hydration,
+  selected-regimen bootstrap, incremental collection, review, and one-iteration
+  paper loops from tmux
 - the named persistent `trader` lane owns resumed paper-session, experiment,
   and condition review continuity
 - the fresh `task` lane owns one-shot feature review and repair-style runs
@@ -49,6 +51,17 @@ The watcher now also acts like the light session steward for the automation lane
 - it dispatches fresh or resumed Codex runs
 - it writes `watcher_status.json` so `d5 training status --json` can surface
   trader-lane health next to source-collection and paper-practice receipts
+
+Start or restart the continuous paper-training steward with:
+
+```bash
+ATTACH=0 training/automation/tmux/start_training_supervisor_tmux.sh
+```
+
+This steward follows the selected training regimen readiness from
+`d5 training status --json`. A partial 730-day Massive cache can keep trying to
+heal in the background, but it must not block `quickstart_300d` once the
+required 300-day ladder is ready.
 
 Repo-local Codex config and hooks live under:
 

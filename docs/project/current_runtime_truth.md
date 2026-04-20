@@ -223,19 +223,22 @@ The current historical ladder is now bounded, explicit, and evidence-first:
   shadow-only store
 - prefers Massive flat files when those entitlements and credentials are available
 - falls back to REST minute aggregates for incremental hydration and gap repair on plans where crypto minute flat files are unavailable
+- uses bounded Massive REST range calls with `limit=50000` per ticker request so selected-regimen hydration does not make one REST call per day
 - now supports cache-first training wrappers:
+  - `d5 hydrate-history --training-regimen auto`
   - `d5 training hydrate-history`
   - `d5 training collect`
   - `d5 training status`
 - paper-practice bootstrap now supports named training regimens:
-  - `full_730d` = higher-confidence default
+  - `auto` = fastest ready regimen from available history, so paper training can start once `quickstart_300d` is satisfied
   - `quickstart_300d` = earlier paper-only bootstrap
-  - `auto` = strongest ready regimen from available history
+  - `full_730d` = heavier long-history path when explicitly selected
 - these regimens change data budget and replay shape only; strategy, policy, and risk remain separate owners
 - research-bias profiles are a separate layer from training regimens and live in `.ai/profiles.toml` with `.ai/schemas/profile.schema.json`; they shape what to explore, not what runtime policy/risk may execute
 - the intended operating model is:
-  - finish the local historical cache once
-  - reuse local SQL, raw CSV.gz, and Parquet artifacts for walk-forward and review
+  - finish the selected local historical training-regimen window first
+  - continue filling the full historical cache as a separate explicit `full_730d` concern
+  - reuse local SQL, raw source artifacts, and Parquet artifacts for walk-forward and review
   - append only missing/new source data afterward
   - avoid repulling already-cached history during continuous training
 
@@ -266,7 +269,9 @@ The current Codex automation topology is now also explicit:
 - `training/automation/state/lane_sessions.json` stores lane session continuity
 - `training/automation/state/watcher_status.json` stores watcher heartbeat and
   trader-lane health for operator-facing status reads
-- tmux/supervisor remains the process steward for hydration and collection
+- `training/automation/bin/training_supervisor.py` is the tmux-owned process
+  steward for hydration, selected-regimen bootstrap, collection, review, and
+  one-iteration paper loops
 - app-server and exec-server stay deferred until the current lane/event/receipt
   contracts prove stable
 

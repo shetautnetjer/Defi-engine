@@ -14,11 +14,13 @@ from d5_trading_engine.adapters.jupiter.client import JupiterClient
 from d5_trading_engine.adapters.massive.client import MassiveClient
 from d5_trading_engine.capture.runner import CaptureRunner
 from d5_trading_engine.common.errors import AdapterError
+from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings
 from d5_trading_engine.normalize.coinbase.normalizer import (
     CoinbaseNormalizer,
     derive_coinbase_product_metadata,
 )
+from d5_trading_engine.normalize.massive.normalizer import MassiveNormalizer
 from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
 from d5_trading_engine.storage.truth.models import IngestRun, MarketInstrumentRegistry
 
@@ -296,6 +298,60 @@ def test_massive_parse_minute_aggs_rest_payloads_matches_csv_shape() -> None:
     ]
 
 
+def test_massive_minute_aggs_normalizer_upserts_instrument_registry(settings) -> None:
+    run_migrations_to_head(settings)
+    now = utcnow()
+    session = get_session(settings)
+    try:
+        session.add(
+            IngestRun(
+                run_id="massive_minute_aggs_test",
+                provider="massive",
+                capture_type="minute_aggs",
+                status="success",
+                started_at=now,
+                finished_at=now,
+                records_captured=1,
+                created_at=now,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    count = MassiveNormalizer(settings).normalize_minute_aggs(
+        [
+            {
+                "ticker": "X:SOLUSD",
+                "window_start": "1713350400000",
+                "open": "150.0",
+                "high": "151.0",
+                "low": "149.0",
+                "close": "150.5",
+                "volume": "42.0",
+            }
+        ],
+        ingest_run_id="massive_minute_aggs_test",
+        allowed_tickers=["X:SOLUSD"],
+    )
+
+    session = get_session(settings)
+    try:
+        instrument = (
+            session.query(MarketInstrumentRegistry)
+            .filter_by(venue="massive", product_id="X:SOLUSD")
+            .one()
+        )
+    finally:
+        session.close()
+
+    assert count == 1
+    assert instrument.base_symbol == "SOL"
+    assert instrument.quote_symbol == "USD"
+    assert instrument.product_type == "SPOT"
+    assert instrument.status == "active"
+
+
 @pytest.mark.asyncio
 async def test_coinbase_list_public_products_uses_market_products_path(httpx_mock) -> None:
     httpx_mock.add_response(method="GET", json={"products": [{"product_id": "SOL-USD"}]})
@@ -381,6 +437,61 @@ async def test_capture_massive_minute_aggs_falls_back_to_rest_on_flatfile_404(
     raw_dir = settings.raw_dir / "massive" / "2026-04-16"
     raw_files = list(raw_dir.glob("minute_aggs_2026-04-16_*.jsonl"))
     assert len(raw_files) == 1
+
+    session = get_session(settings)
+    try:
+        ingest_run = session.query(IngestRun).filter_by(run_id=run_id).one()
+        raw_event = session.query(RawMassiveCryptoEvent).filter_by(ingest_run_id=run_id).one()
+    finally:
+        session.close()
+
+    assert ingest_run.status == "success"
+    assert ingest_run.records_captured == 1
+    assert raw_event.event_type == "minute_aggs_rest"
+    assert '"source_mode":"rest"' in raw_event.payload
+
+
+@pytest.mark.asyncio
+async def test_capture_massive_minute_aggs_falls_back_to_rest_on_flatfile_403(
+    settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from d5_trading_engine.common.errors import AdapterError
+    from d5_trading_engine.storage.truth.engine import get_session
+    from d5_trading_engine.storage.truth.engine import run_migrations_to_head
+    from d5_trading_engine.storage.truth.models import IngestRun, RawMassiveCryptoEvent
+
+    run_migrations_to_head(settings)
+
+    async def _fake_download(self, date_str: str) -> bytes:
+        raise AdapterError("massive", "forbidden", status_code=403)
+
+    async def _fake_rest(self, date_str: str, *, tickers=None):
+        assert date_str == "2026-04-16"
+        assert tickers == settings.massive_default_tickers
+        return {
+            "X:SOLUSD": {
+                "ticker": "X:SOLUSD",
+                "results": [
+                    {
+                        "t": 1776297600000,
+                        "o": 150.0,
+                        "h": 151.0,
+                        "l": 149.0,
+                        "c": 150.5,
+                        "v": 42.0,
+                    }
+                ],
+            },
+            "X:BTCUSD": {"ticker": "X:BTCUSD", "results": []},
+            "X:ETHUSD": {"ticker": "X:ETHUSD", "results": []},
+        }
+
+    monkeypatch.setattr(MassiveClient, "download_minute_aggs", _fake_download)
+    monkeypatch.setattr(MassiveClient, "fetch_minute_aggs_rest", _fake_rest)
+
+    runner = CaptureRunner(settings)
+    run_id = await runner.capture_massive_minute_aggs("2026-04-16")
 
     session = get_session(settings)
     try:

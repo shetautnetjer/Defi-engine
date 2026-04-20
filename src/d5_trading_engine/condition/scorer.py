@@ -211,6 +211,7 @@ class ConditionScorer:
         """Build point-in-time-safe regime history for shadow evaluation."""
         feature_run = self._latest_feature_run()
         history = self._load_feature_history(feature_run.run_id)
+        history = self._cap_walk_forward_history(history)
         if history.empty:
             raise RuntimeError("No global regime input rows available for condition scoring.")
 
@@ -235,6 +236,14 @@ class ConditionScorer:
             training_window_start_utc=latest_row["training_window_start_utc"].to_pydatetime(),
             training_window_end_utc=latest_row["training_window_end_utc"].to_pydatetime(),
         )
+
+    def _cap_walk_forward_history(self, history: pd.DataFrame) -> pd.DataFrame:
+        max_history_days = int(self.settings.condition_walk_forward_max_history_days)
+        if history.empty or max_history_days <= 0:
+            return history
+        history_end = history["bucket_start_utc"].max()
+        history_start = history_end - pd.Timedelta(days=max_history_days - 1)
+        return history.loc[history["bucket_start_utc"] >= history_start].copy()
 
     def _latest_feature_run(self) -> FeatureMaterializationRun:
         session = get_session(self.settings)
@@ -361,34 +370,47 @@ class ConditionScorer:
         training_window_start_utc = None
         training_window_end_utc = None
         scored_bucket_count = 0
+        refit_cadence_buckets = max(
+            1,
+            int(self.settings.condition_walk_forward_refit_cadence_buckets),
+        )
+        max_refits = int(self.settings.condition_walk_forward_max_refits)
+        if max_refits > 0:
+            scorable_buckets = max(len(history) - _MIN_TRAIN_ROWS, 1)
+            refit_cadence_buckets = max(
+                refit_cadence_buckets,
+                (scorable_buckets + max_refits - 1) // max_refits,
+            )
 
-        for row_index in range(len(history)):
+        row_index = 0
+        while row_index < len(history):
             current_bucket = history.iloc[row_index]["bucket_start_utc"]
             training_history = history.loc[
                 (history["bucket_start_utc"] <= current_bucket)
                 & (history["bucket_start_utc"] >= (current_bucket - _TRAINING_WINDOW))
             ].copy()
             if len(training_history) < _MIN_TRAIN_ROWS:
+                row_index += 1
                 continue
 
-            if current_model is None or (scored_bucket_count % _REFIT_CADENCE_BUCKETS == 0):
-                (
-                    current_model,
-                    current_model_family,
-                    current_semantics,
-                ) = self._fit_model_and_semantics(training_history)
-                model_epoch_bucket_start_utc = current_bucket
-                training_window_start_utc = training_history["bucket_start_utc"].iloc[0]
-                training_window_end_utc = training_history["bucket_start_utc"].iloc[-1]
-                latest_state_semantics = current_semantics
-                latest_model_family = current_model_family
+            (
+                current_model,
+                current_model_family,
+                current_semantics,
+            ) = self._fit_model_and_semantics(training_history)
+            model_epoch_bucket_start_utc = current_bucket
+            training_window_start_utc = training_history["bucket_start_utc"].iloc[0]
+            training_window_end_utc = training_history["bucket_start_utc"].iloc[-1]
+            latest_state_semantics = current_semantics
+            latest_model_family = current_model_family
 
             assert current_model is not None
             assert current_semantics is not None
             assert current_model_family is not None
 
-            scored_row = self._score_history_with_model(
-                history.iloc[[row_index]],
+            next_refit_index = min(row_index + refit_cadence_buckets, len(history))
+            scored_segment = self._score_history_with_model(
+                history.iloc[row_index:next_refit_index],
                 current_model,
                 current_semantics,
                 macro_context_state=macro_context_state,
@@ -397,8 +419,9 @@ class ConditionScorer:
                 training_window_start_utc=training_window_start_utc,
                 training_window_end_utc=training_window_end_utc,
             )
-            scored_rows.append(scored_row)
-            scored_bucket_count += 1
+            scored_rows.append(scored_segment)
+            scored_bucket_count += len(scored_segment)
+            row_index = next_refit_index
 
         if not scored_rows:
             return pd.DataFrame(), latest_state_semantics, latest_model_family

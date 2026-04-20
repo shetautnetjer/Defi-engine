@@ -86,7 +86,15 @@ def summarize_training_profile_readiness(
             key=lambda item: item[1].required_history_days,
         )
     }
+    fastest_ready_name = ""
     strongest_ready_name = ""
+    for name, profile_summary in sorted(
+        profiles.items(),
+        key=lambda item: item[1]["required_history_days"],
+    ):
+        if profile_summary["ready"]:
+            fastest_ready_name = name
+            break
     for name, profile_summary in sorted(
         profiles.items(),
         key=lambda item: item[1]["required_history_days"],
@@ -97,7 +105,7 @@ def summarize_training_profile_readiness(
             break
 
     if selected_profile_name == "auto":
-        resolved_profile_name = strongest_ready_name or min(
+        resolved_profile_name = fastest_ready_name or min(
             profiles.items(),
             key=lambda item: item[1]["required_history_days"],
         )[0]
@@ -113,7 +121,8 @@ def summarize_training_profile_readiness(
         "requested_profile_name": selected_profile_name,
         "selected_profile_name": resolved_profile_name,
         "available_history_days": normalized_available_days,
-        "best_ready_profile_name": strongest_ready_name,
+        "best_ready_profile_name": fastest_ready_name,
+        "strongest_ready_profile_name": strongest_ready_name,
         "profiles": profiles,
     }
 

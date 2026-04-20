@@ -64,6 +64,22 @@ def test_settings_accept_named_paper_practice_training_profile() -> None:
     assert settings.paper_practice_training_profile == "quickstart_300d"
 
 
+def test_settings_default_paper_practice_training_profile_is_auto() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.paper_practice_training_profile == "auto"
+
+
+def test_settings_expose_training_refit_cadences() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.condition_walk_forward_refit_cadence_buckets == 672
+    assert settings.condition_walk_forward_max_history_days == 300
+    assert settings.condition_walk_forward_max_refits == 8
+    assert settings.regime_compare_refit_cadence_buckets == 672
+    assert settings.regime_compare_max_refits == 8
+
+
 def test_settings_accept_named_trader_research_profile() -> None:
     settings = Settings(
         _env_file=None,

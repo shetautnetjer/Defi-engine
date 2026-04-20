@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +83,46 @@ def _as_utc_timestamp(value) -> pd.Timestamp:
     return timestamp.tz_convert("UTC")
 
 
+def _source_collection_status_path(settings: Settings) -> Path:
+    return settings.repo_root / ".ai" / "dropbox" / "state" / "source_collection_status.json"
+
+
+def _merge_capture_backed_historical_cache_status(
+    settings: Settings,
+    warehouse_status: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(warehouse_status)
+    capture_payload = _load_json_file(_source_collection_status_path(settings))
+    capture_after = (
+        capture_payload.get("historical_cache_after")
+        if isinstance(capture_payload, dict)
+        else None
+    )
+    if isinstance(capture_after, dict):
+        merged["capture_complete"] = bool(capture_after.get("complete", False))
+        merged["capture_completed_day_count"] = int(
+            capture_after.get("completed_day_count") or 0
+        )
+        merged["capture_missing_day_count"] = int(
+            capture_after.get("missing_day_count") or 0
+        )
+        merged["capture_next_missing_date"] = str(
+            capture_after.get("next_missing_date") or ""
+        )
+        merged["capture_latest_completed_date"] = str(
+            capture_after.get("latest_completed_date") or ""
+        )
+    return merged
+
+
+def _training_available_history_days_from_cache_status(cache_status: dict[str, Any]) -> int:
+    return int(
+        cache_status.get("capture_completed_day_count")
+        or cache_status.get("completed_day_count")
+        or 0
+    )
+
+
 class PaperPracticeRuntime:
     """Own the bounded autonomous paper-practice loop and profile overlay."""
 
@@ -91,10 +131,65 @@ class PaperPracticeRuntime:
 
     def historical_cache_status(self) -> dict[str, Any]:
         backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
-        return backfill.historical_cache_status()
+        warehouse_status = backfill.historical_cache_status()
+        source_collection_status = _load_json_file(
+            self.settings.repo_root
+            / ".ai"
+            / "dropbox"
+            / "state"
+            / "source_collection_status.json"
+        )
+        capture_after = source_collection_status.get("historical_cache_after", {})
+        if not isinstance(capture_after, dict):
+            return warehouse_status
 
-    def hydrate_history(self, *, max_days: int | None = None) -> dict[str, Any]:
+        merged = dict(warehouse_status)
+        merged["warehouse_completed_day_count"] = warehouse_status.get("completed_day_count", 0)
+        merged["warehouse_missing_day_count"] = warehouse_status.get("missing_day_count", 0)
+        merged["warehouse_next_missing_date"] = warehouse_status.get("next_missing_date", "")
+        if capture_after:
+            merged["capture_complete"] = bool(capture_after.get("complete", False))
+            merged["capture_completed_day_count"] = int(capture_after.get("completed_day_count", 0) or 0)
+            merged["capture_missing_day_count"] = int(capture_after.get("missing_day_count", 0) or 0)
+            merged["capture_next_missing_date"] = str(capture_after.get("next_missing_date", "") or "")
+            merged["capture_latest_completed_date"] = str(
+                capture_after.get("latest_completed_date", "") or ""
+            )
+        return merged
+
+    def hydrate_history(
+        self,
+        *,
+        max_days: int | None = None,
+        training_profile_name: str | None = None,
+    ) -> dict[str, Any]:
         backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
+        if training_profile_name is not None:
+            cache_status = self.historical_cache_status()
+            available_history_days = self._training_available_history_days_from_cache_status(
+                cache_status
+            )
+            training_profile = self._selected_training_profile(
+                available_history_days=available_history_days,
+                requested_profile_name=training_profile_name,
+            )
+            start_date, end_date = self._training_profile_date_window(training_profile)
+            if max_days is not None:
+                if max_days <= 0:
+                    raise RuntimeError("max_days must be positive when provided.")
+                bounded_end = min(
+                    date.fromisoformat(end_date),
+                    date.fromisoformat(start_date) + timedelta(days=max_days - 1),
+                )
+                end_date = bounded_end.isoformat()
+            return asyncio.run(
+                backfill.backfill_range(
+                    start_date=start_date,
+                    end_date=end_date,
+                    resume=True,
+                    mode=training_profile.name,
+                )
+            )
         return asyncio.run(backfill.backfill_missing_full_free_tier(max_days=max_days, resume=True))
 
     def run_source_collection(
@@ -113,7 +208,7 @@ class PaperPracticeRuntime:
             )
         )
 
-    def run_bootstrap(self) -> dict[str, Any]:
+    def run_bootstrap(self, training_profile_name: str | None = None) -> dict[str, Any]:
         profile = self.ensure_active_profile()
         bootstrap_id = f"paper_practice_bootstrap_{uuid.uuid4().hex[:12]}"
         artifact_dir = (
@@ -123,11 +218,16 @@ class PaperPracticeRuntime:
 
         end_date = utcnow().date() - timedelta(days=1)
         cache_status = self.historical_cache_status()
+        available_history_days = self._training_available_history_days_from_cache_status(
+            cache_status
+        )
         training_profile_readiness = self._training_profile_readiness(
-            available_history_days=int(cache_status.get("completed_day_count") or 0)
+            available_history_days=available_history_days,
+            requested_profile_name=training_profile_name,
         )
         training_profile = self._selected_training_profile(
-            available_history_days=int(cache_status.get("completed_day_count") or 0)
+            available_history_days=available_history_days,
+            requested_profile_name=training_profile_name,
         )
         start_date = end_date - timedelta(days=training_profile.history_lookback_days - 1)
 
@@ -135,7 +235,14 @@ class PaperPracticeRuntime:
         materializer = FeatureMaterializer(self.settings)
         comparator = RegimeModelComparator(self.settings)
 
-        backfill_result = asyncio.run(backfill.backfill_missing_full_free_tier(resume=True))
+        backfill_result = asyncio.run(
+            backfill.backfill_range(
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+                resume=True,
+                mode=training_profile.name,
+            )
+        )
         feature_run_id, feature_rows = materializer.materialize_global_regime_inputs_15m_v1()
         comparison_result = comparator.run_regime_model_compare_v1(
             history_start=start_date.isoformat(),
@@ -157,6 +264,7 @@ class PaperPracticeRuntime:
             "feature_rows": feature_rows,
             "comparison_result": comparison_result,
             "backtest_result": backtest_result,
+            "strategy_report_result": backtest_result.get("strategy_report_result", {}),
             "artifact_dir": str(artifact_dir),
             "completed_ladder": bool(backtest_result["completed_ladder"]),
             "next_command": "d5 run-paper-practice-loop --max-iterations 1 --json",
@@ -252,14 +360,73 @@ class PaperPracticeRuntime:
 
     def historical_cache_status(self) -> dict[str, Any]:
         """Return the bounded Massive historical cache status."""
-        return MassiveMinuteAggsBackfill(
-            self.settings,
-            runner=CaptureRunner(self.settings),
-        ).historical_cache_status()
+        backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
+        warehouse_status = backfill.historical_cache_status()
+        source_collection_status = _load_json_file(
+            self.settings.repo_root
+            / ".ai"
+            / "dropbox"
+            / "state"
+            / "source_collection_status.json"
+        )
+        capture_after = source_collection_status.get("historical_cache_after", {})
+        if not isinstance(capture_after, dict):
+            return warehouse_status
 
-    def hydrate_history(self, *, max_days: int | None = None) -> dict[str, Any]:
+        merged = dict(warehouse_status)
+        merged["warehouse_completed_day_count"] = warehouse_status.get("completed_day_count", 0)
+        merged["warehouse_missing_day_count"] = warehouse_status.get("missing_day_count", 0)
+        merged["warehouse_next_missing_date"] = warehouse_status.get("next_missing_date", "")
+        if capture_after:
+            merged["capture_complete"] = bool(capture_after.get("complete", False))
+            merged["capture_completed_day_count"] = int(
+                capture_after.get("completed_day_count", 0) or 0
+            )
+            merged["capture_missing_day_count"] = int(
+                capture_after.get("missing_day_count", 0) or 0
+            )
+            merged["capture_next_missing_date"] = str(
+                capture_after.get("next_missing_date", "") or ""
+            )
+            merged["capture_latest_completed_date"] = str(
+                capture_after.get("latest_completed_date", "") or ""
+            )
+        return merged
+
+    def hydrate_history(
+        self,
+        *,
+        max_days: int | None = None,
+        training_profile_name: str | None = None,
+    ) -> dict[str, Any]:
         """Fill only the missing portion of the bounded Massive historical cache."""
         backfill = MassiveMinuteAggsBackfill(self.settings, runner=CaptureRunner(self.settings))
+        if training_profile_name is not None:
+            cache_status = self.historical_cache_status()
+            available_history_days = self._training_available_history_days_from_cache_status(
+                cache_status
+            )
+            training_profile = self._selected_training_profile(
+                available_history_days=available_history_days,
+                requested_profile_name=training_profile_name,
+            )
+            start_date, end_date = self._training_profile_date_window(training_profile)
+            if max_days is not None:
+                if max_days <= 0:
+                    raise RuntimeError("max_days must be positive when provided.")
+                bounded_end = min(
+                    date.fromisoformat(end_date),
+                    date.fromisoformat(start_date) + timedelta(days=max_days - 1),
+                )
+                end_date = bounded_end.isoformat()
+            return asyncio.run(
+                backfill.backfill_range(
+                    start_date=start_date,
+                    end_date=end_date,
+                    resume=True,
+                    mode=training_profile.name,
+                )
+            )
         return asyncio.run(
             backfill.backfill_missing_full_free_tier(
                 max_days=max_days,
@@ -315,6 +482,15 @@ class PaperPracticeRuntime:
             available_history_days=available_history_days,
             requested_profile_name=training_profile_name,
         )
+        bounded_history_start = max(
+            history_start,
+            _as_utc_timestamp(
+                history_end - pd.Timedelta(days=training_profile.history_lookback_days - 1)
+            ),
+        )
+        history = history.loc[history["bucket_start_utc"] >= bounded_history_start].copy()
+        history_start = _as_utc_timestamp(history["bucket_start_utc"].min())
+        history_end = _as_utc_timestamp(history["bucket_start_utc"].max())
         history_window = assess_training_history_window(
             history_start=history_start,
             history_end=history_end,
@@ -339,6 +515,7 @@ class PaperPracticeRuntime:
             )
 
         macro_context_state = scorer._macro_context_state(feature_run)
+        strategy_report_result = self._ensure_advisory_strategy_report()
         price_history = self._load_backtest_price_history()
         window_results: list[dict[str, Any]] = []
 
@@ -398,6 +575,7 @@ class PaperPracticeRuntime:
                 "minimum_replay_days": training_profile.minimum_replay_days,
                 "walk_forward_window_days": training_profile.walk_forward_window_days,
             },
+            "strategy_report_result": strategy_report_result,
             "history_window": history_window,
             "history_start": history_start.date().isoformat(),
             "history_end": history_end.date().isoformat(),
@@ -502,6 +680,61 @@ class PaperPracticeRuntime:
         )
         return payload
 
+    def _ensure_advisory_strategy_report(self) -> dict[str, Any]:
+        """Ensure replay has governed advisory STRAT evidence without widening authority."""
+        report_path = self.settings.repo_root / _DEFAULT_STRATEGY_REPORT
+        existing_error = ""
+        if report_path.exists():
+            try:
+                selection = PaperTradeOperator(self.settings)._load_advisory_strategy_selection(
+                    strategy_report_path=report_path,
+                    preferred_family=None,
+                )
+                return {
+                    "status": "existing",
+                    "strategy_report_path": str(report_path),
+                    "strategy_report_exists": True,
+                    "run_id": selection.get("run_id") or "",
+                    "top_family": selection.get("top_family") or "",
+                    "proposal_status": "",
+                }
+            except Exception as exc:
+                existing_error = f" Existing report was invalid: {exc}"
+
+        from d5_trading_engine.research_loop.shadow_runner import ShadowRunner
+
+        try:
+            result = ShadowRunner(self.settings).run_strategy_eval_v1()
+        except Exception as exc:
+            raise RuntimeError(
+                "Missing or invalid advisory strategy report, and governed strategy "
+                "evaluation could not create one. Run "
+                "`d5 materialize-features spot-chain-macro-v1` and "
+                "`d5 run-strategy-eval governed-challengers-v1` before replaying "
+                f"paper training.{existing_error}"
+            ) from exc
+
+        try:
+            selection = PaperTradeOperator(self.settings)._load_advisory_strategy_selection(
+                strategy_report_path=report_path,
+                preferred_family=None,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Governed strategy evaluation completed, but the default advisory "
+                f"strategy report is still not valid: {report_path}"
+            ) from exc
+
+        return {
+            "status": "generated",
+            "strategy_report_path": str(report_path),
+            "strategy_report_exists": report_path.exists(),
+            "run_id": result.get("run_id") or selection.get("run_id") or "",
+            "top_family": selection.get("top_family") or result.get("top_family") or "",
+            "proposal_status": result.get("proposal_status") or "",
+            "artifact_dir": result.get("artifact_dir") or "",
+        }
+
     def _ensure_historical_ladder_completed(self) -> dict[str, Any]:
         status_path = (
             self.settings.repo_root
@@ -568,6 +801,9 @@ class PaperPracticeRuntime:
 
         iterations_completed = 0
         latest_trade_receipt: dict[str, Any] = {}
+        latest_decision_id = ""
+        latest_session_key = ""
+        last_cycle_id = ""
         try:
             while True:
                 iteration_result = self._run_iteration(
@@ -576,13 +812,16 @@ class PaperPracticeRuntime:
                 )
                 iterations_completed += 1
                 latest_trade_receipt = iteration_result.get("latest_trade_receipt", {})
+                latest_decision_id = iteration_result["latest_decision_id"]
+                latest_session_key = iteration_result.get("latest_session_key", "")
+                last_cycle_id = iteration_result.get("cycle_id", "")
                 self._update_loop_run(
                     loop_run_id=loop_run_id,
                     status="running",
                     iterations_completed=iterations_completed,
-                    latest_decision_id=iteration_result["latest_decision_id"],
-                    latest_session_key=iteration_result.get("latest_session_key", ""),
-                    last_cycle_id=iteration_result.get("cycle_id", ""),
+                    latest_decision_id=latest_decision_id,
+                    latest_session_key=latest_session_key,
+                    last_cycle_id=last_cycle_id,
                 )
 
                 profile = self.ensure_active_profile()
@@ -593,9 +832,10 @@ class PaperPracticeRuntime:
                         "loop_run_id": loop_run_id,
                         "status": "running",
                         "iterations_completed": iterations_completed,
-                        "latest_decision_id": iteration_result["latest_decision_id"],
-                        "latest_session_key": iteration_result.get("latest_session_key", ""),
-                        "last_cycle_id": iteration_result.get("cycle_id", ""),
+                        "latest_decision_id": latest_decision_id,
+                        "latest_session_key": latest_session_key,
+                        "last_cycle_id": last_cycle_id,
+                        "historical_ladder_completed": True,
                     },
                 )
                 if max_iterations is not None and iterations_completed >= max_iterations:
@@ -613,6 +853,20 @@ class PaperPracticeRuntime:
                 latest_session_key=None,
                 last_cycle_id=None,
                 finished_at=finished_at,
+            )
+            profile = self.ensure_active_profile()
+            self._write_status_receipts(
+                profile=profile,
+                latest_trade_receipt=latest_trade_receipt,
+                loop_state={
+                    "loop_run_id": loop_run_id,
+                    "status": "completed",
+                    "iterations_completed": iterations_completed,
+                    "latest_decision_id": latest_decision_id,
+                    "latest_session_key": latest_session_key,
+                    "last_cycle_id": last_cycle_id,
+                    "historical_ladder_completed": True,
+                },
             )
             return {
                 "loop_run_id": loop_run_id,
@@ -632,13 +886,30 @@ class PaperPracticeRuntime:
                 last_cycle_id=None,
                 finished_at=utcnow(),
             )
+            profile = self.ensure_active_profile()
+            self._write_status_receipts(
+                profile=profile,
+                latest_trade_receipt=latest_trade_receipt,
+                loop_state={
+                    "loop_run_id": loop_run_id,
+                    "status": "failed",
+                    "iterations_completed": iterations_completed,
+                    "latest_decision_id": latest_decision_id,
+                    "latest_session_key": latest_session_key,
+                    "last_cycle_id": last_cycle_id,
+                    "historical_ladder_completed": True,
+                },
+            )
             raise
 
     def get_status(self) -> dict[str, Any]:
         profile = self.ensure_active_profile()
         cache_status = self.historical_cache_status()
+        available_history_days = self._training_available_history_days_from_cache_status(
+            cache_status
+        )
         training_profile_readiness = self._training_profile_readiness(
-            available_history_days=int(cache_status.get("completed_day_count") or 0)
+            available_history_days=available_history_days
         )
         selected_training_profile = training_profile_readiness["profiles"][
             str(training_profile_readiness["selected_profile_name"])
@@ -1718,12 +1989,13 @@ class PaperPracticeRuntime:
         price_history: pd.DataFrame,
         bucket_time: pd.Timestamp,
     ) -> float:
-        candidates = price_history.loc[price_history["start_time_utc"] <= bucket_time]
-        if candidates.empty:
-            candidates = price_history.loc[price_history["start_time_utc"] >= bucket_time]
-        if candidates.empty:
+        timestamps = price_history["start_time_utc"]
+        row_index = int(timestamps.searchsorted(bucket_time, side="right")) - 1
+        if row_index < 0:
+            row_index = int(timestamps.searchsorted(bucket_time, side="left"))
+        if row_index < 0 or row_index >= len(price_history):
             raise RuntimeError(f"Missing replay price near bucket {bucket_time.isoformat()}")
-        price = float(candidates.iloc[-1]["close"])
+        price = float(price_history.iloc[row_index]["close"])
         if price <= 0:
             raise RuntimeError(f"Replay price must be positive at bucket {bucket_time.isoformat()}")
         return price
@@ -2039,10 +2311,28 @@ class PaperPracticeRuntime:
             "preferred_family": "",
         }
 
-    def _training_profile_readiness(self, *, available_history_days: int) -> dict[str, Any]:
+    def _training_profile_readiness(
+        self,
+        *,
+        available_history_days: int,
+        requested_profile_name: str | None = None,
+    ) -> dict[str, Any]:
         return summarize_training_profile_readiness(
             available_history_days=available_history_days,
-            selected_profile_name=self.settings.paper_practice_training_profile,
+            selected_profile_name=requested_profile_name or self.settings.paper_practice_training_profile,
+        )
+
+    def _training_available_history_days_from_cache_status(
+        self,
+        cache_status: dict[str, Any],
+    ) -> int:
+        return max(
+            int(
+                cache_status.get("capture_completed_day_count")
+                or cache_status.get("completed_day_count")
+                or 0
+            ),
+            0,
         )
 
     def _selected_training_profile(
@@ -2055,6 +2345,15 @@ class PaperPracticeRuntime:
             requested_profile_name or self.settings.paper_practice_training_profile,
             available_history_days=available_history_days,
         )
+
+    def _training_profile_date_window(
+        self,
+        training_profile: PaperPracticeTrainingProfile,
+    ) -> tuple[str, str]:
+        """Resolve the bounded history window for a selected training regimen."""
+        end_date = utcnow().date() - timedelta(days=1)
+        start_date = end_date - timedelta(days=training_profile.history_lookback_days - 1)
+        return start_date.isoformat(), end_date.isoformat()
 
     def _usdc_mint(self) -> str:
         return self._mint_for_symbol("USDC")

@@ -142,10 +142,19 @@ class MassiveClient:
 
     def build_minute_aggs_rest_url(self, ticker: str, date_str: str) -> str:
         """Build the bounded REST aggregates URL for one ticker and UTC date."""
+        return self.build_minute_aggs_rest_range_url(ticker, date_str, date_str)
+
+    def build_minute_aggs_rest_range_url(
+        self,
+        ticker: str,
+        start_date: str,
+        end_date: str,
+    ) -> str:
+        """Build the bounded REST aggregates URL for one ticker and UTC date range."""
         safe_ticker = quote(ticker, safe="")
         return (
             f"{self.settings.massive_api_base}/v2/aggs/ticker/{safe_ticker}/range/1/minute/"
-            f"{date_str}/{date_str}"
+            f"{start_date}/{end_date}"
         )
 
     async def download_minute_aggs(self, date_str: str) -> bytes:
@@ -217,6 +226,20 @@ class MassiveClient:
         tickers: list[str] | None = None,
     ) -> dict[str, dict]:
         """Fetch bounded one-minute aggregate payloads from REST for one UTC date."""
+        return await self.fetch_minute_aggs_rest_range(
+            date_str,
+            date_str,
+            tickers=tickers,
+        )
+
+    async def fetch_minute_aggs_rest_range(
+        self,
+        start_date: str,
+        end_date: str,
+        *,
+        tickers: list[str] | None = None,
+    ) -> dict[str, dict]:
+        """Fetch bounded one-minute aggregate payloads from REST for a UTC date range."""
         bounded_tickers = tickers or list(self.settings.massive_default_tickers)
         payloads: dict[str, dict] = {}
         for ticker in bounded_tickers:
@@ -226,7 +249,7 @@ class MassiveClient:
                 try:
                     payload = await self._request(
                         "GET",
-                        f"/v2/aggs/ticker/{quote(ticker, safe='')}/range/1/minute/{date_str}/{date_str}",
+                        f"/v2/aggs/ticker/{quote(ticker, safe='')}/range/1/minute/{start_date}/{end_date}",
                         params={
                             "adjusted": "true",
                             "sort": "asc",

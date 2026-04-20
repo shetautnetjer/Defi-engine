@@ -61,6 +61,7 @@ def _merge_training_status(
     merged = deepcopy(db_status)
     receipt_loop_state = status_receipt.get("loop_state")
     conflicts: list[dict[str, Any]] = []
+    terminal_loop_statuses = {"completed", "failed", "bootstrap_completed"}
 
     if isinstance(receipt_loop_state, dict) and receipt_loop_state:
         receipt_loop_run_id = str(receipt_loop_state.get("loop_run_id") or "")
@@ -94,8 +95,21 @@ def _merge_training_status(
             )
 
         merged["receipt_loop_state"] = receipt_loop_state
-        merged["effective_loop_run_id"] = receipt_loop_run_id or merged.get("latest_loop_run_id", "")
-        merged["effective_loop_status"] = receipt_loop_status or merged.get("latest_loop_status", "")
+        effective_loop_run_id = receipt_loop_run_id or merged.get("latest_loop_run_id", "")
+        effective_loop_status = receipt_loop_status or merged.get("latest_loop_status", "")
+        # A stale receipt should not keep a finished loop looking active forever.
+        if (
+            receipt_loop_status == "running"
+            and str(merged.get("latest_loop_status") or "") in terminal_loop_statuses
+            and (
+                not receipt_loop_run_id
+                or receipt_loop_run_id == str(merged.get("latest_loop_run_id") or "")
+            )
+        ):
+            effective_loop_run_id = str(merged.get("latest_loop_run_id") or effective_loop_run_id)
+            effective_loop_status = str(merged.get("latest_loop_status") or effective_loop_status)
+        merged["effective_loop_run_id"] = effective_loop_run_id
+        merged["effective_loop_status"] = effective_loop_status
         merged["effective_latest_decision_id"] = receipt_decision_id or merged.get(
             "latest_decision_id", ""
         )
@@ -197,8 +211,8 @@ class TrainingRuntime:
     def state_root(self) -> Path:
         return self.settings.repo_root / ".ai" / "dropbox" / "state"
 
-    def bootstrap(self) -> dict[str, Any]:
-        result = self.practice.run_bootstrap()
+    def bootstrap(self, *, training_profile_name: str | None = None) -> dict[str, Any]:
+        result = self.practice.run_bootstrap(training_profile_name=training_profile_name)
         artifact_dir = Path(result["artifact_dir"])
         artifact_paths = [
             str(artifact_dir / "bootstrap_summary.json"),
@@ -215,9 +229,14 @@ class TrainingRuntime:
             "bootstrap": result,
         }
 
-    def hydrate_history(self, *, max_days: int | None = None) -> dict[str, Any]:
+    def hydrate_history(
+        self,
+        *,
+        max_days: int | None = None,
+        training_profile_name: str | None = None,
+    ) -> dict[str, Any]:
         cache_status = self.practice.historical_cache_status()
-        if cache_status["complete"]:
+        if training_profile_name is None and cache_status["complete"]:
             return {
                 "status": "noop",
                 "run_id": "historical_cache_complete",
@@ -229,7 +248,10 @@ class TrainingRuntime:
                 "historical_cache_status": cache_status,
             }
 
-        result = self.practice.hydrate_history(max_days=max_days)
+        result = self.practice.hydrate_history(
+            max_days=max_days,
+            training_profile_name=training_profile_name,
+        )
         artifact_dir = Path(result["artifact_dir"])
         artifact_paths = [
             str(artifact_dir / "capture_summary.json"),
@@ -276,8 +298,10 @@ class TrainingRuntime:
             "collect": result,
         }
 
-    def walk_forward(self) -> dict[str, Any]:
-        result = self.practice.run_backtest_walk_forward()
+    def walk_forward(self, *, training_profile_name: str | None = None) -> dict[str, Any]:
+        result = self.practice.run_backtest_walk_forward(
+            training_profile_name=training_profile_name,
+        )
         artifact_dir = Path(result["artifact_dir"])
         artifact_paths = [
             str(artifact_dir / "summary.json"),
@@ -366,8 +390,13 @@ class TrainingRuntime:
         historical_ladder_completed = bool(
             (latest_receipt_status.get("loop_state") or {}).get("historical_ladder_completed")
         )
-        if selected_training_profile.get("ready") and not historical_ladder_completed:
+        effective_loop_status = str(merged_training_status.get("effective_loop_status") or "")
+        if effective_loop_status == "running":
+            next_command = "d5 training status --json"
+        elif selected_training_profile.get("ready") and not historical_ladder_completed:
             next_command = "d5 training bootstrap --json"
+        elif historical_ladder_completed:
+            next_command = "d5 training loop --json"
         elif not cache_status["complete"]:
             next_command = "d5 training collect --json"
         else:

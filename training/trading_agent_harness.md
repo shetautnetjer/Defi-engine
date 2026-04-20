@@ -41,6 +41,17 @@ order:
 10. latest relevant QMD packet
 11. latest comparable SQL baseline or training status
 
+## Automation Turn Exception
+
+When this harness runs inside non-interactive `codex exec` or `codex exec resume`
+automation:
+
+- do not try to launch tmux-based JetBrains lifecycle scripts from inside the
+  Codex sandbox
+- use `mcp__idea__...` tools directly if they are already available
+- if JetBrains tools are not available for that automation turn, use shell-first
+  navigation and bounded file reads instead of attempting local tmux bootstrap
+
 ## First Questions
 
 Before doing work, the harness should answer:

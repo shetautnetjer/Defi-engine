@@ -115,8 +115,16 @@ class RegimeModelComparator:
         history_start: str | None = None,
         history_end: str | None = None,
         use_massive_context: bool = True,
-        refit_cadence_buckets: int = _REFIT_CADENCE_BUCKETS,
+        refit_cadence_buckets: int | None = None,
     ) -> dict[str, Any]:
+        resolved_refit_cadence_buckets = max(
+            1,
+            int(
+                refit_cadence_buckets
+                if refit_cadence_buckets is not None
+                else self.settings.regime_compare_refit_cadence_buckets
+            ),
+        )
         feature_run = self._scorer._latest_feature_run()
         history = self._scorer._load_feature_history(feature_run.run_id)
         history = self._filter_history(
@@ -125,6 +133,14 @@ class RegimeModelComparator:
             history_end=history_end,
             use_massive_context=use_massive_context,
         )
+        if refit_cadence_buckets is None:
+            max_refits = int(self.settings.regime_compare_max_refits)
+            if max_refits > 0:
+                scorable_buckets = max(len(history) - _TRAIN_WINDOW_BUCKETS, 1)
+                resolved_refit_cadence_buckets = max(
+                    resolved_refit_cadence_buckets,
+                    (scorable_buckets + max_refits - 1) // max_refits,
+                )
         macro_context_state = self._scorer._macro_context_state(feature_run)
         history_inventory = self._build_history_inventory(feature_run.run_id, history)
 
@@ -141,7 +157,7 @@ class RegimeModelComparator:
             "feature_bucket_rows": int(len(history)),
             "min_compare_rows": _MIN_COMPARE_ROWS,
             "train_window_buckets": _TRAIN_WINDOW_BUCKETS,
-            "refit_cadence_buckets": refit_cadence_buckets,
+            "refit_cadence_buckets": resolved_refit_cadence_buckets,
             "history_start": history_start,
             "history_end": history_end,
             "use_massive_context": bool(use_massive_context),
@@ -173,17 +189,17 @@ class RegimeModelComparator:
                 "hmm": self._run_hmm_candidate(
                     history,
                     macro_context_state,
-                    refit_cadence_buckets=refit_cadence_buckets,
+                    refit_cadence_buckets=resolved_refit_cadence_buckets,
                 ),
                 "gmm": self._run_gmm_candidate(
                     history,
                     macro_context_state,
-                    refit_cadence_buckets=refit_cadence_buckets,
+                    refit_cadence_buckets=resolved_refit_cadence_buckets,
                 ),
                 "statsmodels": self._run_statsmodels_candidate(
                     history,
                     macro_context_state,
-                    refit_cadence_buckets=refit_cadence_buckets,
+                    refit_cadence_buckets=resolved_refit_cadence_buckets,
                 ),
             }
             if not any(result.fit_success for result in candidate_results.values()):
@@ -408,45 +424,50 @@ class RegimeModelComparator:
         current_model = None
         current_semantics: dict[int, dict[str, object]] | None = None
         current_model_family = ""
-        scored_count = 0
 
         try:
-            for row_index in range(_TRAIN_WINDOW_BUCKETS - 1, len(history)):
+            row_index = _TRAIN_WINDOW_BUCKETS - 1
+            while row_index < len(history):
                 training_history = history.iloc[
                     row_index - _TRAIN_WINDOW_BUCKETS + 1 : row_index + 1
                 ].copy()
-                if current_model is None or (scored_count % refit_cadence_buckets == 0):
-                    matrix = self._scorer._prepare_feature_matrix(training_history)
-                    start = time.perf_counter()
-                    current_model, current_model_family = fit_fn(
-                        matrix,
-                        n_components=_N_COMPONENTS,
-                    )
-                    fit_seconds.append(time.perf_counter() - start)
-                    raw_states, probabilities = predict_regime_states(current_model, matrix)
-                    current_semantics = self._state_semantics_from_predictions(
-                        training_history,
-                        raw_states=raw_states,
-                        probabilities=probabilities,
-                    )
+                matrix = self._scorer._prepare_feature_matrix(training_history)
+                start = time.perf_counter()
+                current_model, current_model_family = fit_fn(
+                    matrix,
+                    n_components=_N_COMPONENTS,
+                )
+                fit_seconds.append(time.perf_counter() - start)
+                raw_states, probabilities = predict_regime_states(current_model, matrix)
+                current_semantics = self._state_semantics_from_predictions(
+                    training_history,
+                    raw_states=raw_states,
+                    probabilities=probabilities,
+                )
 
                 assert current_model is not None
                 assert current_semantics is not None
-                current_row = history.iloc[[row_index]]
-                row_matrix = self._scorer._prepare_feature_matrix(current_row)
-                raw_states, probabilities = predict_regime_states(current_model, row_matrix)
-                scored_rows.append(
-                    self._score_row_payload(
-                        history_row=current_row.iloc[0],
-                        raw_state_id=int(raw_states[-1]),
-                        confidence=float(probabilities[-1].max()),
-                        semantic_regime=str(
-                            current_semantics[int(raw_states[-1])]["semantic_regime"]
-                        ),
-                        macro_context_state=macro_context_state,
-                    )
+                next_refit_index = min(row_index + refit_cadence_buckets, len(history))
+                current_rows = history.iloc[row_index:next_refit_index]
+                row_matrix = self._scorer._prepare_feature_matrix(current_rows)
+                score_states, score_probabilities = predict_regime_states(
+                    current_model,
+                    row_matrix,
                 )
-                scored_count += 1
+                for offset, history_row in enumerate(current_rows.itertuples(index=False)):
+                    raw_state_id = int(score_states[offset])
+                    scored_rows.append(
+                        self._score_row_payload(
+                            history_row=pd.Series(history_row._asdict()),
+                            raw_state_id=raw_state_id,
+                            confidence=float(score_probabilities[offset].max()),
+                            semantic_regime=str(
+                                current_semantics[raw_state_id]["semantic_regime"]
+                            ),
+                            macro_context_state=macro_context_state,
+                        )
+                    )
+                row_index = next_refit_index
         except Exception as exc:
             return _CandidateOutcome(
                 key=candidate_key,

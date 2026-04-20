@@ -186,11 +186,60 @@ class Settings(BaseSettings):
             "response."
         ),
     )
+    massive_rest_minute_aggs_range_chunk_days: int = Field(
+        default=30,
+        description=(
+            "Maximum UTC days to request per Massive REST minute-aggregate range call. "
+            "Massive supports up to 50,000 aggregate rows per ticker request, so bounded "
+            "multi-day chunks are much faster than one REST call per day."
+        ),
+    )
+    condition_walk_forward_refit_cadence_buckets: int = Field(
+        default=672,
+        description=(
+            "Default refit cadence for condition walk-forward regime history. With the "
+            "current 15-minute feature grain, 672 buckets is roughly one week and keeps "
+            "300-day paper training practical while remaining configurable."
+        ),
+    )
+    condition_walk_forward_max_history_days: int = Field(
+        default=300,
+        description=(
+            "Maximum history window for generic condition walk-forward shadow evaluation. "
+            "Set to 0 to disable the cap; paper-practice bootstrap still applies its "
+            "selected training regimen window explicitly."
+        ),
+    )
+    condition_walk_forward_max_refits: int = Field(
+        default=8,
+        description=(
+            "Maximum model refits for default condition walk-forward scoring. Set to 0 "
+            "to disable the cap; explicit diagnostic callers can still request denser "
+            "refits through lower-level APIs."
+        ),
+    )
+    regime_compare_refit_cadence_buckets: int = Field(
+        default=672,
+        description=(
+            "Default refit cadence for shadow regime-model comparison. CLI callers can "
+            "override this for small diagnostics, but continuous training should avoid "
+            "refitting every few 15-minute buckets over long Massive history windows."
+        ),
+    )
+    regime_compare_max_refits: int = Field(
+        default=8,
+        description=(
+            "Maximum model refits for default shadow regime-model comparisons. Set to 0 "
+            "to disable the cap; passing --refit-cadence-buckets on the CLI bypasses "
+            "this default-budget resolver."
+        ),
+    )
     paper_practice_training_profile: str = Field(
-        default="full_730d",
+        default="auto",
         description=(
             "Named paper-practice training profile. Supported values are "
-            "`full_730d`, `quickstart_300d`, and `auto`."
+            "`full_730d`, `quickstart_300d`, and `auto`; auto chooses the fastest ready "
+            "profile so paper training can start before heavier full-window runs."
         ),
     )
     trader_research_profile: str = Field(

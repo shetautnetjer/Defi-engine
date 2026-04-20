@@ -1,4 +1,4 @@
- ## Structural Workflow Default
+## Structural Workflow Default
 - For runtime seams, capture layout, packet/export changes, refactors, and
   multi-file implementation work, prefer `$jetbrains-skill` and
   `$jetbrains-mcp` before broad shell search.
@@ -9,6 +9,12 @@
   1. `mcp__idea__get_project_modules`
   2. `mcp__idea__get_repositories`
   3. `mcp__idea__list_directory_tree`
+- Exception for non-interactive automation turns:
+  - when running inside `codex exec` or `codex exec resume`, do not try to
+    launch the tmux-based JetBrains lifecycle scripts from inside the sandbox
+  - use already-available `mcp__idea__...` tools directly when present
+  - if JetBrains tools are unavailable in that sandboxed automation turn, fall
+    back to shell-first navigation instead of trying to bootstrap tmux
 - Use shell-first only for tiny local edits, README wording, or when JetBrains
   is unavailable after a normal retry.
 

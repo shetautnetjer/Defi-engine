@@ -67,10 +67,11 @@ The current automation split is:
 
 Use the `d5 training ...` wrapper layer instead of ad hoc shell choreography:
 
+- `d5 hydrate-history --training-regimen auto --json`
 - `d5 training bootstrap --json`
-- `d5 training hydrate-history --json`
+- `d5 training hydrate-history --training-regimen auto --json`
 - `d5 training collect --json`
-- `d5 training walk-forward --json`
+- `d5 training walk-forward --training-regimen auto --json`
 - `d5 training review --json`
 - `d5 training loop --max-iterations 1 --json`
 - `d5 training status --json`
@@ -81,9 +82,9 @@ training review.
 
 The paper-practice training regimen is now selectable:
 
-- `full_730d` keeps the current higher-confidence default
+- `auto` is the default and chooses the fastest ready regimen so paper training can start once `quickstart_300d` is satisfied
+- `full_730d` keeps the heavier long-history path available when it is explicitly selected
 - `quickstart_300d` allows an earlier paper-only bootstrap once roughly 300 days are available
-- `auto` chooses the strongest ready regimen from the available history
 
 These regimens control history depth, warmup, and replay shape only. They do not
 hard-wire strategy, policy, or risk behavior.
@@ -105,12 +106,13 @@ proposal/comparison evidence, not replace runtime policy or risk ownership.
 
 The intended operating shape is:
 
-- hydrate the Massive historical backbone once and keep it locally
-- preserve raw CSV.gz artifacts and partitioned Parquet for replay and research
+- hydrate the selected Massive-backed training-regimen window first and keep it locally
+- use chunked Massive REST range calls (`limit=50000` per ticker request) when flat files are unavailable
+- preserve raw source artifacts and partitioned Parquet for replay and research
 - reuse local SQL + local warehouse artifacts for replay, walk-forward, review, and QMD evidence
-- append only the missing historical days until the cache is complete
+- append only the missing historical days for the selected regimen or the full cache when explicitly requested
 - after that, keep running incremental source collection for Massive/Coinbase/Jupiter/Helius
-- once the selected training regimen is ready, run bootstrap and only then run the continuous live paper-practice loop
+- once the selected training regimen is ready and bootstrapped, run the continuous live paper-practice loop
 
 In other words, `training collect` should append new source data. It should not
 repull the full historical window once the cache is complete.
@@ -130,3 +132,12 @@ receipts that the engine already writes.
 When the watcher dispatches Codex, it should treat `training/AGENTS.md`,
 root `AGENTS.md`, `training/trading_agent_harness.md`, `training/program.md`, and
 `training/rubrics/training_regime_rubric.md` as the main local doctrine stack.
+
+The continuous paper-training steward is separate from that event watcher:
+
+- start it with `ATTACH=0 training/automation/tmux/start_training_supervisor_tmux.sh`
+- it follows the selected training regimen from `d5 training status --json`
+- it bootstraps once the selected regimen is ready, even if the full Massive
+  730-day cache still has a partial missing day
+- after bootstrap it cycles source collection, training review, and one
+  paper-practice loop iteration without widening live authority

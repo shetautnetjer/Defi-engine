@@ -1,0 +1,60 @@
+{
+  "defaults": {
+    "mode": "suggest",
+    "lane_name": "task",
+    "dispatch_mode": "fresh",
+    "codex_profile": "task",
+    "template": "automation/prompts/generic_review.md.tmpl",
+    "receipt_prefix": "receipt"
+  },
+  "event_types": {
+    "feature_run_completed": {
+      "mode": "suggest",
+      "lane_name": "task",
+      "dispatch_mode": "fresh",
+      "codex_profile": "task",
+      "template": "automation/prompts/feature_review.md.tmpl",
+      "receipt_prefix": "feature"
+    },
+    "condition_run_completed": {
+      "mode": "suggest",
+      "lane_name": "trader",
+      "dispatch_mode": "persistent",
+      "codex_profile": "trader",
+      "template": "automation/prompts/condition_review.md.tmpl",
+      "receipt_prefix": "condition"
+    },
+    "paper_session_closed": {
+      "mode": "suggest",
+      "lane_name": "trader",
+      "dispatch_mode": "persistent",
+      "codex_profile": "trader",
+      "template": "automation/prompts/paper_session_review.md.tmpl",
+      "receipt_prefix": "paper"
+    },
+    "experiment_completed": {
+      "mode": "suggest",
+      "lane_name": "trader",
+      "dispatch_mode": "persistent",
+      "codex_profile": "trader",
+      "template": "automation/prompts/experiment_review.md.tmpl",
+      "receipt_prefix": "experiment"
+    },
+    "tests_failed": {
+      "mode": "auto-edit",
+      "lane_name": "task",
+      "dispatch_mode": "fresh",
+      "codex_profile": "task",
+      "template": "automation/prompts/tests_failed_fix.md.tmpl",
+      "receipt_prefix": "fix"
+    },
+    "migration_failed": {
+      "mode": "auto-edit",
+      "lane_name": "task",
+      "dispatch_mode": "fresh",
+      "codex_profile": "task",
+      "template": "automation/prompts/tests_failed_fix.md.tmpl",
+      "receipt_prefix": "migration-fix"
+    }
+  }
+}

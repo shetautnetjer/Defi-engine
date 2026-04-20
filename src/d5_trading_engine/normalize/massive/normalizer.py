@@ -40,6 +40,52 @@ def _infer_symbols(product_id: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _upsert_instruments_for_products(
+    session,
+    *,
+    venue: str,
+    product_ids: set[str],
+    updated_at: datetime,
+) -> None:
+    if not product_ids:
+        return
+
+    existing_by_product = {
+        row.product_id: row
+        for row in (
+            session.query(MarketInstrumentRegistry)
+            .filter_by(venue=venue)
+            .filter(MarketInstrumentRegistry.product_id.in_(sorted(product_ids)))
+            .all()
+        )
+    }
+    for product_id in sorted(product_ids):
+        base_symbol, quote_symbol = _infer_symbols(product_id)
+        existing = existing_by_product.get(product_id)
+        if existing is not None:
+            existing.base_symbol = existing.base_symbol or base_symbol
+            existing.quote_symbol = existing.quote_symbol or quote_symbol
+            existing.product_type = existing.product_type or "SPOT"
+            existing.status = existing.status or "active"
+            existing.updated_at = updated_at
+            continue
+        session.add(
+            MarketInstrumentRegistry(
+                venue=venue,
+                product_id=product_id,
+                base_symbol=base_symbol,
+                quote_symbol=quote_symbol,
+                product_type="SPOT",
+                status="active",
+                price_increment="",
+                base_increment="",
+                quote_increment="",
+                first_seen_at=updated_at,
+                updated_at=updated_at,
+            )
+        )
+
+
 class MassiveNormalizer:
     """Normalize Massive market data into canonical truth tables."""
 
@@ -198,6 +244,7 @@ class MassiveNormalizer:
         session = get_session(self.settings)
         captured_at = utcnow()
         count = 0
+        seen_product_ids: set[str] = set()
         try:
             for row in rows:
                 product_id = str(row.get("ticker") or row.get("T") or "").strip()
@@ -205,6 +252,7 @@ class MassiveNormalizer:
                     continue
                 if allowed_ticker_set and product_id.upper() not in allowed_ticker_set:
                     continue
+                seen_product_ids.add(product_id)
                 start_time = _parse_epoch_any(
                     row.get("window_start")
                     or row.get("windowStart")
@@ -240,6 +288,12 @@ class MassiveNormalizer:
                 )
                 count += 1
 
+            _upsert_instruments_for_products(
+                session,
+                venue=venue,
+                product_ids=seen_product_ids,
+                updated_at=captured_at,
+            )
             session.commit()
             return count
         finally:

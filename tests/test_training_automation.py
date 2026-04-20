@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from datetime import datetime, timezone
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -337,7 +338,9 @@ def test_codex_dispatch_resumes_existing_trader_lane(tmp_path: Path) -> None:
                     "thread_id": "thread-existing",
                     "last_event_id": "evt-old",
                     "last_receipt_path": "receipts/old.md",
-                    "updated_at_utc": "2026-04-19T00:00:00Z",
+                    "updated_at_utc": datetime.now(timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
                     "stale_after_hours": 24,
                 }
             }
@@ -482,3 +485,68 @@ def test_event_watcher_writes_trader_lane_status(tmp_path: Path) -> None:
     assert watcher_status["last_dispatch_ok"] is True
     assert watcher_status["trader_lane"]["session_id"] == "sess-watcher"
     assert watcher_status["trader_lane"]["profile"] == "trader"
+
+
+def test_event_watcher_materializes_missing_rules_from_example(tmp_path: Path) -> None:
+    event_path = _make_training_fixture(tmp_path)
+    queue_path = tmp_path / "training" / "automation" / "state" / "events.jsonl"
+    queue_payload = json.loads(event_path.read_text(encoding="utf-8"))
+    queue_path.write_text(json.dumps(queue_payload) + "\n", encoding="utf-8")
+
+    rules_path = tmp_path / "training" / "automation" / "config" / "automation_rules.json"
+    example_rules_path = (
+        tmp_path / "training" / "automation" / "config" / "automation_rules.example.json"
+    )
+    example_rules_path.parent.mkdir(parents=True, exist_ok=True)
+    example_rules_path.write_text(RULES.read_text(encoding="utf-8"), encoding="utf-8")
+
+    state_path = tmp_path / "training" / "automation" / "state" / "watcher_state.json"
+    status_path = tmp_path / "training" / "automation" / "state" / "watcher_status.json"
+    receipts_dir = tmp_path / "receipts"
+    dispatch_script = tmp_path / "fake_dispatch.sh"
+    dispatch_script.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "event_file=''\n"
+        "receipts_dir=''\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        "  case \"$1\" in\n"
+        "    --event-file) event_file=\"$2\"; shift 2 ;;\n"
+        "    --receipts-dir) receipts_dir=\"$2\"; shift 2 ;;\n"
+        "    --rules) shift 2 ;;\n"
+        "    --dry-run) shift ;;\n"
+        "    *) shift ;;\n"
+        "  esac\n"
+        "done\n"
+        "mkdir -p \"$receipts_dir\"\n"
+        "echo ok > \"$receipts_dir/receipt.md\"\n",
+        encoding="utf-8",
+    )
+    dispatch_script.chmod(0o755)
+
+    subprocess.run(
+        [
+            "python3",
+            str(WATCHER),
+            "--queue",
+            str(queue_path),
+            "--rules",
+            str(rules_path),
+            "--state-file",
+            str(state_path),
+            "--status-file",
+            str(status_path),
+            "--receipts-dir",
+            str(receipts_dir),
+            "--dispatch-script",
+            str(dispatch_script),
+            "--once",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert rules_path.exists()
+    assert json.loads(rules_path.read_text(encoding="utf-8"))["defaults"]["lane_name"] == "task"

@@ -145,32 +145,79 @@ class MassiveMinuteAggsBackfill:
         expected_tickers = list(self.settings.massive_default_tickers)
         boundary_urls = self._boundary_urls(start_date, end_date)
 
-        statuses: list[MassiveBackfillDayStatus] = []
-        for current_day in _iter_dates(start, end):
-            current_date_str = current_day.isoformat()
-            if resume and self._day_is_complete(current_date_str, expected_tickers):
-                statuses.append(
-                    MassiveBackfillDayStatus(
-                        date=current_date_str,
-                        action="skipped",
-                        note="raw file and normalized Massive candles already present",
-                    )
-                )
-                continue
+        statuses = self._iter_missing_windows(
+            start_date=start_date,
+            end_date=end_date,
+            resume=resume,
+            expected_tickers=expected_tickers,
+        )
+        status_by_date = {row.date: row for row in statuses}
+        range_chunks: list[dict[str, Any]] = []
+        chunk_failure: str | None = None
 
+        for chunk_start, chunk_end, chunk_dates in self._pending_range_chunks(statuses):
             try:
-                run_id = await self.runner.capture_massive_minute_aggs(
-                    current_date_str,
+                result = await self.runner.capture_massive_minute_aggs_range(
+                    chunk_start,
+                    chunk_end,
                     allowed_tickers=expected_tickers,
-                    partition=current_date_str,
+                )
+                run_id = str(result.get("run_id") or "")
+                captured_dates = {
+                    str(item) for item in result.get("captured_dates", []) if item
+                }
+                self.runner.write_capture_receipts(
+                    run_id,
+                    context={
+                        "requested_provider": "massive-minute-aggs",
+                        "date_range": {"start_date": chunk_start, "end_date": chunk_end},
+                        "capture_batch_id": batch_id,
+                    },
+                )
+                for date_str in chunk_dates:
+                    if date_str in captured_dates:
+                        status_by_date[date_str] = MassiveBackfillDayStatus(
+                            date=date_str,
+                            action="captured",
+                            run_id=run_id,
+                        )
+                    else:
+                        status_by_date[date_str] = MassiveBackfillDayStatus(
+                            date=date_str,
+                            action="failed",
+                            run_id=run_id,
+                            note="range capture did not return rows for this day",
+                        )
+                range_chunks.append(
+                    {
+                        "start_date": chunk_start,
+                        "end_date": chunk_end,
+                        "requested_dates": chunk_dates,
+                        "captured_dates": sorted(captured_dates),
+                        "run_id": run_id,
+                        "row_count": int(result.get("row_count") or 0),
+                        "status": "captured",
+                    }
                 )
             except Exception as exc:
-                statuses.append(
-                    MassiveBackfillDayStatus(
-                        date=current_date_str,
+                chunk_failure = str(exc)
+                for date_str in chunk_dates:
+                    status_by_date[date_str] = MassiveBackfillDayStatus(
+                        date=date_str,
                         action="failed",
-                        note=str(exc),
+                        note=chunk_failure,
                     )
+                range_chunks.append(
+                    {
+                        "start_date": chunk_start,
+                        "end_date": chunk_end,
+                        "requested_dates": chunk_dates,
+                        "captured_dates": [],
+                        "run_id": "",
+                        "row_count": 0,
+                        "status": "failed",
+                        "error_message": chunk_failure,
+                    }
                 )
                 payload = self._summary_payload(
                     batch_id=batch_id,
@@ -178,29 +225,15 @@ class MassiveMinuteAggsBackfill:
                     start_date=start_date,
                     end_date=end_date,
                     resume=resume,
-                    statuses=statuses,
+                    statuses=[status_by_date[row.date] for row in statuses],
                     boundary_urls=boundary_urls,
                     status="failed",
-                    error_message=str(exc),
+                    error_message=chunk_failure,
+                    range_chunks=range_chunks,
                 )
+                self._attach_artifact_metadata(payload=payload, artifact_dir=artifact_dir)
                 self._write_artifacts(batch_id=batch_id, artifact_dir=artifact_dir, payload=payload)
                 raise
-
-            self.runner.write_capture_receipts(
-                run_id,
-                context={
-                    "requested_provider": "massive-minute-aggs",
-                    "date": current_date_str,
-                    "capture_batch_id": batch_id,
-                },
-            )
-            statuses.append(
-                MassiveBackfillDayStatus(
-                    date=current_date_str,
-                    action="captured",
-                    run_id=run_id,
-                )
-            )
 
         payload = self._summary_payload(
             batch_id=batch_id,
@@ -208,11 +241,13 @@ class MassiveMinuteAggsBackfill:
             start_date=start_date,
             end_date=end_date,
             resume=resume,
-            statuses=statuses,
+            statuses=[status_by_date[row.date] for row in statuses],
             boundary_urls=boundary_urls,
-            status="success",
-            error_message=None,
+            status="failed" if chunk_failure else "success",
+            error_message=chunk_failure,
+            range_chunks=range_chunks,
         )
+        self._attach_artifact_metadata(payload=payload, artifact_dir=artifact_dir)
         self._write_artifacts(batch_id=batch_id, artifact_dir=artifact_dir, payload=payload)
         return payload
 
@@ -324,6 +359,61 @@ class MassiveMinuteAggsBackfill:
             "generated_at": utcnow().isoformat(),
         }
 
+    def _iter_missing_windows(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        resume: bool = True,
+        expected_tickers: list[str] | None = None,
+    ) -> list[MassiveBackfillDayStatus]:
+        """Resolve per-day actions for a bounded Massive history window."""
+        expected = list(expected_tickers or self.settings.massive_default_tickers)
+        statuses: list[MassiveBackfillDayStatus] = []
+        for current_day in _iter_dates(_parse_iso_date(start_date), _parse_iso_date(end_date)):
+            current_date_str = current_day.isoformat()
+            if resume and self._day_is_complete(current_date_str, expected):
+                statuses.append(
+                    MassiveBackfillDayStatus(
+                        date=current_date_str,
+                        action="skipped",
+                        note="raw file, parquet partition, and normalized Massive candles already present",
+                    )
+                )
+            else:
+                statuses.append(MassiveBackfillDayStatus(date=current_date_str, action="pending"))
+        return statuses
+
+    def _pending_range_chunks(
+        self,
+        statuses: list[MassiveBackfillDayStatus],
+    ) -> list[tuple[str, str, list[str]]]:
+        """Group contiguous pending days into REST range chunks."""
+        max_days = max(1, int(self.settings.massive_rest_minute_aggs_range_chunk_days))
+        chunks: list[tuple[str, str, list[str]]] = []
+        pending_dates: list[str] = []
+        previous_date: date | None = None
+
+        def _flush() -> None:
+            nonlocal pending_dates
+            while pending_dates:
+                chunk_dates = pending_dates[:max_days]
+                pending_dates = pending_dates[max_days:]
+                chunks.append((chunk_dates[0], chunk_dates[-1], chunk_dates))
+
+        for status in statuses:
+            if status.action != "pending":
+                _flush()
+                previous_date = None
+                continue
+            current_date = _parse_iso_date(status.date)
+            if previous_date is not None and current_date != previous_date + timedelta(days=1):
+                _flush()
+            pending_dates.append(status.date)
+            previous_date = current_date
+        _flush()
+        return chunks
+
     def _raw_day_present(self, date_str: str) -> bool:
         raw_dir = self.settings.raw_dir / "massive" / date_str
         return any(raw_dir.glob(f"minute_aggs_{date_str}_*"))
@@ -418,10 +508,12 @@ class MassiveMinuteAggsBackfill:
         boundary_urls: dict[str, str],
         status: str,
         error_message: str | None,
+        range_chunks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         captured = [row for row in statuses if row.action == "captured"]
         skipped = [row for row in statuses if row.action == "skipped"]
         failed = [row for row in statuses if row.action == "failed"]
+        chunk_rows = range_chunks or []
         return {
             "batch_id": batch_id,
             "capture_type": "massive-minute-aggs",
@@ -449,6 +541,17 @@ class MassiveMinuteAggsBackfill:
                 "skipped_count": len(skipped),
                 "failed_count": len(failed),
             },
+            "range_chunks": {
+                "requested_count": len(chunk_rows),
+                "captured_count": len(
+                    [row for row in chunk_rows if row.get("status") == "captured"]
+                ),
+                "failed_count": len(
+                    [row for row in chunk_rows if row.get("status") == "failed"]
+                ),
+                "chunk_days": self.settings.massive_rest_minute_aggs_range_chunk_days,
+                "chunks": chunk_rows,
+            },
             "captured_runs": [
                 {"date": row.date, "run_id": row.run_id}
                 for row in captured
@@ -469,6 +572,16 @@ class MassiveMinuteAggsBackfill:
             ),
             "generated_at": utcnow().isoformat(),
         }
+
+    def _attach_artifact_metadata(self, *, payload: dict[str, Any], artifact_dir: Path) -> None:
+        """Keep range backfill returns compatible with training runtime wrappers."""
+        payload["artifact_dir"] = str(artifact_dir)
+        payload["artifact_paths"] = [
+            str(artifact_dir / "config.json"),
+            str(artifact_dir / "history_window.json"),
+            str(artifact_dir / "capture_summary.json"),
+            str(artifact_dir / "report.qmd"),
+        ]
 
     def _write_artifacts(self, *, batch_id: str, artifact_dir: Path, payload: dict[str, Any]) -> None:
         owner_type = "capture_batch"

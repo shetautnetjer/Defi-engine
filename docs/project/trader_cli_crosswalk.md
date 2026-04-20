@@ -15,7 +15,8 @@ The goal is clarity, not a speculative rename.
 ### Capture and warehouse
 
 - `d5 capture <provider>`
-- `d5 training hydrate-history --json`
+- `d5 hydrate-history --training-regimen auto --json`
+- `d5 training hydrate-history --training-regimen auto --json`
 - `d5 training collect --json`
 - `d5 sync-duckdb ...`
 
@@ -61,7 +62,8 @@ Treat those as north-star shapes only. They are not current repo truth.
 | Current truthful command | Nearest north-star family | Truth today |
 | --- | --- | --- |
 | `d5 capture jupiter-quotes` | `d5 source collect --provider jupiter` | Implemented |
-| `d5 training hydrate-history` | `d5 source hydrate --provider massive` | Implemented as wrapper |
+| `d5 hydrate-history --training-regimen <name>` | `d5 source hydrate --provider massive --profile <name>` | Implemented as selected-regimen wrapper |
+| `d5 training hydrate-history --training-regimen <name>` | `d5 source hydrate --provider massive --profile <name>` | Implemented as training wrapper |
 | `d5 materialize-features global-regime-inputs-15m-v1` | `d5 feature build --family regime` | Implemented |
 | `d5 score-conditions global-regime-v1` | `d5 condition score --family regime` | Implemented |
 | `d5 run-live-regime-cycle` | `d5 paper-live watch --lane trader` | Partially overlaps; still an explicit bounded live-cycle owner |
@@ -74,7 +76,7 @@ Treat those as north-star shapes only. They are not current repo truth.
 | --- | --- | --- | --- | --- |
 | Jupiter | quote and spot execution context | Yes, for bounded `SOL/USDC` paper cycles | SQL receipts + raw source artifacts | Current truthful paper execution seam |
 | Coinbase | market-data and futures/perps context | No | SQL + raw source artifacts | Context-only, not a paper execution venue |
-| Massive | historical crypto backbone | No | raw `CSV.gz` + Parquet + SQL | Historical and replay/training only |
+| Massive | historical crypto backbone | No | raw source artifacts + Parquet + SQL | Historical and replay/training only; flat files when entitled, chunked REST range calls otherwise |
 | Helius | Solana chain-state enrichment | No | raw JSONL + SQL | Deep on-chain context, not an execution venue |
 
 ## Interchangeability truth
@@ -86,6 +88,7 @@ Truth today:
 - Jupiter is the only paper-executable venue seam.
 - Coinbase is context and market-data only.
 - Massive is historical and replay/training only.
+- Massive hydration can now target `auto`, `quickstart_300d`, or `full_730d`; that changes data budget only, not strategy/risk authority.
 - Helius is Solana chain-state context only.
 
 So the repo can train and paper trade today, but it cannot yet swap venues with

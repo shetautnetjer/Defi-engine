@@ -97,10 +97,11 @@ d5 run-shadow intraday-meta-stack-v1
 d5 run-shadow regime-model-compare-v1
 
 # repo-owned training wrappers for automation and review
+d5 hydrate-history --training-regimen auto --json
 d5 training bootstrap --json
-d5 training hydrate-history --json
+d5 training hydrate-history --training-regimen auto --json
 d5 training collect --json
-d5 training walk-forward --json
+d5 training walk-forward --training-regimen auto --json
 d5 training review --json
 d5 training loop --max-iterations 1 --json
 d5 training status --json
@@ -139,10 +140,11 @@ d5 run-paper-close <session_key> --quote-snapshot-id <quote_snapshot_id> --reaso
 | `d5 run-strategy-eval <strategy-eval>` | Run the bounded named strategy challenger loop |
 | `d5 run-paper-close <session_key> --quote-snapshot-id <id> --reason <reason>` | Close one open paper session from an explicit exit quote |
 | `d5 run-paper-practice-bootstrap` | Build the bounded historical bootstrap for autonomous paper practice |
+| `d5 hydrate-history --training-regimen <auto|quickstart_300d|full_730d>` | Hydrate the selected Massive-backed training-regimen window without forcing the full cache first |
 | `d5 training bootstrap` | Run the repo-owned training bootstrap wrapper and return machine-readable receipts |
-| `d5 training hydrate-history` | Fill only the missing portion of the cached Massive historical backbone |
+| `d5 training hydrate-history --training-regimen <name>` | Fill the selected training-regimen history window or, without a regimen, the missing full historical backbone |
 | `d5 training collect` | Append incremental Massive/Coinbase/Jupiter/Helius source data without repulling cached history |
-| `d5 training walk-forward` | Run the repo-owned adaptive historical replay wrapper |
+| `d5 training walk-forward --training-regimen <name>` | Run the repo-owned adaptive historical replay wrapper against a selected regimen |
 | `d5 training review` | Render the latest bounded training review packet from existing receipts |
 | `d5 training loop` | Run the repo-owned training loop wrapper for bounded autonomous practice iterations |
 | `d5 training status` | Show the repo-owned training workspace status and latest active revision |
@@ -160,9 +162,9 @@ Coinbase credential note:
 - if you use `COINBASE_SECRETS_FILE`, the settings layer now understands both the legacy Exchange env-file shape and the simpler CDP/Coinbase App export shape
 
 Paper-practice training regimen note:
-- `PAPER_PRACTICE_TRAINING_PROFILE=full_730d` keeps the current higher-confidence default
+- `PAPER_PRACTICE_TRAINING_PROFILE=auto` is the default and picks the fastest ready regimen so paper training can start once `quickstart_300d` is satisfied
 - `PAPER_PRACTICE_TRAINING_PROFILE=quickstart_300d` enables an earlier paper-only bootstrap with explicit lower-confidence labeling
-- `PAPER_PRACTICE_TRAINING_PROFILE=auto` picks the strongest ready regimen from the available history window
+- `PAPER_PRACTICE_TRAINING_PROFILE=full_730d` keeps the heavier long-history path available when it is explicitly selected
 - these regimens govern history budget and replay shape only; they do not hard-wire strategy, policy, or risk
 - `TRADER_RESEARCH_PROFILE=<name>` selects the trader/autoresearch bias pack from `.ai/profiles.toml`
 - separate research-bias profiles belong in `.ai/profiles.toml` with `.ai/schemas/profile.schema.json` validation; `training/config/research_profiles.example.toml` remains a companion example
@@ -193,11 +195,13 @@ Current `capture` provider values:
 - `--full-free-tier`
 
 The intended training cadence is now cache-first:
-- hydrate the Massive 2-year window once
-- preserve raw CSV.gz artifacts and Parquet partitions for long-horizon replay
+- hydrate the selected Massive-backed training-regimen window first, for example `quickstart_300d`
+- hydrate the full Massive 2-year window only when `full_730d` is explicitly selected or already ready
+- preserve raw source artifacts and Parquet partitions for long-horizon replay
+- use Massive REST range calls in bounded chunks (`limit=50000` per ticker request) when flat files are unavailable
 - reuse local SQL + local warehouse artifacts for backtest and walk-forward
 - append only missing/new source data with `d5 training collect`
-- run the continuous paper-practice loop only after the historical ladder is complete
+- run the continuous paper-practice loop only after the selected historical ladder is bootstrapped
 
 Current `run-shadow` values:
 - `intraday-meta-stack-v1`
@@ -220,7 +224,7 @@ Current `run-shadow` values:
 | Helius | partial | tracked-address discovery, enhanced transaction capture, bounded `solana_transfer_event` projection, and hardened raw websocket capture with reconnect / heartbeat |
 | Coinbase | partial | public product discovery now merges default spot inventory with filtered futures and perpetual inventories for the bounded context set; some non-crypto contracts may expose trades/candles without an L2 book |
 | FRED | implemented | series and observation capture/normalization |
-| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization plus Parquet warehousing; the runtime prefers flat files when entitled and falls back to REST for incremental/gap collection on plans where crypto minute flat files are not available |
+| Massive | partial | first-pass crypto reference, snapshots, and historical minute aggregates with canonical SQL normalization plus Parquet warehousing; the runtime prefers flat files when entitled and falls back to chunked REST range calls for selected-regimen hydration and gap collection on plans where crypto minute flat files are not available |
 
 ## Bounded Model Surfaces
 
@@ -259,7 +263,9 @@ the evidence surface those training wrappers point back to.
 
 The control plane is intentionally hybrid:
 
-- tmux/supervisor handles long-running hydration and incremental collection
+- `training/automation/bin/training_supervisor.py` handles long-running
+  hydration, quickstart/full training-regimen bootstrap, incremental
+  collection, review, and one-iteration paper loops from tmux
 - repo-local `.codex/` config + hooks stabilize the named persistent `trader`
   lane and the fresh `task` lane
 - `codex exec --json -C <repo>` handles fresh bounded semantic work such as

@@ -98,6 +98,8 @@ d5 training hydrate-history --json
 That wrapper is cache-first:
 
 - it fills only the missing slice of the bounded Massive history window
+- pass `--training-regimen auto`, `--training-regimen quickstart_300d`, or `--training-regimen full_730d` to hydrate a selected training window instead of forcing the full cache first
+- when flat files are unavailable, it uses bounded Massive REST range calls with `limit=50000` per ticker request
 - it preserves raw source artifacts and Parquet partitions for later replay
 - it avoids repulling already-cached history during continuous training
 
