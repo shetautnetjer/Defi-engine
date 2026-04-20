@@ -80,7 +80,11 @@ This loop may propose. It may not promote runtime behavior by itself.
 ```bash
 d5 training evidence-rollup --json
 d5 training evidence-gap --json
-d5 training propose-batch --from latest --json
+d5 training experiment-batch --json
+d5 training review-batch --batch latest --json
+d5 compare-proposals --proposal-kind candidate_overlay_experiment --choose-top --json
+d5 training run-experiment-batch --batch latest --json
+d5 training rehearsal --json
 ```
 
 ## Acceptance Criteria
@@ -91,3 +95,5 @@ d5 training propose-batch --from latest --json
 - selected failure family has alternatives listed
 - batch includes a falsification candidate
 - all outputs have SQL/QMD/JSON references
+- rehearsal proves candidate-to-paper-profile evolution in scratch
+- rehearsal exports CSV and Parquet ledger when parquet support is available

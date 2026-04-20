@@ -244,9 +244,9 @@ def build_candidate_batch(
         proposal = create_improvement_proposal(
             artifact_dir=candidates_dir / f"candidate_{index:02d}_proposal",
             proposal_kind="candidate_overlay_experiment",
-            source_owner_type="experiment_batch",
+            source_owner_type="experiment_run",
             source_owner_key=batch_id,
-            governance_scope=str(candidate.get("target_surface") or "research_loop"),
+            governance_scope="research_loop",
             title=str(candidate["title"]),
             summary=(
                 f"Candidate overlay `{candidate_id}` for `{selected_family}`. "
@@ -261,6 +261,7 @@ def build_candidate_batch(
                 "falsification_candidate": (
                     1.0 if candidate.get("falsification_candidate") else 0.0
                 ),
+                "target_surface": str(candidate.get("target_surface") or "research_loop"),
             },
             reason_codes=[
                 f"failure_family:{selected_family}",

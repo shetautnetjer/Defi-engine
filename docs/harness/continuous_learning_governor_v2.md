@@ -21,6 +21,19 @@ Allowed overlay families:
 - `candidate_risk_overlay_v1`
 - `candidate_source_transform_overlay_v1`
 
+## Scratch Rehearsal Gate
+
+The first executable proof of the governor is:
+
+```bash
+d5 training rehearsal --json
+```
+
+This command must run against an isolated scratch DB/data root. It may generate
+candidates, review and compare them, run a bounded candidate test, and apply only
+a paper-profile revision inside the scratch rehearsal. It must not mutate canonical
+runtime policy, risk, source adapters, live execution state, or wallet material.
+
 ## Overlay States
 
 - `draft`
@@ -105,6 +118,7 @@ runtime
 - settle paper sessions
 - write evidence rollup
 - generate candidate batch if needed
+- rehearse candidate evolution in scratch before any governed paper promotion
 
 ## Weekly Cadence
 

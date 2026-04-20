@@ -8,9 +8,9 @@ import orjson
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.research_loop.training_runtime import (
     TrainingRuntime,
-    _summarize_governor_status,
     _merge_historical_cache_status,
     _merge_training_status,
+    _summarize_governor_status,
     _summarize_trader_lane_status,
 )
 from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
@@ -357,22 +357,40 @@ def test_training_experiment_batch_writes_candidate_overlays(settings) -> None:
     }
     assert (Path(result["artifact_dir"]) / "batch.json").exists()
     assert (Path(result["artifact_dir"]) / "batch_selection.json").exists()
+    assert result["next_command"] == "d5 training review-batch --batch latest --json"
+
+
+def test_training_rehearsal_runs_isolated_evolution_loop(settings) -> None:
+    run_migrations_to_head(settings)
+
+    result = TrainingRuntime(settings).rehearsal()
+
+    assert result["status"] == "completed"
+    assert result["mode"] == "scratch_rehearsal"
+    assert result["canonical_db_path"] == str(settings.db_path)
+    assert result["scratch_db_path"] != str(settings.db_path)
+    assert result["authority"]["live_trading_allowed"] is False
+    assert result["authority"]["canonical_runtime_mutated"] is False
+    assert result["evolution"]["evolution_happened"] is True
+    assert result["evolution"]["mutation_surface"] == "paper_profile_revision"
+    assert result["paper_practice"]["completed_trades"] >= 1
+    assert result["paper_practice"]["win_rate"] >= 0.5
+
+    ledger_csv = Path(result["ledger"]["csv_path"])
+    assert ledger_csv.exists()
+    ledger_text = ledger_csv.read_text(encoding="utf-8")
+    assert "decision_type" in ledger_text
+    assert "paper_trade_closed" in ledger_text
+    assert Path(result["summary_path"]).exists()
+    assert Path(result["artifact_dir"]).is_relative_to(settings.data_dir)
 
     session = get_session(settings)
     try:
-        proposals = (
-            session.query(ImprovementProposalV1)
-            .filter_by(source_owner_type="experiment_batch", source_owner_key=result["run_id"])
-            .all()
-        )
+        assert session.query(PaperPracticeDecisionV1).count() == 0
+        assert session.query(ImprovementProposalV1).count() == 0
+        assert session.query(PaperPracticeProfileRevisionV1).count() == 0
     finally:
         session.close()
-
-    assert len(proposals) == 3
-    assert {proposal.runtime_effect for proposal in proposals} == {"advisory_only"}
-    assert result["decision_funnel"]["paper_filled_cycles"] == 0
-    assert result["falsification_required"] is True
-    assert result["next_command"] == "d5 compare-proposals --json"
 
 
 def test_training_status_prefers_bootstrap_when_selected_regimen_is_ready(

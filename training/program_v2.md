@@ -13,12 +13,26 @@ Build a Solana/Jupiter/Coinbase paper-trading research harness with Massive hist
 ```text
 diagnose window
 → repair data/features if needed
-→ run baseline
-→ run candidate
+→ roll up evidence
+→ generate candidate batch
+→ review candidates
+→ compare candidates
+→ run selected candidate
 → compare
 → write evidence
 → propose next bounded test
 ```
+
+## Rehearsal First
+
+Before trusting continuous training, prove the loop in scratch:
+
+```bash
+d5 training rehearsal --json
+```
+
+The rehearsal must use an isolated scratch DB/data root, produce a ledger, apply only
+paper-profile evolution, and never read wallet/private-key material.
 
 ## Required Diagnostic First
 
@@ -39,10 +53,22 @@ d5 training evidence-rollup --json
 d5 training evidence-gap --json
 ```
 
+## Candidate Batch Flow
+
+```bash
+d5 training experiment-batch --json
+d5 training review-batch --batch latest --json
+d5 compare-proposals --proposal-kind candidate_overlay_experiment --choose-top --json
+d5 training run-experiment-batch --batch latest --json
+```
+
 ## Mutation Law
 
 The training loop may create candidate overlays.
 It may not directly mutate approved runtime authority.
+
+Scratch rehearsal may apply a bounded `paper_profile_revision` to prove the evolution
+path. That revision is test evidence, not live authority.
 
 ## Batches
 

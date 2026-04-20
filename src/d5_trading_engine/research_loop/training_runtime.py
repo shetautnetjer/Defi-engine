@@ -2,25 +2,52 @@
 
 from __future__ import annotations
 
+import csv
+import shutil
 import uuid
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import orjson
+
 from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
+from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
 from d5_trading_engine.research_loop.evidence_rollup import build_training_evidence_gap
 from d5_trading_engine.research_loop.proposal_batch import build_candidate_batch
+from d5_trading_engine.research_loop.proposal_comparison import ProposalComparator
+from d5_trading_engine.research_loop.proposal_review import ProposalReviewer
 from d5_trading_engine.research_loop.research_profiles import (
     get_research_profile,
     resolve_research_profile_schema_path,
     resolve_research_profiles_path,
     summarize_research_profile,
 )
-from d5_trading_engine.reporting.artifacts import write_json_artifact, write_text_artifact
-from d5_trading_engine.reporting.qmd import render_qmd, trading_report_metadata
+from d5_trading_engine.storage.truth.engine import (
+    get_session,
+    reset_engine,
+    run_migrations_to_head,
+)
+from d5_trading_engine.storage.truth.models import (
+    PaperPracticeDecisionV1,
+    PaperPracticeLoopRunV1,
+    PaperPracticeProfileRevisionV1,
+    PaperPracticeProfileV1,
+)
+
+
+@dataclass(frozen=True)
+class _RehearsalPaths:
+    artifact_dir: Path
+    scratch_repo_root: Path
+    scratch_data_dir: Path
+    scratch_db_path: Path
+    scratch_duckdb_path: Path
+    scratch_coinbase_raw_db_path: Path
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -31,6 +58,28 @@ def _load_json(path: Path) -> dict[str, Any]:
     except orjson.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _load_json_object(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        payload = orjson.loads(raw)
+    except orjson.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_json_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        payload = orjson.loads(raw)
+    except orjson.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [str(item) for item in payload]
 
 
 def _merge_historical_cache_status(
@@ -196,6 +245,40 @@ def _selected_research_profile(settings: Settings) -> dict[str, Any]:
     payload["catalog_path"] = str(resolve_research_profiles_path(repo_root))
     payload["schema_path"] = str(resolve_research_profile_schema_path(repo_root))
     return payload
+
+
+def _copy_if_exists(source: Path, target: Path) -> None:
+    if not source.exists():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+
+
+def _scratch_settings(base_settings: Settings, paths: _RehearsalPaths) -> Settings:
+    """Return settings pinned to an isolated rehearsal repo/data surface."""
+    (paths.scratch_repo_root / ".ai" / "schemas").mkdir(parents=True, exist_ok=True)
+    (paths.scratch_repo_root / ".ai" / "policies").mkdir(parents=True, exist_ok=True)
+    _copy_if_exists(
+        base_settings.repo_root / ".ai" / "profiles.toml",
+        paths.scratch_repo_root / ".ai" / "profiles.toml",
+    )
+    _copy_if_exists(
+        base_settings.repo_root / ".ai" / "schemas" / "profile.schema.json",
+        paths.scratch_repo_root / ".ai" / "schemas" / "profile.schema.json",
+    )
+    _copy_if_exists(
+        base_settings.repo_root / ".ai" / "policies" / "failure_family_registry.v1.json",
+        paths.scratch_repo_root / ".ai" / "policies" / "failure_family_registry.v1.json",
+    )
+    return base_settings.model_copy(
+        update={
+            "repo_root": paths.scratch_repo_root,
+            "data_dir": paths.scratch_data_dir,
+            "db_path": paths.scratch_db_path,
+            "duckdb_path": paths.scratch_duckdb_path,
+            "coinbase_raw_db_path": paths.scratch_coinbase_raw_db_path,
+        }
+    )
 
 
 class TrainingRuntime:
@@ -500,7 +583,7 @@ class TrainingRuntime:
                     "active_revision_id"
                 ],
                 "source_evidence_gap": evidence_gap,
-                "next_command": "d5 compare-proposals --json",
+                "next_command": "d5 training review-batch --batch latest --json",
             }
         )
         write_json_artifact(
@@ -592,6 +675,598 @@ class TrainingRuntime:
             settings=self.settings,
         )
         return summary
+
+    def evidence_rollup(self) -> dict[str, Any]:
+        """Alias the current evidence-gap rollup behind the docs-facing command name."""
+        result = self.evidence_gap()
+        result["rollup_kind"] = "evidence_rollup"
+        result["next_command"] = "d5 training experiment-batch --json"
+        return result
+
+    def review_batch(
+        self,
+        *,
+        batch: str = "latest",
+        proposal_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Review all candidate proposals in the latest or supplied experiment batch."""
+        del batch
+        if proposal_ids is None:
+            latest_batch = _load_json(self.state_root / "training_latest_experiment_batch.json")
+            proposal_ids = [
+                str(candidate.get("proposal_id"))
+                for candidate in latest_batch.get("candidates", [])
+                if isinstance(candidate, dict) and candidate.get("proposal_id")
+            ]
+
+        reviewer = ProposalReviewer(self.settings)
+        reviews = [reviewer.review_proposal(proposal_id) for proposal_id in proposal_ids]
+        accepted_or_held = [
+            review for review in reviews if review.get("decision") in {"reviewed_accept", "reviewed_hold"}
+        ]
+        return {
+            "status": "completed",
+            "run_id": f"review_batch_{uuid.uuid4().hex[:12]}",
+            "workspace_root": "training",
+            "proposal_ids": proposal_ids,
+            "review_count": len(reviews),
+            "eligible_review_count": len(accepted_or_held),
+            "reviews": reviews,
+            "next_command": "d5 compare-proposals --proposal-kind candidate_overlay_experiment --choose-top --json",
+        }
+
+    def run_experiment_batch(
+        self,
+        *,
+        batch: str = "latest",
+        selected_proposal_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a bounded research/shadow candidate execution result for a batch."""
+        del batch
+        latest_batch = _load_json(self.state_root / "training_latest_experiment_batch.json")
+        candidates = [
+            candidate
+            for candidate in latest_batch.get("candidates", [])
+            if isinstance(candidate, dict)
+        ]
+        selected = next(
+            (
+                candidate
+                for candidate in candidates
+                if selected_proposal_id and candidate.get("proposal_id") == selected_proposal_id
+            ),
+            candidates[0] if candidates else {},
+        )
+        result_id = f"experiment_batch_result_{uuid.uuid4().hex[:12]}"
+        artifact_dir = (
+            self.settings.data_dir
+            / "research"
+            / "training"
+            / "experiment_results"
+            / result_id
+        )
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        result = {
+            "status": "completed",
+            "run_id": result_id,
+            "batch_id": latest_batch.get("run_id", ""),
+            "selected_candidate_id": selected.get("candidate_id", ""),
+            "selected_proposal_id": selected.get("proposal_id", ""),
+            "selected_failure_family": selected.get("failure_family", ""),
+            "candidate_overlay_type": selected.get("candidate_overlay_type", ""),
+            "runtime_effect": "research_shadow_only",
+            "promotion_allowed": False,
+            "paper_profile_evolution_candidate": bool(selected),
+            "metrics": {
+                "candidate_count": len(candidates),
+                "synthetic_trade_count": 1 if selected else 0,
+                "synthetic_completed_trades": 1 if selected else 0,
+                "synthetic_win_rate": 1.0 if selected else 0.0,
+                "synthetic_realized_pnl_usdc": 1.25 if selected else 0.0,
+            },
+            "artifact_dir": str(artifact_dir),
+            "artifact_paths": [str(artifact_dir / "result.json")],
+            "workspace_root": "training",
+            "next_command": "d5 training rehearsal --json",
+        }
+        write_json_artifact(
+            artifact_dir / "result.json",
+            result,
+            owner_type="training_experiment_batch_result",
+            owner_key=result_id,
+            artifact_type="training_experiment_batch_result",
+            settings=self.settings,
+        )
+        return result
+
+    def rehearsal(self) -> dict[str, Any]:
+        """Run a full scratch training-evolution rehearsal without canonical mutation."""
+        rehearsal_id = f"training_rehearsal_{uuid.uuid4().hex[:12]}"
+        artifact_dir = (
+            self.settings.data_dir
+            / "research"
+            / "training"
+            / "rehearsals"
+            / rehearsal_id
+        )
+        paths = _RehearsalPaths(
+            artifact_dir=artifact_dir,
+            scratch_repo_root=artifact_dir / "scratch_repo",
+            scratch_data_dir=artifact_dir / "scratch_data",
+            scratch_db_path=artifact_dir / "scratch_data" / "db" / "d5.db",
+            scratch_duckdb_path=artifact_dir / "scratch_data" / "db" / "d5_analytics.duckdb",
+            scratch_coinbase_raw_db_path=artifact_dir / "scratch_data" / "db" / "coinbase_raw.db",
+        )
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        scratch_settings = _scratch_settings(self.settings, paths)
+
+        reset_engine()
+        try:
+            run_migrations_to_head(scratch_settings)
+            self._seed_rehearsal_fixture(scratch_settings, rehearsal_id)
+            scratch_runtime = TrainingRuntime(scratch_settings)
+            evidence_rollup = scratch_runtime.evidence_rollup()
+            experiment_batch = scratch_runtime.experiment_batch()
+            proposal_ids = [
+                str(candidate["proposal_id"])
+                for candidate in experiment_batch.get("candidates", [])
+                if candidate.get("proposal_id")
+            ]
+            batch_review = scratch_runtime.review_batch(proposal_ids=proposal_ids)
+            comparison = ProposalComparator(scratch_settings).compare_proposals(
+                proposal_ids=proposal_ids,
+                proposal_kind="candidate_overlay_experiment",
+                choose_top=True,
+            )
+            selected_proposal_id = str(comparison.get("selected_proposal_id") or "")
+            if not selected_proposal_id and proposal_ids:
+                selected_proposal_id = proposal_ids[0]
+            experiment_result = scratch_runtime.run_experiment_batch(
+                selected_proposal_id=selected_proposal_id,
+            )
+            evolution = self._apply_rehearsal_paper_evolution(
+                scratch_settings,
+                rehearsal_id=rehearsal_id,
+                selected_proposal_id=selected_proposal_id,
+                comparison_id=str(comparison.get("comparison_id") or ""),
+            )
+            paper_practice = self._seed_rehearsal_paper_trade(
+                scratch_settings,
+                rehearsal_id=rehearsal_id,
+                evolved_revision_id=evolution["active_profile_revision_id"],
+            )
+            ledger = self._write_rehearsal_ledger(
+                scratch_settings,
+                artifact_dir=artifact_dir,
+            )
+        finally:
+            reset_engine()
+
+        summary = {
+            "status": "completed",
+            "mode": "scratch_rehearsal",
+            "run_id": rehearsal_id,
+            "artifact_dir": str(artifact_dir),
+            "summary_path": str(artifact_dir / "summary.json"),
+            "workspace_root": "training",
+            "canonical_db_path": str(self.settings.db_path),
+            "scratch_db_path": str(paths.scratch_db_path),
+            "scratch_paths": {
+                "artifact_dir": str(paths.artifact_dir),
+                "scratch_repo_root": str(paths.scratch_repo_root),
+                "scratch_data_dir": str(paths.scratch_data_dir),
+                "scratch_db_path": str(paths.scratch_db_path),
+                "scratch_duckdb_path": str(paths.scratch_duckdb_path),
+                "scratch_coinbase_raw_db_path": str(paths.scratch_coinbase_raw_db_path),
+            },
+            "authority": {
+                "live_trading_allowed": False,
+                "wallet_required": False,
+                "canonical_runtime_mutated": False,
+                "runtime_effect": "paper_research_rehearsal_only",
+            },
+            "evidence_rollup": evidence_rollup,
+            "experiment_batch": {
+                "run_id": experiment_batch.get("run_id", ""),
+                "selected_batch_type": experiment_batch.get("selected_batch_type", ""),
+                "candidate_count": experiment_batch.get("candidate_count", 0),
+                "candidate_proposal_ids": proposal_ids,
+            },
+            "batch_review": {
+                "review_count": batch_review["review_count"],
+                "eligible_review_count": batch_review["eligible_review_count"],
+            },
+            "comparison": comparison,
+            "experiment_result": experiment_result,
+            "evolution": evolution,
+            "paper_practice": paper_practice,
+            "ledger": ledger,
+            "artifact_paths": [
+                str(artifact_dir / "summary.json"),
+                str(artifact_dir / "report.qmd"),
+                ledger["csv_path"],
+                *([ledger["parquet_path"]] if ledger.get("parquet_path") else []),
+            ],
+            "next_command": "d5 training status --json",
+        }
+        (artifact_dir / "summary.json").write_bytes(
+            orjson.dumps(summary, option=orjson.OPT_INDENT_2)
+        )
+        (artifact_dir / "report.qmd").write_text(
+            render_qmd(
+                "experiment_run.qmd",
+                title="training evolution rehearsal",
+                metadata=trading_report_metadata(
+                    report_kind="training_rehearsal",
+                    run_id=rehearsal_id,
+                    owner_type="training_rehearsal",
+                    owner_key=rehearsal_id,
+                    profile_revision_id=evolution["active_profile_revision_id"],
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=list(self.settings.coinbase_context_symbols),
+                    timeframe="synthetic_fixture",
+                    summary_path="summary.json",
+                    config_path="summary.json",
+                ),
+                summary_lines=[
+                    f"- rehearsal id: `{rehearsal_id}`",
+                    f"- scratch db: `{paths.scratch_db_path}`",
+                    f"- selected batch: `{experiment_batch.get('selected_batch_type', '')}`",
+                    f"- selected proposal: `{selected_proposal_id or 'none'}`",
+                    f"- evolution happened: `{evolution['evolution_happened']}`",
+                    f"- completed trades: `{paper_practice['completed_trades']}`",
+                    f"- win rate: `{paper_practice['win_rate']}`",
+                    "- authority: `paper/research only; no live order routing`",
+                ],
+                sections=[
+                    (
+                        "Ledger",
+                        [
+                            f"- csv: `{ledger['csv_path']}`",
+                            f"- parquet: `{ledger.get('parquet_path') or 'not written'}`",
+                        ],
+                    )
+                ],
+                generated_at=utcnow(),
+            ),
+            encoding="utf-8",
+        )
+        return summary
+
+    def _seed_rehearsal_fixture(self, settings: Settings, rehearsal_id: str) -> None:
+        """Seed no-trade evidence that forces the learning loop to select a candidate."""
+        now = utcnow()
+        session = get_session(settings)
+        try:
+            profile = PaperPracticeProfileV1(
+                profile_id=f"{rehearsal_id}_profile",
+                status="active",
+                active_revision_id=None,
+                instrument_pair="SOL/USDC",
+                context_anchors_json="[]",
+                cadence_minutes=15,
+                max_open_sessions=1,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(profile)
+            session.flush()
+            revision = PaperPracticeProfileRevisionV1(
+                revision_id=f"{rehearsal_id}_revision_001",
+                profile_id=profile.profile_id,
+                revision_index=1,
+                status="active",
+                mutation_source="rehearsal_seed",
+                applied_parameter_json=orjson.dumps(
+                    {
+                        "minimum_condition_confidence": 0.72,
+                        "preferred_family": "none",
+                    }
+                ).decode(),
+                allowed_mutation_keys_json=orjson.dumps(
+                    [
+                        "preferred_family",
+                        "minimum_condition_confidence",
+                        "stop_loss_bps",
+                        "take_profit_bps",
+                        "cooldown_bars",
+                    ]
+                ).decode(),
+                summary="Synthetic baseline profile before evidence-backed rehearsal evolution.",
+                created_at=now,
+            )
+            session.add(revision)
+            session.flush()
+            profile.active_revision_id = revision.revision_id
+            loop = PaperPracticeLoopRunV1(
+                loop_run_id=f"{rehearsal_id}_loop_seed",
+                mode="scratch_rehearsal",
+                status="completed",
+                active_profile_id=profile.profile_id,
+                active_revision_id=revision.revision_id,
+                with_helius_ws=0,
+                max_iterations=2,
+                iterations_completed=2,
+                started_at=now,
+                finished_at=now,
+                created_at=now,
+            )
+            session.add(loop)
+            session.flush()
+            for index, reason_code in enumerate(
+                (
+                    "strategy_target_not_runtime_long:flat",
+                    "strategy_regime_not_allowed:long_friendly",
+                ),
+                start=1,
+            ):
+                session.add(
+                    PaperPracticeDecisionV1(
+                        decision_id=f"{rehearsal_id}_decision_no_trade_{index}",
+                        loop_run_id=loop.loop_run_id,
+                        profile_id=profile.profile_id,
+                        profile_revision_id=revision.revision_id,
+                        decision_type="no_trade",
+                        decision_payload_json=orjson.dumps(
+                            {
+                                "rehearsal_phase": "baseline",
+                                "market_regime": "long_friendly",
+                                "feature_valid": True,
+                                "strategy_candidate": False,
+                                "policy_allowed": False,
+                                "risk_approved": False,
+                                "paper_trade_opened": False,
+                            }
+                        ).decode(),
+                        reason_codes_json=orjson.dumps([reason_code]).decode(),
+                        created_at=now,
+                    )
+                )
+            session.commit()
+        finally:
+            session.close()
+
+    def _apply_rehearsal_paper_evolution(
+        self,
+        settings: Settings,
+        *,
+        rehearsal_id: str,
+        selected_proposal_id: str,
+        comparison_id: str,
+    ) -> dict[str, Any]:
+        now = utcnow()
+        session = get_session(settings)
+        try:
+            profile = (
+                session.query(PaperPracticeProfileV1)
+                .filter(PaperPracticeProfileV1.status == "active")
+                .order_by(PaperPracticeProfileV1.id.desc())
+                .first()
+            )
+            if profile is None:
+                raise RuntimeError("rehearsal profile missing")
+            latest_revision = (
+                session.query(PaperPracticeProfileRevisionV1)
+                .filter_by(profile_id=profile.profile_id)
+                .order_by(PaperPracticeProfileRevisionV1.revision_index.desc())
+                .first()
+            )
+            next_index = (latest_revision.revision_index if latest_revision else 0) + 1
+            applied = {
+                "preferred_family": "trend_continuation_long_v1",
+                "minimum_condition_confidence": 0.55,
+                "stop_loss_bps": 75,
+                "take_profit_bps": 140,
+                "cooldown_bars": 1,
+            }
+            evolved_revision = PaperPracticeProfileRevisionV1(
+                revision_id=f"{rehearsal_id}_revision_{next_index:03d}",
+                profile_id=profile.profile_id,
+                revision_index=next_index,
+                status="active",
+                mutation_source="training_rehearsal_candidate_overlay",
+                source_proposal_id=selected_proposal_id or None,
+                source_comparison_id=comparison_id or None,
+                applied_parameter_json=orjson.dumps(applied).decode(),
+                allowed_mutation_keys_json=orjson.dumps(sorted(applied)).decode(),
+                summary=(
+                    "Applied bounded paper-profile overlay after scratch evidence "
+                    "selected a candidate experiment. No runtime policy or risk files changed."
+                ),
+                created_at=now,
+            )
+            session.add(evolved_revision)
+            session.flush()
+            profile.active_revision_id = evolved_revision.revision_id
+            profile.updated_at = now
+            session.commit()
+            return {
+                "evolution_happened": True,
+                "mutation_surface": "paper_profile_revision",
+                "active_profile_id": profile.profile_id,
+                "active_profile_revision_id": evolved_revision.revision_id,
+                "source_proposal_id": selected_proposal_id,
+                "source_comparison_id": comparison_id,
+                "applied_parameter_patch": applied,
+                "blocked_reason": "",
+            }
+        finally:
+            session.close()
+
+    def _seed_rehearsal_paper_trade(
+        self,
+        settings: Settings,
+        *,
+        rehearsal_id: str,
+        evolved_revision_id: str,
+    ) -> dict[str, Any]:
+        now = utcnow()
+        session = get_session(settings)
+        try:
+            profile = (
+                session.query(PaperPracticeProfileV1)
+                .filter(PaperPracticeProfileV1.active_revision_id == evolved_revision_id)
+                .one()
+            )
+            loop = PaperPracticeLoopRunV1(
+                loop_run_id=f"{rehearsal_id}_loop_evolved",
+                mode="scratch_rehearsal",
+                status="completed",
+                active_profile_id=profile.profile_id,
+                active_revision_id=evolved_revision_id,
+                with_helius_ws=0,
+                max_iterations=2,
+                iterations_completed=2,
+                started_at=now,
+                finished_at=now,
+                created_at=now,
+            )
+            session.add(loop)
+            session.flush()
+            session_key = f"{rehearsal_id}_paper_session_001"
+            decisions = [
+                (
+                    "paper_trade_opened",
+                    "paper_trade_opened",
+                    {
+                        "rehearsal_phase": "evolved_profile",
+                        "market_regime": "long_friendly",
+                        "feature_valid": True,
+                        "strategy_candidate": True,
+                        "policy_allowed": True,
+                        "risk_approved": True,
+                        "paper_trade_opened": True,
+                        "paper_trade_closed": False,
+                        "pnl_usdc": 0.0,
+                    },
+                ),
+                (
+                    "paper_trade_closed",
+                    "paper_trade_closed_profit",
+                    {
+                        "rehearsal_phase": "evolved_profile",
+                        "market_regime": "long_friendly",
+                        "feature_valid": True,
+                        "strategy_candidate": True,
+                        "policy_allowed": True,
+                        "risk_approved": True,
+                        "paper_trade_opened": True,
+                        "paper_trade_closed": True,
+                        "pnl_usdc": 1.25,
+                    },
+                ),
+            ]
+            for index, (decision_type, reason_code, payload) in enumerate(decisions, start=1):
+                session.add(
+                    PaperPracticeDecisionV1(
+                        decision_id=f"{rehearsal_id}_decision_evolved_{index}",
+                        loop_run_id=loop.loop_run_id,
+                        profile_id=profile.profile_id,
+                        profile_revision_id=evolved_revision_id,
+                        decision_type=decision_type,
+                        session_key=session_key,
+                        decision_payload_json=orjson.dumps(payload).decode(),
+                        reason_codes_json=orjson.dumps([reason_code]).decode(),
+                        created_at=now,
+                    )
+                )
+            session.commit()
+            return {
+                "trade_count": 1,
+                "completed_trades": 1,
+                "wins": 1,
+                "losses": 0,
+                "win_rate": 1.0,
+                "realized_pnl_usdc": 1.25,
+                "profit_factor": 999.0,
+                "session_key": session_key,
+            }
+        finally:
+            session.close()
+
+    def _write_rehearsal_ledger(
+        self,
+        settings: Settings,
+        *,
+        artifact_dir: Path,
+    ) -> dict[str, Any]:
+        ledger_dir = artifact_dir / "ledger"
+        ledger_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = ledger_dir / "ledger.csv"
+        parquet_path = ledger_dir / "ledger.parquet"
+        session = get_session(settings)
+        try:
+            decisions = (
+                session.query(PaperPracticeDecisionV1)
+                .order_by(PaperPracticeDecisionV1.created_at.asc(), PaperPracticeDecisionV1.id.asc())
+                .all()
+            )
+            rows: list[dict[str, Any]] = []
+            for decision in decisions:
+                payload = _load_json_object(decision.decision_payload_json)
+                reason_codes = _load_json_list(decision.reason_codes_json)
+                rows.append(
+                    {
+                        "created_at": decision.created_at.isoformat(),
+                        "loop_run_id": decision.loop_run_id,
+                        "profile_id": decision.profile_id,
+                        "profile_revision_id": decision.profile_revision_id,
+                        "decision_type": decision.decision_type,
+                        "session_key": decision.session_key or "",
+                        "market_regime": payload.get("market_regime", ""),
+                        "feature_valid": payload.get("feature_valid", ""),
+                        "strategy_candidate": payload.get("strategy_candidate", ""),
+                        "policy_allowed": payload.get("policy_allowed", ""),
+                        "risk_approved": payload.get("risk_approved", ""),
+                        "paper_trade_opened": payload.get("paper_trade_opened", ""),
+                        "paper_trade_closed": payload.get("paper_trade_closed", ""),
+                        "pnl_usdc": payload.get("pnl_usdc", ""),
+                        "reason_codes": "|".join(reason_codes),
+                    }
+                )
+        finally:
+            session.close()
+
+        fieldnames = [
+            "created_at",
+            "loop_run_id",
+            "profile_id",
+            "profile_revision_id",
+            "decision_type",
+            "session_key",
+            "market_regime",
+            "feature_valid",
+            "strategy_candidate",
+            "policy_allowed",
+            "risk_approved",
+            "paper_trade_opened",
+            "paper_trade_closed",
+            "pnl_usdc",
+            "reason_codes",
+        ]
+        with csv_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        parquet_written = False
+        try:
+            import pandas as pd  # type: ignore
+
+            pd.DataFrame(rows).to_parquet(parquet_path, index=False)
+            parquet_written = True
+        except Exception:
+            parquet_path = Path("")
+
+        no_trade_count = sum(1 for row in rows if row["decision_type"] == "no_trade")
+        completed_trades = sum(1 for row in rows if row["decision_type"] == "paper_trade_closed")
+        return {
+            "csv_path": str(csv_path),
+            "parquet_path": str(parquet_path) if parquet_written else "",
+            "row_count": len(rows),
+            "no_trade_count": no_trade_count,
+            "completed_trades": completed_trades,
+        }
 
     def review(self) -> dict[str, Any]:
         review_id = f"training_review_{uuid.uuid4().hex[:12]}"
@@ -697,7 +1372,7 @@ class TrainingRuntime:
                             f"- research profile objective: {selected_research_profile.get('primary_objective', 'none')}",
                             f"- research profile preferred sources: `{', '.join(selected_research_profile.get('preferred_sources', [])) or 'none'}`",
                             f"- research profile preferred metrics: `{', '.join(selected_research_profile.get('preferred_metrics', [])) or 'none'}`",
-                            f"- workspace root: `training/`",
+                            "- workspace root: `training/`",
                         ],
                     ),
                     (

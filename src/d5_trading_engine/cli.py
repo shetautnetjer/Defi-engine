@@ -386,6 +386,30 @@ def training_evidence_gap(json_output: bool) -> None:
         sys.exit(1)
 
 
+@training_group.command("evidence-rollup")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_evidence_rollup(json_output: bool) -> None:
+    """Write the schema-facing evidence rollup used by experiment batches."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.evidence_rollup()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training evidence-rollup: "
+                f"{result['run_id']} selected_batch={result['selected_batch_type']} "
+                f"artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training evidence-rollup failed: {exc}", err=True)
+        sys.exit(1)
+
+
 @training_group.command("experiment-batch")
 @click.option("--json", "json_output", is_flag=True, default=False)
 def training_experiment_batch(json_output: bool) -> None:
@@ -407,6 +431,79 @@ def training_experiment_batch(json_output: bool) -> None:
         )
     except Exception as exc:
         click.echo(f"✗ Training experiment-batch failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("review-batch")
+@click.option("--batch", default="latest", help="Experiment batch id or latest.")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_review_batch(batch: str, json_output: bool) -> None:
+    """Review all candidate proposals from an experiment batch."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.review_batch(batch=batch)
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training review-batch: "
+                f"{result['run_id']} reviews={result['review_count']} "
+                f"eligible={result['eligible_review_count']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training review-batch failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("run-experiment-batch")
+@click.option("--batch", default="latest", help="Experiment batch id or latest.")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_run_experiment_batch(batch: str, json_output: bool) -> None:
+    """Run the selected batch candidate in research/shadow mode."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.run_experiment_batch(batch=batch)
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training run-experiment-batch: "
+                f"{result['run_id']} selected={result.get('selected_proposal_id', 'none')}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training run-experiment-batch failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("rehearsal")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_rehearsal(json_output: bool) -> None:
+    """Run a scratch training-evolution rehearsal without live/runtime authority."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.rehearsal()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training rehearsal: "
+                f"{result['run_id']} evolved={result['evolution']['evolution_happened']} "
+                f"completed_trades={result['paper_practice']['completed_trades']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training rehearsal failed: {exc}", err=True)
         sys.exit(1)
 
 
@@ -1271,7 +1368,8 @@ def paper_practice_status(json_output: bool) -> None:
 
 @cli.command("review-proposal")
 @click.argument("proposal_id")
-def review_proposal(proposal_id: str) -> None:
+@click.option("--json", "json_output", is_flag=True, default=False)
+def review_proposal(proposal_id: str, json_output: bool) -> None:
     """Review one bounded advisory proposal and write review receipts."""
     from d5_trading_engine.research_loop.proposal_review import ProposalReviewer
 
@@ -1279,10 +1377,14 @@ def review_proposal(proposal_id: str) -> None:
 
     try:
         result = reviewer.review_proposal(proposal_id)
-        click.echo(
-            "✓ review_proposal: "
-            f"{result['proposal_id']} decision={result['decision']} "
-            f"review_id={result['review_id']} artifacts={result['artifact_dir']}"
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ review_proposal: "
+                f"{result['proposal_id']} decision={result['decision']} "
+                f"review_id={result['review_id']} artifacts={result['artifact_dir']}"
+            ),
         )
     except Exception as exc:
         click.echo(f"✗ Proposal review failed: {exc}", err=True)
@@ -1316,12 +1418,14 @@ def review_proposal(proposal_id: str) -> None:
     is_flag=True,
     help="Mark the highest-ranked same-scope proposal as selected_next and supersede lower-ranked same-kind competitors.",
 )
+@click.option("--json", "json_output", is_flag=True, default=False)
 def compare_proposals(
     proposal_ids: tuple[str, ...],
     proposal_kind: str | None,
     story_class: str | None,
     semantic_regime: str | None,
     choose_top: bool,
+    json_output: bool,
 ) -> None:
     """Compare reviewed proposals and optionally choose the next bounded experiment."""
     from d5_trading_engine.research_loop.proposal_comparison import ProposalComparator
@@ -1336,11 +1440,15 @@ def compare_proposals(
             semantic_regime=semantic_regime,
             choose_top=choose_top,
         )
-        click.echo(
-            "✓ compare_proposals: "
-            f"{result['comparison_id']} ranked={result['ranked_count']} "
-            f"selected={result['selected_proposal_id'] or 'none'} "
-            f"artifacts={result['artifact_dir']}"
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ compare_proposals: "
+                f"{result['comparison_id']} ranked={result['ranked_count']} "
+                f"selected={result['selected_proposal_id'] or 'none'} "
+                f"artifacts={result['artifact_dir']}"
+            ),
         )
     except Exception as exc:
         click.echo(f"✗ Proposal comparison failed: {exc}", err=True)

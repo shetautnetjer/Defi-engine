@@ -1153,6 +1153,18 @@ def test_cli_training_group_dispatches_json(
         },
     )
     monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.evidence_rollup",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_evidence_rollup_test",
+            "artifact_dir": "/tmp/training/evidence-rollup",
+            "artifact_paths": ["/tmp/training/evidence-rollup/summary.json"],
+            "active_profile_revision_id": "paper_profile_revision_evidence_rollup",
+            "selected_batch_type": "strategy_runtime_mismatch_batch",
+            "next_command": "d5 training experiment-batch --json",
+        },
+    )
+    monkeypatch.setattr(
         "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.experiment_batch",
         lambda self: {
             "status": "completed",
@@ -1163,6 +1175,37 @@ def test_cli_training_group_dispatches_json(
             "selected_batch_type": "strategy_runtime_mismatch_batch",
             "candidate_count": 3,
             "next_command": "d5 compare-proposals --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.review_batch",
+        lambda self, **kwargs: {
+            "status": "completed",
+            "run_id": "training_review_batch_test",
+            "review_count": 3,
+            "eligible_review_count": 3,
+            "next_command": "d5 compare-proposals --proposal-kind candidate_overlay_experiment --choose-top --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.run_experiment_batch",
+        lambda self, **kwargs: {
+            "status": "completed",
+            "run_id": "training_run_experiment_batch_test",
+            "selected_proposal_id": "proposal_test",
+            "next_command": "d5 training rehearsal --json",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.rehearsal",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_rehearsal_test",
+            "artifact_dir": "/tmp/training/rehearsal",
+            "artifact_paths": ["/tmp/training/rehearsal/summary.json"],
+            "paper_practice": {"completed_trades": 1, "win_rate": 1.0},
+            "evolution": {"evolution_happened": True},
+            "next_command": "d5 training status --json",
         },
     )
 
@@ -1210,6 +1253,13 @@ def test_cli_training_group_dispatches_json(
     assert evidence_gap_result.exit_code == 0
     assert json.loads(evidence_gap_result.output)["run_id"] == "training_evidence_gap_test"
 
+    evidence_rollup_result = cli_runner.invoke(cli, ["training", "evidence-rollup", "--json"])
+    assert evidence_rollup_result.exit_code == 0
+    assert (
+        json.loads(evidence_rollup_result.output)["run_id"]
+        == "training_evidence_rollup_test"
+    )
+
     experiment_batch_result = cli_runner.invoke(
         cli,
         ["training", "experiment-batch", "--json"],
@@ -1219,6 +1269,69 @@ def test_cli_training_group_dispatches_json(
         json.loads(experiment_batch_result.output)["run_id"]
         == "training_experiment_batch_test"
     )
+
+    review_batch_result = cli_runner.invoke(
+        cli,
+        ["training", "review-batch", "--json"],
+    )
+    assert review_batch_result.exit_code == 0
+    assert json.loads(review_batch_result.output)["run_id"] == "training_review_batch_test"
+
+    run_experiment_batch_result = cli_runner.invoke(
+        cli,
+        ["training", "run-experiment-batch", "--json"],
+    )
+    assert run_experiment_batch_result.exit_code == 0
+    assert (
+        json.loads(run_experiment_batch_result.output)["run_id"]
+        == "training_run_experiment_batch_test"
+    )
+
+    rehearsal_result = cli_runner.invoke(cli, ["training", "rehearsal", "--json"])
+    assert rehearsal_result.exit_code == 0
+    assert json.loads(rehearsal_result.output)["run_id"] == "training_rehearsal_test"
+
+
+def test_cli_review_and_compare_proposals_support_json(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.proposal_review.ProposalReviewer.review_proposal",
+        lambda self, proposal_id: {
+            "status": "completed",
+            "proposal_id": proposal_id,
+            "decision": "reviewed_hold",
+            "review_id": "review_test",
+            "artifact_dir": "/tmp/review",
+        },
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.proposal_comparison.ProposalComparator.compare_proposals",
+        lambda self, **kwargs: {
+            "comparison_id": "comparison_test",
+            "selected_proposal_id": "proposal_test",
+            "ranked_count": 1,
+            "artifact_dir": "/tmp/comparison",
+        },
+    )
+
+    review_result = cli_runner.invoke(cli, ["review-proposal", "proposal_test", "--json"])
+    assert review_result.exit_code == 0
+    assert json.loads(review_result.output)["review_id"] == "review_test"
+
+    comparison_result = cli_runner.invoke(
+        cli,
+        [
+            "compare-proposals",
+            "--proposal-id",
+            "proposal_test",
+            "--choose-top",
+            "--json",
+        ],
+    )
+    assert comparison_result.exit_code == 0
+    assert json.loads(comparison_result.output)["comparison_id"] == "comparison_test"
 
 
 def test_cli_diagnose_group_dispatches_json(
