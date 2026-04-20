@@ -5,8 +5,9 @@ import json
 import pandas as pd
 import pytest
 
-from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 from d5_trading_engine.capture.massive_backfill import MassiveMinuteAggsBackfill
+from d5_trading_engine.common.errors import FeatureError
+from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
 from d5_trading_engine.storage.truth.models import (
     PaperPracticeDecisionV1,
@@ -222,6 +223,65 @@ def test_paper_practice_loop_turns_no_trade_reason_into_evidence_feedback(
     )
     assert feedback_receipt["decision_type"] == "no_trade"
     assert feedback_receipt["evidence_feedback"]["primary_failure_surface"] == "strategy_runtime_mismatch"
+
+
+def test_paper_practice_loop_records_abort_decision_on_freshness_failure(
+    settings,
+    monkeypatch,
+) -> None:
+    run_migrations_to_head(settings)
+
+    monkeypatch.setattr(
+        PaperPracticeRuntime,
+        "_ensure_historical_ladder_completed",
+        lambda self: {"bootstrap_id": "paper_practice_bootstrap_test", "completed_ladder": True},
+    )
+
+    def _raise_freshness_failure(self, *, loop_run_id: str, with_helius_ws: bool):
+        raise FeatureError("Freshness authorization failed: fred-observations=degraded")
+
+    monkeypatch.setattr(PaperPracticeRuntime, "_run_iteration", _raise_freshness_failure)
+
+    runtime = PaperPracticeRuntime(settings)
+    with pytest.raises(FeatureError):
+        runtime.run_loop(max_iterations=1)
+
+    session = get_session(settings)
+    try:
+        loop_run = session.query(PaperPracticeLoopRunV1).one()
+        decision = session.query(PaperPracticeDecisionV1).one()
+        decision_payload = json.loads(decision.decision_payload_json)
+        reason_codes = json.loads(decision.reason_codes_json)
+    finally:
+        session.close()
+
+    assert loop_run.status == "failed"
+    assert loop_run.latest_decision_id == decision.decision_id
+    assert decision.decision_type == "no_trade"
+    assert "paper_loop_abort" in reason_codes
+    assert "freshness_authorization_failed" in reason_codes
+    assert "source_freshness_block:fred-observations" in reason_codes
+    assert (
+        decision_payload["evidence_feedback"]["primary_failure_surface"]
+        == "feature_materialization_gap"
+    )
+    assert (
+        decision_payload["error_message"]
+        == "Freshness authorization failed: fred-observations=degraded"
+    )
+
+    status_receipt = json.loads(
+        (
+            settings.repo_root
+            / ".ai"
+            / "dropbox"
+            / "state"
+            / "paper_practice_status.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert status_receipt["loop_state"]["status"] == "failed"
+    assert status_receipt["loop_state"]["latest_decision_id"] == decision.decision_id
+    assert status_receipt["loop_state"]["primary_failure_surface"] == "feature_materialization_gap"
 
 
 def test_paper_practice_loop_requires_completed_historical_ladder(settings) -> None:

@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 import click
@@ -1219,7 +1220,12 @@ def run_paper_practice_loop(
     json_output: bool,
 ) -> None:
     """Run the autonomous paper-only practice loop."""
-    from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
+    from d5_trading_engine.paper_runtime.practice import (
+        PaperPracticeRuntime,
+        classify_paper_practice_failure,
+        paper_practice_failure_next_action,
+        paper_practice_failure_reason_codes,
+    )
 
     runtime = PaperPracticeRuntime(get_settings())
 
@@ -1239,6 +1245,22 @@ def run_paper_practice_loop(
             ),
         )
     except Exception as exc:
+        if json_output:
+            error_message = str(exc)
+            primary_failure_surface = classify_paper_practice_failure(error_message)
+            payload = {
+                "status": "failed",
+                "error_message": error_message,
+                "primary_failure_surface": primary_failure_surface,
+                "reason_codes": paper_practice_failure_reason_codes(error_message),
+                "recommended_next_action": paper_practice_failure_next_action(
+                    primary_failure_surface
+                ),
+            }
+            with suppress(Exception):
+                payload.update(runtime.get_status())
+            _emit_cli_result(payload, json_output=True, text="")
+            sys.exit(1)
         click.echo(f"✗ Paper practice loop failed: {exc}", err=True)
         sys.exit(1)
 

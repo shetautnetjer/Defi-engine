@@ -940,6 +940,47 @@ def test_cli_paper_practice_loop_and_status_dispatch_json(
     assert status_payload["active_profile_id"] == "paper_profile_test"
 
 
+def test_cli_paper_practice_loop_json_failure_reports_diagnostic_payload(
+    cli_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    init_result = cli_runner.invoke(cli, ["init"])
+    assert init_result.exit_code == 0
+
+    def _raise_failure(self, **kwargs):
+        raise RuntimeError("Freshness authorization failed: fred-observations=degraded")
+
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.practice.PaperPracticeRuntime.run_loop",
+        _raise_failure,
+    )
+    monkeypatch.setattr(
+        "d5_trading_engine.paper_runtime.practice.PaperPracticeRuntime.get_status",
+        lambda self: {
+            "active_profile_id": "paper_profile_test",
+            "active_revision_id": "paper_profile_revision_test",
+            "open_session_key": "",
+            "latest_loop_id": "paper_practice_loop_failed",
+            "latest_loop_status": "failed",
+            "latest_decision_id": "paper_practice_decision_abort",
+        },
+    )
+
+    loop_result = cli_runner.invoke(
+        cli,
+        ["run-paper-practice-loop", "--max-iterations", "1", "--json"],
+    )
+
+    assert loop_result.exit_code == 1
+    payload = json.loads(loop_result.output)
+    assert payload["status"] == "failed"
+    assert payload["error_message"] == "Freshness authorization failed: fred-observations=degraded"
+    assert payload["primary_failure_surface"] == "feature_materialization_gap"
+    assert payload["recommended_next_action"] == "repair_feature_window"
+    assert payload["latest_loop_id"] == "paper_practice_loop_failed"
+    assert "✗ Paper practice loop failed" not in loop_result.output
+
+
 def test_cli_core_ladder_commands_dispatch_json(
     cli_runner,
     monkeypatch: pytest.MonkeyPatch,

@@ -101,6 +101,28 @@ fn fixture_db_with_empty_latest_run(path: &Path) {
     .unwrap();
 }
 
+fn fixture_db_with_freshness_abort(path: &Path) {
+    fixture_db(path);
+    let conn = Connection::open(path).unwrap();
+    conn.execute("DELETE FROM paper_practice_decision_v1", [])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO paper_practice_decision_v1 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        (
+            "decision_abort",
+            "loop_1",
+            "no_trade",
+            Option::<String>::None,
+            Option::<i64>::None,
+            Option::<i64>::None,
+            Option::<i64>::None,
+            r#"["paper_loop_abort","freshness_authorization_failed","source_freshness_block:fred-observations"]"#,
+            "2026-01-03T00:00:00Z",
+        ),
+    )
+    .unwrap();
+}
+
 #[test]
 fn coverage_reports_degraded_feature_gap_and_writes_quickread() {
     let repo = fixture_repo();
@@ -152,6 +174,31 @@ fn funnel_reports_strategy_candidate_failure() {
         .path()
         .join(".ai/quickreads/latest_funnel.json")
         .exists());
+}
+
+#[test]
+fn funnel_classifies_freshness_abort_as_feature_materialization_gap() {
+    let repo = fixture_repo();
+    let db_path = repo.path().join("data/db/d5.db");
+    fixture_db_with_freshness_abort(&db_path);
+
+    let report = run_funnel(FunnelArgs {
+        repo_root: repo.path().to_path_buf(),
+        db_path,
+        run: "latest".to_string(),
+        window_days: None,
+        write_quickread: false,
+    })
+    .unwrap();
+
+    assert_eq!(
+        report.primary_failure_surface.as_deref(),
+        Some("feature_materialization_gap")
+    );
+    assert_eq!(
+        report.recommended_next_actions[0]["action"],
+        "repair_feature_window"
+    );
 }
 
 #[test]

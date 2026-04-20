@@ -98,6 +98,35 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def classify_paper_practice_failure(error_message: str) -> str:
+    """Map a pre-decision paper-loop failure to the diagnostic funnel surface."""
+    if "Freshness authorization failed" in error_message:
+        return "feature_materialization_gap"
+    if "feature" in error_message.lower() or "materialization" in error_message.lower():
+        return "feature_materialization_gap"
+    return "paper_loop_abort"
+
+
+def paper_practice_failure_reason_codes(error_message: str) -> list[str]:
+    reason_codes = ["paper_loop_abort"]
+    if "Freshness authorization failed" not in error_message:
+        return reason_codes
+
+    reason_codes.append("freshness_authorization_failed")
+    _, _, lane_text = error_message.partition(":")
+    for item in lane_text.split(","):
+        lane = item.strip().split("=", 1)[0].strip()
+        if lane:
+            reason_codes.append(f"source_freshness_block:{lane}")
+    return reason_codes
+
+
+def paper_practice_failure_next_action(primary_failure_surface: str) -> str:
+    if primary_failure_surface == "feature_materialization_gap":
+        return "repair_feature_window"
+    return "inspect_paper_loop_failure"
+
+
 def _market_return_direction(value: float) -> str:
     if value > 0:
         return "up"
@@ -929,17 +958,29 @@ class PaperPracticeRuntime:
                 "active_revision_id": profile["active_revision_id"],
                 "latest_trade_receipt": latest_trade_receipt,
             }
-        except Exception:
+        except Exception as exc:
+            error_message = str(exc)
+            primary_failure_surface = classify_paper_practice_failure(error_message)
+            reason_codes = paper_practice_failure_reason_codes(error_message)
+            profile = self.ensure_active_profile()
+            if not latest_decision_id:
+                decision = self._record_loop_abort_decision(
+                    loop_run_id=loop_run_id,
+                    profile=profile,
+                    error_message=error_message,
+                    primary_failure_surface=primary_failure_surface,
+                    reason_codes=reason_codes,
+                )
+                latest_decision_id = decision["decision_id"]
             self._update_loop_run(
                 loop_run_id=loop_run_id,
                 status="failed",
                 iterations_completed=iterations_completed,
-                latest_decision_id=None,
-                latest_session_key=None,
-                last_cycle_id=None,
+                latest_decision_id=latest_decision_id,
+                latest_session_key=latest_session_key,
+                last_cycle_id=last_cycle_id,
                 finished_at=utcnow(),
             )
-            profile = self.ensure_active_profile()
             self._write_status_receipts(
                 profile=profile,
                 latest_trade_receipt=latest_trade_receipt,
@@ -950,6 +991,9 @@ class PaperPracticeRuntime:
                     "latest_decision_id": latest_decision_id,
                     "latest_session_key": latest_session_key,
                     "last_cycle_id": last_cycle_id,
+                    "error_message": error_message,
+                    "primary_failure_surface": primary_failure_surface,
+                    "reason_codes": reason_codes,
                     "historical_ladder_completed": True,
                 },
             )
@@ -2018,6 +2062,59 @@ class PaperPracticeRuntime:
             "decision_type": decision_type,
             "created_at": created_at.isoformat(),
         }
+
+    def _record_loop_abort_decision(
+        self,
+        *,
+        loop_run_id: str,
+        profile: dict[str, Any],
+        error_message: str,
+        primary_failure_surface: str,
+        reason_codes: list[str],
+    ) -> dict[str, Any]:
+        evidence_feedback = {
+            "primary_failure_surface": primary_failure_surface,
+            "candidate_overlay_type": "candidate_source_or_feature_repair_v1",
+            "recommended_next_command": "d5 diagnose training-window --regimen quickstart_300d --json",
+            "recommended_next_action": (
+                "Repair source freshness and feature materialization gaps before rerunning the "
+                "paper loop or mutating strategy, policy, or risk."
+            ),
+            "reason_codes": reason_codes,
+            "authority": "proposal_only",
+            "governance_scope": "paper_practice",
+        }
+        decision = self._record_decision(
+            loop_run_id=loop_run_id,
+            profile=profile,
+            decision_type="no_trade",
+            session_key="",
+            quote_snapshot_id=None,
+            condition_run_id=None,
+            policy_trace_id=None,
+            risk_verdict_id=None,
+            decision_payload={
+                "cycle_id": "",
+                "paper_ready": False,
+                "latest_trade_receipt": {},
+                "error_message": error_message,
+                "evidence_feedback": evidence_feedback,
+            },
+            reason_codes=reason_codes,
+        )
+        self._write_evidence_feedback_receipt(
+            {
+                "decision_id": decision["decision_id"],
+                "decision_type": "no_trade",
+                "loop_run_id": loop_run_id,
+                "profile_id": profile["profile_id"],
+                "profile_revision_id": profile["active_revision_id"],
+                "evidence_feedback": evidence_feedback,
+                "error_message": error_message,
+                "updated_at": utcnow().isoformat(),
+            }
+        )
+        return decision
 
     def _update_loop_run(
         self,

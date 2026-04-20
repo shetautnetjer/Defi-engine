@@ -620,6 +620,10 @@ fn reason_surface(reason: &str) -> &'static str {
         "risk_overblocking"
     } else if reason.starts_with("quote") {
         "quote_fill_unavailability"
+    } else if reason.starts_with("freshness_authorization_failed")
+        || reason.starts_with("source_freshness_block")
+    {
+        "feature_materialization_gap"
     } else if reason.starts_with("paper_ready_receipt_not_actionable") {
         "data_coverage_gap"
     } else {
