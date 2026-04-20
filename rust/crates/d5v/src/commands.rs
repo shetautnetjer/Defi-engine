@@ -533,6 +533,22 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
 
 fn resolve_loop_run(conn: &Connection, run: &str) -> Result<String> {
     if run != "latest" {
+        if run == "latest-populated" || run == "latest-with-decisions" {
+            return conn
+                .query_row(
+                    "SELECT r.loop_run_id \
+                     FROM paper_practice_loop_run_v1 r \
+                     JOIN paper_practice_decision_v1 d ON d.loop_run_id = r.loop_run_id \
+                     GROUP BY r.loop_run_id, r.created_at, r.started_at \
+                     HAVING COUNT(d.decision_id) > 0 \
+                     ORDER BY r.created_at DESC, r.started_at DESC \
+                     LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .context("no populated paper practice loop run found");
+        }
         return Ok(run.to_string());
     }
     conn.query_row(

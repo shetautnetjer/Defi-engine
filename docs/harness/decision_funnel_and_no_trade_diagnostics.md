@@ -60,7 +60,7 @@ d5 diagnose no-trades --run latest --window 300d --json
 
 ```bash
 cargo run --manifest-path rust/Cargo.toml --bin d5v -- coverage --regimen full_730d --json
-cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest-populated --json
 cargo run --manifest-path rust/Cargo.toml --bin d5v -- no-trades --run latest --window 730d --json
 ```
 

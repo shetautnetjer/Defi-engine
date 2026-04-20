@@ -89,7 +89,7 @@ The loop should consult `d5v` before generating candidate batches:
 
 ```bash
 cargo run --manifest-path rust/Cargo.toml --bin d5v -- coverage --regimen full_730d --json
-cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest-populated --json
 cargo run --manifest-path rust/Cargo.toml --bin d5v -- no-trades --run latest --window 730d --json
 ```
 

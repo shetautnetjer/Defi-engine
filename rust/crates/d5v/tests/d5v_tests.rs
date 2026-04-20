@@ -91,6 +91,16 @@ fn fixture_db_without_decisions(path: &Path) {
         .unwrap();
 }
 
+fn fixture_db_with_empty_latest_run(path: &Path) {
+    fixture_db(path);
+    let conn = Connection::open(path).unwrap();
+    conn.execute(
+        "INSERT INTO paper_practice_loop_run_v1 VALUES (?1, ?2, ?3)",
+        ["loop_2", "2026-01-04T00:00:00Z", "2026-01-04T00:00:00Z"],
+    )
+    .unwrap();
+}
+
 #[test]
 fn coverage_reports_degraded_feature_gap_and_writes_quickread() {
     let repo = fixture_repo();
@@ -169,6 +179,41 @@ fn funnel_reports_missing_decision_funnel_separately_from_data_coverage() {
         report.recommended_next_actions[0]["action"],
         "run_or_repair_decision_funnel"
     );
+}
+
+#[test]
+fn funnel_latest_populated_skips_empty_latest_loop() {
+    let repo = fixture_repo();
+    let db_path = repo.path().join("data/db/d5.db");
+    fixture_db_with_empty_latest_run(&db_path);
+
+    let latest_report = run_funnel(FunnelArgs {
+        repo_root: repo.path().to_path_buf(),
+        db_path: db_path.clone(),
+        run: "latest".to_string(),
+        window_days: None,
+        write_quickread: false,
+    })
+    .unwrap();
+
+    let populated_report = run_funnel(FunnelArgs {
+        repo_root: repo.path().to_path_buf(),
+        db_path,
+        run: "latest-populated".to_string(),
+        window_days: None,
+        write_quickread: false,
+    })
+    .unwrap();
+
+    assert_eq!(
+        latest_report.primary_failure_surface.as_deref(),
+        Some("decision_funnel_missing")
+    );
+    assert_eq!(
+        populated_report.primary_failure_surface.as_deref(),
+        Some("strategy_candidate_generation_failure")
+    );
+    assert_eq!(populated_report.summary["loop_run_id"], "loop_1");
 }
 
 #[test]

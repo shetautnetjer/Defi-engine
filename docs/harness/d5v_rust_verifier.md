@@ -35,7 +35,7 @@ cargo run --manifest-path rust/Cargo.toml --bin d5v -- coverage \
 cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel \
   --repo-root . \
   --db-path data/db/d5.db \
-  --run latest \
+  --run latest-populated \
   --json
 
 cargo run --manifest-path rust/Cargo.toml --bin d5v -- no-trades \
@@ -60,6 +60,8 @@ cargo run --manifest-path rust/Cargo.toml --bin d5v -- secrets \
 ```
 
 Use `--no-write-quickread` when a caller wants stdout-only output.
+
+Use `--run latest` to test the newest loop run even if it has zero decisions. Use `--run latest-populated` when the caller needs the newest loop that actually has decision evidence.
 
 ## Quickread Contract
 
