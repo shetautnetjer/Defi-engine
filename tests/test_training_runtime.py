@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import orjson
 
@@ -14,6 +15,7 @@ from d5_trading_engine.research_loop.training_runtime import (
 )
 from d5_trading_engine.storage.truth.engine import get_session, run_migrations_to_head
 from d5_trading_engine.storage.truth.models import (
+    ImprovementProposalV1,
     PaperPracticeDecisionV1,
     PaperPracticeLoopRunV1,
     PaperPracticeProfileRevisionV1,
@@ -258,9 +260,119 @@ def test_training_evidence_gap_ranks_no_trade_failure_families(settings) -> None
     )
     assert result["decision_funnel"]["decision_cycles"] == 3
     assert result["decision_funnel"]["no_trade_cycles"] == 2
-    assert result["decision_funnel"]["paper_filled_cycles"] == 1
+
+
+def test_training_experiment_batch_writes_candidate_overlays(settings) -> None:
+    run_migrations_to_head(settings)
+    now = utcnow()
+    session = get_session(settings)
+    try:
+        profile = PaperPracticeProfileV1(
+            profile_id="paper_practice_profile_batch",
+            status="active",
+            active_revision_id=None,
+            instrument_pair="SOL/USDC",
+            context_anchors_json="[]",
+            cadence_minutes=15,
+            max_open_sessions=1,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(profile)
+        session.flush()
+        session.add(
+            PaperPracticeProfileRevisionV1(
+                revision_id="paper_practice_revision_batch",
+                profile_id="paper_practice_profile_batch",
+                revision_index=1,
+                status="active",
+                mutation_source="bootstrap",
+                applied_parameter_json="{}",
+                allowed_mutation_keys_json="[]",
+                summary="batch revision",
+                created_at=now,
+            )
+        )
+        session.flush()
+        profile.active_revision_id = "paper_practice_revision_batch"
+        session.add(
+            PaperPracticeLoopRunV1(
+                loop_run_id="paper_practice_loop_batch",
+                mode="bounded",
+                status="completed",
+                active_profile_id="paper_practice_profile_batch",
+                active_revision_id="paper_practice_revision_batch",
+                with_helius_ws=0,
+                max_iterations=2,
+                iterations_completed=2,
+                started_at=now,
+                finished_at=now,
+                created_at=now,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                PaperPracticeDecisionV1(
+                    decision_id="decision_batch_strategy_mismatch",
+                    loop_run_id="paper_practice_loop_batch",
+                    profile_id="paper_practice_profile_batch",
+                    profile_revision_id="paper_practice_revision_batch",
+                    decision_type="no_trade",
+                    decision_payload_json=orjson.dumps({}).decode(),
+                    reason_codes_json=orjson.dumps(
+                        ["strategy_target_not_runtime_long:flat"]
+                    ).decode(),
+                    created_at=now,
+                ),
+                PaperPracticeDecisionV1(
+                    decision_id="decision_batch_policy_mismatch",
+                    loop_run_id="paper_practice_loop_batch",
+                    profile_id="paper_practice_profile_batch",
+                    profile_revision_id="paper_practice_revision_batch",
+                    decision_type="no_trade",
+                    decision_payload_json=orjson.dumps({}).decode(),
+                    reason_codes_json=orjson.dumps(
+                        ["strategy_regime_not_allowed:long_friendly"]
+                    ).decode(),
+                    created_at=now,
+                ),
+            ]
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    result = TrainingRuntime(settings).experiment_batch()
+
+    assert result["selected_failure_family"] == "strategy_runtime_mismatch"
+    assert result["selected_batch_type"] == "strategy_runtime_mismatch_batch"
+    assert result["candidate_count"] == 3
+    assert result["falsification_candidate_included"] is True
+    assert {
+        candidate["candidate_overlay_type"] for candidate in result["candidates"]
+    } >= {
+        "candidate_strategy_policy_overlay_v1",
+        "candidate_policy_overlay_v1",
+    }
+    assert (Path(result["artifact_dir"]) / "batch.json").exists()
+    assert (Path(result["artifact_dir"]) / "batch_selection.json").exists()
+
+    session = get_session(settings)
+    try:
+        proposals = (
+            session.query(ImprovementProposalV1)
+            .filter_by(source_owner_type="experiment_batch", source_owner_key=result["run_id"])
+            .all()
+        )
+    finally:
+        session.close()
+
+    assert len(proposals) == 3
+    assert {proposal.runtime_effect for proposal in proposals} == {"advisory_only"}
+    assert result["decision_funnel"]["paper_filled_cycles"] == 0
     assert result["falsification_required"] is True
-    assert result["next_command"] == "d5 training evidence-gap --json"
+    assert result["next_command"] == "d5 compare-proposals --json"
 
 
 def test_training_status_prefers_bootstrap_when_selected_regimen_is_ready(

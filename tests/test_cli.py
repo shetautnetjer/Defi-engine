@@ -1152,6 +1152,19 @@ def test_cli_training_group_dispatches_json(
             "next_command": "d5 training evidence-gap --json",
         },
     )
+    monkeypatch.setattr(
+        "d5_trading_engine.research_loop.training_runtime.TrainingRuntime.experiment_batch",
+        lambda self: {
+            "status": "completed",
+            "run_id": "training_experiment_batch_test",
+            "artifact_dir": "/tmp/training/experiment-batch",
+            "artifact_paths": ["/tmp/training/experiment-batch/batch.json"],
+            "active_profile_revision_id": "paper_profile_revision_experiment_batch",
+            "selected_batch_type": "strategy_runtime_mismatch_batch",
+            "candidate_count": 3,
+            "next_command": "d5 compare-proposals --json",
+        },
+    )
 
     bootstrap_result = cli_runner.invoke(cli, ["training", "bootstrap", "--json"])
     assert bootstrap_result.exit_code == 0
@@ -1196,6 +1209,16 @@ def test_cli_training_group_dispatches_json(
     evidence_gap_result = cli_runner.invoke(cli, ["training", "evidence-gap", "--json"])
     assert evidence_gap_result.exit_code == 0
     assert json.loads(evidence_gap_result.output)["run_id"] == "training_evidence_gap_test"
+
+    experiment_batch_result = cli_runner.invoke(
+        cli,
+        ["training", "experiment-batch", "--json"],
+    )
+    assert experiment_batch_result.exit_code == 0
+    assert (
+        json.loads(experiment_batch_result.output)["run_id"]
+        == "training_experiment_batch_test"
+    )
 
 
 def test_cli_diagnose_group_dispatches_json(

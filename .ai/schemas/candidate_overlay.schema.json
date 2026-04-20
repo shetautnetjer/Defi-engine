@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/candidate_overlay.schema.json",
+  "title": "D5 Candidate Overlay",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "candidate_id",
+    "batch_id",
+    "failure_family",
+    "batch_type",
+    "candidate_overlay_type",
+    "target_surface",
+    "runtime_effect",
+    "promotion_allowed",
+    "requires_review",
+    "template_id",
+    "title",
+    "hypothesis",
+    "overlay",
+    "test_command",
+    "success_gate",
+    "falsification_candidate"
+  ],
+  "properties": {
+    "candidate_id": { "type": "string", "minLength": 1 },
+    "batch_id": { "type": "string", "minLength": 1 },
+    "failure_family": { "type": "string", "minLength": 1 },
+    "batch_type": { "type": "string", "minLength": 1 },
+    "candidate_overlay_type": {
+      "type": "string",
+      "enum": [
+        "candidate_label_program_overlay_v1",
+        "candidate_feature_toggle_overlay_v1",
+        "candidate_condition_overlay_v1",
+        "candidate_policy_overlay_v1",
+        "candidate_risk_overlay_v1",
+        "candidate_source_transform_overlay_v1",
+        "candidate_strategy_policy_overlay_v1",
+        "candidate_strategy_registry_overlay_v1"
+      ]
+    },
+    "target_surface": { "type": "string", "minLength": 1 },
+    "runtime_effect": {
+      "type": "string",
+      "enum": ["research_shadow_only", "research_only", "shadow_only"]
+    },
+    "promotion_allowed": { "const": false },
+    "requires_review": { "const": true },
+    "template_id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "hypothesis": { "type": "string", "minLength": 1 },
+    "overlay": { "type": "object" },
+    "test_command": { "type": "string", "minLength": 1 },
+    "success_gate": { "type": "object" },
+    "falsification_candidate": { "type": "boolean" },
+    "proposal_id": { "type": "string" },
+    "artifact_path": { "type": "string" },
+    "proposal_artifact_dir": { "type": "string" }
+  }
+}

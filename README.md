@@ -106,6 +106,7 @@ d5 training review --json
 d5 training loop --max-iterations 1 --json
 d5 training status --json
 d5 training evidence-gap --json
+d5 training experiment-batch --json
 d5 diagnose training-window --regimen quickstart_300d --json
 d5 diagnose gate-funnel --run latest --json
 d5 diagnose no-trades --run latest --window 300d --json
@@ -153,6 +154,7 @@ d5 run-paper-close <session_key> --quote-snapshot-id <quote_snapshot_id> --reaso
 | `d5 training loop` | Run the repo-owned training loop wrapper for bounded autonomous practice iterations |
 | `d5 training status` | Show the repo-owned training workspace status and latest active revision |
 | `d5 training evidence-gap` | Roll up paper decisions into ranked failure families and the next comparable experiment batch |
+| `d5 training experiment-batch` | Convert the ranked evidence gap into candidate-overlay proposal rows and batch receipts |
 | `d5 diagnose training-window` | Review SQL and feature coverage for a selected training regimen |
 | `d5 diagnose gate-funnel` | Count paper-practice decisions through condition, policy, risk, quote, and fill stages |
 | `d5 diagnose no-trades` | Explain why a selected paper window produced no or few trades |

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://d5.local/schemas/experiment_batch.schema.json",
+  "title": "D5 Training Experiment Batch",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "status",
+    "run_id",
+    "selected_failure_family",
+    "selected_batch_type",
+    "selection_confidence",
+    "candidate_count",
+    "falsification_candidate_included",
+    "falsification_required",
+    "decision_funnel",
+    "batch_selection",
+    "candidates",
+    "runtime_effect",
+    "next_command"
+  ],
+  "properties": {
+    "status": { "const": "completed" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "selected_failure_family": { "type": "string", "minLength": 1 },
+    "selected_batch_type": { "type": "string", "minLength": 1 },
+    "selection_confidence": { "type": "number", "minimum": 0 },
+    "candidate_count": { "type": "integer", "minimum": 0 },
+    "falsification_candidate_included": { "type": "boolean" },
+    "falsification_required": { "type": "boolean" },
+    "runtime_effect": { "const": "research_shadow_only" },
+    "promotion_allowed": { "const": false },
+    "decision_funnel": {
+      "type": "object",
+      "required": ["decision_cycles", "no_trade_cycles", "paper_filled_cycles"],
+      "properties": {
+        "decision_cycles": { "type": "integer", "minimum": 0 },
+        "no_trade_cycles": { "type": "integer", "minimum": 0 },
+        "paper_filled_cycles": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "batch_selection": { "type": "object" },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "candidate_overlay.schema.json" }
+    },
+    "next_command": { "type": "string", "minLength": 1 }
+  }
+}

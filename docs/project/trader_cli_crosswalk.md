@@ -44,6 +44,8 @@ The goal is clarity, not a speculative rename.
 - `d5 training review --json`
 - `d5 training loop --max-iterations 1 --json`
 - `d5 training status --json`
+- `d5 training evidence-gap --json`
+- `d5 training experiment-batch --json`
 
 ## North-star grammar
 
@@ -69,6 +71,8 @@ Treat those as north-star shapes only. They are not current repo truth.
 | `d5 run-live-regime-cycle` | `d5 paper-live watch --lane trader` | Partially overlaps; still an explicit bounded live-cycle owner |
 | `d5 run-paper-cycle ...` | `d5 paper execute --venue jupiter` | Implemented, but only from explicit quote snapshots |
 | `d5 training review` | `d5 trader review --lane trader` | Implemented as wrapper |
+| `d5 training evidence-gap` | `d5 trader review --lane trader` | Implemented as SQL-backed failure-family and decision-funnel rollup |
+| `d5 training experiment-batch` | `d5 research propose-batch --from evidence` | Implemented as research/shadow candidate-overlay proposal batch |
 
 ## Source / venue matrix
 

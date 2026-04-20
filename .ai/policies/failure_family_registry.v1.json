@@ -1,0 +1,153 @@
+{
+  "version": "v1",
+  "description": "Maps ranked evidence-gap failure families to bounded candidate-overlay experiment templates. These templates are research/shadow only and do not grant runtime authority.",
+  "families": {
+    "strategy_runtime_mismatch": {
+      "batch_type": "strategy_runtime_mismatch_batch",
+      "selection_goal": "Test whether paper runtime is blocked because strategy candidates are incompatible with the currently observed long-friendly regime.",
+      "templates": [
+        {
+          "template_id": "runtime_long_compatible_strategy_eval_v1",
+          "candidate_overlay_type": "candidate_strategy_policy_overlay_v1",
+          "target_surface": "strategy_policy",
+          "title": "Enable a long-compatible strategy-policy overlay in shadow",
+          "hypothesis": "If long-friendly regimes are repeatedly producing flat/no-trade runtime targets, a bounded long-compatible strategy-policy overlay should create comparable paper candidates without bypassing risk.",
+          "overlay": {
+            "base_policy": "policy_global_regime_trace_v1",
+            "changes": {
+              "long_friendly.shadow_enabled_strategy_families": [
+                "trend_continuation_long_v1",
+                "mean_reversion_long_v1"
+              ],
+              "runtime_effect": "shadow_or_research_only"
+            }
+          },
+          "test_command": "d5 run-strategy-eval governed-challengers-v1 --json",
+          "success_gate": {
+            "candidate_count_min": 1,
+            "requires_baseline_comparison": true,
+            "requires_no_runtime_promotion": true
+          },
+          "falsification_candidate": false
+        },
+        {
+          "template_id": "long_no_anomaly_veto_shadow_v1",
+          "candidate_overlay_type": "candidate_policy_overlay_v1",
+          "target_surface": "policy",
+          "title": "Isolate whether anomaly vetoes are suppressing long candidates",
+          "hypothesis": "If the candidate detector can find long-compatible setups only when anomaly veto sensitivity is relaxed in shadow, the next test should focus on risk/policy overblocking rather than strategy discovery.",
+          "overlay": {
+            "base_policy": "policy_global_regime_trace_v1",
+            "changes": {
+              "long_friendly.shadow_anomaly_veto_mode": "diagnostic_relaxed",
+              "risk_gate_bypass": false,
+              "runtime_effect": "shadow_only"
+            }
+          },
+          "test_command": "d5 diagnose gate-funnel --run latest --json",
+          "success_gate": {
+            "risk_gate_must_remain_final": true,
+            "requires_reason_code_histogram": true
+          },
+          "falsification_candidate": false
+        },
+        {
+          "template_id": "always_candidate_long_sanity_v1",
+          "candidate_overlay_type": "candidate_strategy_policy_overlay_v1",
+          "target_surface": "strategy_candidate_generation",
+          "title": "Falsify dead-candidate generator with always-candidate sanity lane",
+          "hypothesis": "If an always-candidate long sanity overlay still produces no candidates, the failure is below policy selection and belongs in candidate generation or data wiring.",
+          "overlay": {
+            "base_detector": "paper_runtime_strategy_selector",
+            "changes": {
+              "diagnostic_mode": "always_candidate_long",
+              "instrument_pair": "SOL/USDC",
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose no-trades --run latest --window 300d --json",
+          "success_gate": {
+            "must_emit_candidate_rows": true,
+            "must_not_open_live_orders": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "candidate_generation_failure": {
+      "batch_type": "candidate_generation_failure_batch",
+      "selection_goal": "Prove the strategy detector can emit candidates before tuning policy or risk.",
+      "templates": [
+        {
+          "template_id": "always_candidate_baseline_v1",
+          "candidate_overlay_type": "candidate_strategy_policy_overlay_v1",
+          "target_surface": "strategy_candidate_generation",
+          "title": "Run an always-candidate baseline",
+          "hypothesis": "A diagnostic always-candidate lane should create opportunity rows if the runtime wiring is intact.",
+          "overlay": {
+            "base_detector": "paper_runtime_strategy_selector",
+            "changes": {
+              "diagnostic_mode": "always_candidate",
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose no-trades --run latest --window 300d --json",
+          "success_gate": {
+            "must_emit_candidate_rows": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "risk_overblocking": {
+      "batch_type": "risk_overblocking_batch",
+      "selection_goal": "Separate true unsafe risk rejects from missing data or stale quote failures.",
+      "templates": [
+        {
+          "template_id": "risk_reason_breakdown_v1",
+          "candidate_overlay_type": "candidate_risk_overlay_v1",
+          "target_surface": "risk",
+          "title": "Break down risk rejection reasons",
+          "hypothesis": "A typed risk rejection histogram should show whether risk is overblocking or correctly vetoing unsafe setups.",
+          "overlay": {
+            "base_risk": "risk_global_regime_gate_v1",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose gate-funnel --run latest --json",
+          "success_gate": {
+            "requires_risk_reason_histogram": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    },
+    "quote_fill_unavailability": {
+      "batch_type": "quote_fill_unavailability_batch",
+      "selection_goal": "Separate executable quote availability from strategy quality.",
+      "templates": [
+        {
+          "template_id": "quote_availability_audit_v1",
+          "candidate_overlay_type": "candidate_source_transform_overlay_v1",
+          "target_surface": "source_or_execution_fill",
+          "title": "Audit quote availability and staleness",
+          "hypothesis": "If quote gaps dominate no-trade decisions, source freshness must be repaired before strategy comparisons matter.",
+          "overlay": {
+            "base_source": "jupiter_quote_snapshot",
+            "changes": {
+              "diagnostic_only": true,
+              "runtime_effect": "research_only"
+            }
+          },
+          "test_command": "d5 diagnose gate-funnel --run latest --json",
+          "success_gate": {
+            "requires_quote_missing_count": true
+          },
+          "falsification_candidate": true
+        }
+      ]
+    }
+  }
+}

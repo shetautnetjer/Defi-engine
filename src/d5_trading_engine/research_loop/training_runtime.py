@@ -12,6 +12,7 @@ from d5_trading_engine.common.time_utils import utcnow
 from d5_trading_engine.config.settings import Settings, get_settings
 from d5_trading_engine.paper_runtime.practice import PaperPracticeRuntime
 from d5_trading_engine.research_loop.evidence_rollup import build_training_evidence_gap
+from d5_trading_engine.research_loop.proposal_batch import build_candidate_batch
 from d5_trading_engine.research_loop.research_profiles import (
     get_research_profile,
     resolve_research_profile_schema_path,
@@ -463,6 +464,131 @@ class TrainingRuntime:
             owner_type="training_evidence_gap",
             owner_key=rollup_id,
             artifact_type="training_latest_evidence_gap",
+            settings=self.settings,
+        )
+        return summary
+
+    def experiment_batch(self) -> dict[str, Any]:
+        batch_id = f"experiment_batch_{uuid.uuid4().hex[:12]}"
+        artifact_dir = (
+            self.settings.data_dir
+            / "research"
+            / "training"
+            / "experiment_batches"
+            / batch_id
+        )
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        evidence_gap = build_training_evidence_gap(self.settings)
+        summary = build_candidate_batch(
+            settings=self.settings,
+            evidence_gap=evidence_gap,
+            batch_id=batch_id,
+            artifact_dir=artifact_dir,
+        )
+        artifact_paths = [
+            str(artifact_dir / "batch.json"),
+            str(artifact_dir / "batch_selection.json"),
+            str(artifact_dir / "report.qmd"),
+            *[str(Path(candidate["artifact_path"])) for candidate in summary["candidates"]],
+        ]
+        summary.update(
+            {
+                "artifact_dir": str(artifact_dir),
+                "artifact_paths": artifact_paths,
+                "workspace_root": "training",
+                "active_profile_revision_id": self.practice.ensure_active_profile()[
+                    "active_revision_id"
+                ],
+                "source_evidence_gap": evidence_gap,
+                "next_command": "d5 compare-proposals --json",
+            }
+        )
+        write_json_artifact(
+            artifact_dir / "batch.json",
+            summary,
+            owner_type="training_experiment_batch",
+            owner_key=batch_id,
+            artifact_type="training_experiment_batch_summary",
+            settings=self.settings,
+        )
+        write_json_artifact(
+            artifact_dir / "batch_selection.json",
+            summary["batch_selection"],
+            owner_type="training_experiment_batch",
+            owner_key=batch_id,
+            artifact_type="training_experiment_batch_selection",
+            settings=self.settings,
+        )
+        write_json_artifact(
+            self.state_root / "training_latest_experiment_batch.json",
+            summary,
+            owner_type="training_experiment_batch",
+            owner_key=batch_id,
+            artifact_type="training_latest_experiment_batch",
+            settings=self.settings,
+        )
+        write_text_artifact(
+            artifact_dir / "report.qmd",
+            render_qmd(
+                "experiment_run.qmd",
+                title="training experiment batch",
+                metadata=trading_report_metadata(
+                    report_kind="training_experiment_batch",
+                    run_id=batch_id,
+                    owner_type="training_experiment_batch",
+                    owner_key=batch_id,
+                    profile_revision_id=summary["active_profile_revision_id"],
+                    instrument_scope=["SOL/USDC"],
+                    context_instruments=list(self.settings.coinbase_context_symbols),
+                    timeframe="15m",
+                    summary_path="batch.json",
+                    config_path="batch_selection.json",
+                ),
+                summary_lines=[
+                    f"- batch id: `{batch_id}`",
+                    f"- selected failure family: `{summary['selected_failure_family']}`",
+                    f"- selected batch type: `{summary['selected_batch_type']}`",
+                    f"- candidate count: `{summary['candidate_count']}`",
+                    f"- falsification included: `{summary['falsification_candidate_included']}`",
+                    "- runtime effect: `research/shadow only; no promotion or order authority`",
+                ],
+                sections=[
+                    (
+                        "Evidence Selection",
+                        [
+                            f"- primary learning gap: `{evidence_gap.get('primary_learning_gap', 'unknown')}`",
+                            f"- selection confidence: `{summary['selection_confidence']}`",
+                            f"- goal: {summary.get('selection_goal') or 'none'}",
+                        ],
+                    ),
+                    (
+                        "Candidate Overlays",
+                        [
+                            (
+                                f"- `{candidate['candidate_id']}` "
+                                f"type=`{candidate['candidate_overlay_type']}` "
+                                f"surface=`{candidate['target_surface']}` "
+                                f"falsification=`{candidate['falsification_candidate']}`"
+                            )
+                            for candidate in summary["candidates"]
+                        ],
+                    ),
+                    (
+                        "Governance Boundary",
+                        [
+                            "- candidates are advisory proposal evidence only",
+                            "- risk gate remains final",
+                            "- no live order routing or paper runtime promotion occurs in this command",
+                            f"- next command: `{summary['next_command']}`",
+                        ],
+                    ),
+                ],
+                generated_at=utcnow(),
+            ),
+            owner_type="training_experiment_batch",
+            owner_key=batch_id,
+            artifact_type="training_experiment_batch_report_qmd",
+            artifact_format="qmd",
             settings=self.settings,
         )
         return summary

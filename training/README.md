@@ -83,6 +83,7 @@ Use the `d5 training ...` wrapper layer instead of ad hoc shell choreography:
 - `d5 training loop --max-iterations 1 --json`
 - `d5 training status --json`
 - `d5 training evidence-gap --json`
+- `d5 training experiment-batch --json`
 - `d5 diagnose training-window --regimen quickstart_300d --json`
 - `d5 diagnose gate-funnel --run latest --json`
 - `d5 diagnose no-trades --run latest --window 300d --json`
@@ -99,6 +100,13 @@ paper-practice SQL decisions and the latest no-trade feedback receipts, ranks
 current failure families, and selects the next tiny comparable experiment batch.
 It should produce revisable hypotheses and candidate-overlay targets, not runtime
 authority.
+
+`d5 training experiment-batch --json` is the first proposal-batch seam. It reads
+the ranked evidence gap, chooses one failure family, writes candidate overlay
+JSONs under `data/research/training/experiment_batches/`, and creates advisory
+`improvement_proposal_v1` rows for each candidate. These overlays are
+research/shadow evidence only: they do not alter YAML policy, risk behavior,
+paper runtime authority, or live order routing.
 
 `d5 diagnose ... --json` is the runtime funnel seam. It answers whether the
 selected training window has enough SQL/features, how far the latest

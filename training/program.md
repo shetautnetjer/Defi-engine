@@ -54,6 +54,7 @@ Prefer the repo-owned CLI instead of ad hoc shell choreography:
 - `d5 training loop`
 - `d5 training status`
 - `d5 training evidence-gap`
+- `d5 training experiment-batch`
 - bounded `d5 capture`, `materialize-features`, `score-conditions`, `run-shadow`, `run-live-regime-cycle`, and `run-paper-cycle` subcommands when the training wrapper calls for them
 
 If the CLI is missing a needed surface, propose or add the smallest missing wrapper instead of inventing a second workflow.
@@ -112,6 +113,13 @@ Every review packet should classify the primary failure surface:
 classification. It ranks multiple failure families, records the selected
 experiment batch type, requires a falsification candidate, and leaves promotion
 to the governed review/comparison ladder.
+
+`d5 training experiment-batch` should convert that classification into a tiny
+candidate-overlay batch. It may write advisory proposal rows for labels,
+features, condition, strategy policy, risk policy, or source-transform overlays,
+but those candidates remain research/shadow evidence until a later comparison
+and promotion gate accepts them. It must not directly edit authoritative runtime
+surfaces.
 
 `d5 diagnose training-window`, `d5 diagnose gate-funnel`, and
 `d5 diagnose no-trades` should be the fast runtime-funnel version of the same

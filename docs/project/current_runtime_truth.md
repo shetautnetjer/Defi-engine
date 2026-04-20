@@ -229,6 +229,8 @@ The current historical ladder is now bounded, explicit, and evidence-first:
   - `d5 training hydrate-history`
   - `d5 training collect`
   - `d5 training status`
+  - `d5 training evidence-gap`
+  - `d5 training experiment-batch`
 - paper-practice bootstrap now supports named training regimens:
   - `auto` = fastest ready regimen from available history, so paper training can start once `quickstart_300d` is satisfied
   - `quickstart_300d` = earlier paper-only bootstrap
@@ -257,6 +259,13 @@ The trading evidence contract is now also explicit:
 - trading-facing runs converge on `config.json` + `summary.json` + `report.qmd`
 - QMD remains the human-and-LLM evidence packet with small YAML frontmatter
 - SQL remains canonical truth and Parquet remains the deep-history warehouse
+- `d5 training evidence-gap --json` ranks accumulated paper-practice decisions
+  into failure families, decision-funnel counts, and the next comparable
+  experiment-batch target
+- `d5 training experiment-batch --json` converts that ranking into candidate
+  overlay JSONs and advisory `improvement_proposal_v1` rows; those outputs are
+  research/shadow evidence only and do not change runtime policy, risk, paper
+  authority, or live order routing
 - see `docs/task/trading_qmd_report_contract.md` for the required reporting sections
 
 The current Codex automation topology is now also explicit:

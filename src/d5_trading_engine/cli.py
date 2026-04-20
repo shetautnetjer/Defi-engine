@@ -4,7 +4,7 @@ D5 Trading Engine — CLI Entry Point
 Commands:
 - d5 init         : Apply Alembic migrations to head
 - d5 capture      : Run data capture for one or all providers
-- d5 training ... : Repo-owned training wrappers for bootstrap, walk-forward, review, loop, and status
+- d5 training ... : Repo-owned training wrappers for bootstrap, walk-forward, review, loop, status, evidence, and batches
 - d5 diagnose ... : Explain training-window coverage, gate funnels, and no-trade windows
 - d5 hydrate-history : Hydrate a selected Massive-backed training-regimen window
 - d5 training hydrate-history : Fill selected-regimen history or the missing full historical window
@@ -383,6 +383,30 @@ def training_evidence_gap(json_output: bool) -> None:
         )
     except Exception as exc:
         click.echo(f"✗ Training evidence-gap failed: {exc}", err=True)
+        sys.exit(1)
+
+
+@training_group.command("experiment-batch")
+@click.option("--json", "json_output", is_flag=True, default=False)
+def training_experiment_batch(json_output: bool) -> None:
+    """Generate candidate-overlay experiment proposals from the current evidence gap."""
+    from d5_trading_engine.research_loop.training_runtime import TrainingRuntime
+
+    runtime = TrainingRuntime(get_settings())
+
+    try:
+        result = runtime.experiment_batch()
+        _emit_cli_result(
+            result,
+            json_output=json_output,
+            text=(
+                "✓ training experiment-batch: "
+                f"{result['run_id']} selected_batch={result['selected_batch_type']} "
+                f"candidates={result['candidate_count']} artifacts={result['artifact_dir']}"
+            ),
+        )
+    except Exception as exc:
+        click.echo(f"✗ Training experiment-batch failed: {exc}", err=True)
         sys.exit(1)
 
 
