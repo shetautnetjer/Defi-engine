@@ -83,6 +83,18 @@ d5 training evidence-gap --json
 d5 training propose-batch --from latest --json
 ```
 
+## Deterministic Quickreads
+
+The loop should consult `d5v` before generating candidate batches:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- coverage --regimen full_730d --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- no-trades --run latest --window 730d --json
+```
+
+These commands are read-only over runtime truth and write compact quickread receipts under `.ai/quickreads/`.
+
 ## Acceptance Criteria
 
 - evidence units are schema-valid

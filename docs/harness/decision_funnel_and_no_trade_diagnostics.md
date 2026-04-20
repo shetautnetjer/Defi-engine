@@ -54,6 +54,18 @@ d5 diagnose gate-funnel --run latest --json
 d5 diagnose no-trades --run latest --window 300d --json
 ```
 
+## Rust Quickread Companion
+
+`d5v` is the deterministic quickread companion for the same diagnostic surface:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- coverage --regimen full_730d --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- no-trades --run latest --window 730d --json
+```
+
+Use the `d5` Python CLI for orchestration and QMD/report generation. Use `d5v` when Codex or an automation lane needs a small, deterministic JSON packet before deciding what to test next.
+
 ## Required Output
 
 Example zero-trade diagnosis:
@@ -81,6 +93,7 @@ Example zero-trade diagnosis:
 Allowed primary failure surfaces:
 
 - `data_coverage_gap`
+- `decision_funnel_missing`
 - `feature_materialization_gap`
 - `condition_churn_or_staleness`
 - `strategy_candidate_generation_failure`

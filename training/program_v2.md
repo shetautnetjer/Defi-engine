@@ -30,6 +30,14 @@ d5 diagnose gate-funnel --run latest --json
 d5 diagnose no-trades --run latest --window 300d --json
 ```
 
+For agent quickreads, use the read-only Rust verifier:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- coverage --regimen full_730d --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- funnel --run latest --json
+cargo run --manifest-path rust/Cargo.toml --bin d5v -- no-trades --run latest --window 730d --json
+```
+
 ## Evidence Rollup First
 
 Before generating new proposals, run:
